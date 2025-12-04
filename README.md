@@ -15,7 +15,7 @@
 
 > *"Some tools scan. Some tools attack. I do both."*
 
-[![Version](https://img.shields.io/badge/version-3.4.0-red?style=for-the-badge)](https://github.com/Nerds489/NETREAPER)
+[![Version](https://img.shields.io/badge/version-3.3.4-red?style=for-the-badge)](https://github.com/Nerds489/NETREAPER)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux-blue?style=for-the-badge)](https://www.linux.org/)
 [![Bash](https://img.shields.io/badge/bash-5.0%2B-orange?style=for-the-badge)](https://www.gnu.org/software/bash/)
@@ -443,10 +443,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 *The reaper is watching.*
 
 </div>
-
----
-## Update 3.3.4 (Retribution)
-- Single-tool packaging: netreaper-only installer/uninstaller and completions.
-- Cleaned legacy wifi_multitool/nft-multitool artifacts; session dirs created automatically.
-- Fresh bash completion covering scan, wifi, crack, session, osint, web, exploit, stress, traffic.
-# NETREAPER
