@@ -15,7 +15,7 @@
 
 > *"Some tools scan. Some tools attack. I do both."*
 
-[![Version](https://img.shields.io/badge/version-3.3.4-red?style=for-the-badge)](https://github.com/yourusername/netreaper)
+[![Version](https://img.shields.io/badge/version-3.4.0-red?style=for-the-badge)](https://github.com/Nerds489/NETREAPER)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux-blue?style=for-the-badge)](https://www.linux.org/)
 [![Bash](https://img.shields.io/badge/bash-5.0%2B-orange?style=for-the-badge)](https://www.gnu.org/software/bash/)
@@ -113,7 +113,7 @@ Built for red teamers, penetration testers, and security researchers who want po
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/netreaper.git
+git clone https://github.com/Nerds489/NETREAPER.git
 cd netreaper
 
 # Make executable and install system-wide
@@ -128,7 +128,7 @@ netreaper
 
 ```bash
 # Download directly
-wget https://raw.githubusercontent.com/yourusername/netreaper/main/netreaper
+wget https://raw.githubusercontent.com/Nerds489/NETREAPER/main/netreaper
 chmod +x netreaper
 
 # Run from current directory
@@ -408,15 +408,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Credits
 
 - Inspired by [aircrack-ng](https://www.aircrack-ng.org/), [wifite](https://github.com/derv82/wifite2), and countless security tools
-- Built by [Network & Firewall Technicians (NFT)](https://github.com/yourusername)
+- Built by [Network & Firewall Technicians (NFT)](https://github.com/Nerds489)
 - ASCII art generated with love and malice
 
 ---
 
 ## 📞 Support
 
-- 🐛 [Report a Bug](https://github.com/yourusername/netreaper/issues)
-- 💡 [Request a Feature](https://github.com/yourusername/netreaper/issues)
+- 🐛 [Report a Bug](https://github.com/Nerds489/NETREAPER/issues)
+- 💡 [Request a Feature](https://github.com/Nerds489/NETREAPER/issues)
 - 📧 Contact: your@email.com
 
 ---

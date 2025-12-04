@@ -24,14 +24,15 @@ set -uo pipefail
 QUIET=0
 JSON_OUTPUT=0
 
-readonly VERSION="3.3.4"
-readonly CODENAME="Retribution"
+readonly VERSION="3.4.0"
+readonly CODENAME="Ascension"
 readonly SCRIPT_NAME="netreaper"
 # shellcheck disable=SC2034
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC2034
 readonly SCRIPT_DIR
 readonly CONFIG_DIR="${HOME}/.netreaper"
+readonly CONFIG_FILE="${CONFIG_DIR}/config"
 readonly BASE_LOG_DIR="${CONFIG_DIR}/logs"
 LOG_DIR="$BASE_LOG_DIR"
 readonly BASE_OUTPUT_DIR="${CONFIG_DIR}/output"
@@ -41,9 +42,17 @@ LOOT_DIR="$BASE_LOOT_DIR"
 readonly LEGAL_FILE="${CONFIG_DIR}/.legal_accepted"
 readonly SESSION_FILE="${CONFIG_DIR}/.current_session"
 readonly SESSIONS_DIR="${CONFIG_DIR}/sessions"
+readonly HISTORY_FILE="${CONFIG_DIR}/history"
+readonly FAVORITES_FILE="${CONFIG_DIR}/favorites"
+readonly ALIASES_FILE="${CONFIG_DIR}/aliases"
+readonly PROFILES_DIR="${CONFIG_DIR}/profiles"
 CURRENT_SESSION=""
 SESSION_NAME=""
 readonly TMP_DIR="/tmp/netreaper"
+
+DEFAULT_INTERFACE=""
+DEFAULT_WORDLIST="/usr/share/wordlists/rockyou.txt"
+DEFAULT_THEME="default"
 
 # shellcheck disable=SC2016
 HOSTAPD_TEMPLATE='interface=${IFACE}
@@ -140,6 +149,73 @@ log_target()  { _log "TARGET"  "$C_FIRE"   "[◎]" "$@"; }
 log_loot()    { _log "LOOT"    "$C_GOLD"   "[★]" "$@"; }
 
 #═══════════════════════════════════════════════════════════════════════════════
+# PROGRESS & TIMING HELPERS
+#═══════════════════════════════════════════════════════════════════════════════
+
+operation_header() {
+    local mode="$1" target="$2"
+    local started
+    started=$(date '+%Y-%m-%d %H:%M:%S')
+    log_info "[] NETREAPER v${VERSION} [] Target: ${target:-N/A} [] Mode: ${mode:-N/A} [] Starting at: ${started} ───────────────────────────────────"
+}
+
+log_command_preview() {
+    local cmd="$*"
+    [[ "$QUIET" -eq 1 && "$JSON_OUTPUT" -ne 1 ]] && return
+    log_info "Command: ${cmd}"
+}
+
+start_timer_ms() { date +%s%3N; }
+
+format_duration_ms() {
+    local ms="$1"
+    awk "BEGIN {printf \"%.1f\", ${ms}/1000}"
+}
+
+operation_summary() {
+    local label="$1" start_ms="$2" outfile="$3" extra="$4"
+    local duration_ms=$(( $(date +%s%3N) - start_ms ))
+    local duration
+    duration=$(format_duration_ms "$duration_ms")
+    [[ "$QUIET" -eq 1 || "$JSON_OUTPUT" -eq 1 ]] || draw_line "─" 75
+    log_success "${label} complete in ${duration}s"
+    [[ -n "$outfile" ]] && log_info "Results saved: $outfile"
+    [[ -n "$extra" ]] && log_info "$extra"
+}
+
+check_target_reachable() {
+    local target="$1"
+    log_info "Checking target availability..."
+    local ping_output latency
+    if ping_output=$(ping -c 1 -W 2 "$target" 2>/dev/null); then
+        latency=$(echo "$ping_output" | grep -o 'time=[0-9.]* ms' | head -n1 | cut -d'=' -f2)
+        log_success "Target is up (latency: ${latency:-unknown})"
+        return 0
+    else
+        log_warning "Target did not respond to ping"
+        return 1
+    fi
+}
+
+summarize_nmap_results() {
+    local outfile="$1"
+    [[ -f "$outfile" ]] || return
+    local open_ports
+    open_ports=$(grep -Eo '^[0-9]+/(tcp|udp)[[:space:]]+open' "$outfile" | awk '{print $1}' | paste -sd ', ' -)
+    [[ -z "$open_ports" ]] && open_ports="none"
+    log_info "Open ports: ${open_ports}"
+}
+
+get_open_ports() {
+    local outfile="$1"
+    [[ -f "$outfile" ]] || return
+    local open_ports
+    open_ports=$(grep -Eo '^[0-9]+/(tcp|udp)[[:space:]]+open' "$outfile" | awk '{print $1}' | paste -sd ', ' -)
+    [[ -z "$open_ports" ]] && open_ports="none"
+    printf '%s' "$open_ports"
+}
+
+#═══════════════════════════════════════════════════════════════════════════════
 # VISUAL EFFECTS
 #═══════════════════════════════════════════════════════════════════════════════
 
@@ -182,6 +258,346 @@ progress_bar() {
 draw_line() {
     local char="${1:-─}" width="${2:-70}"
     printf '%*s\n' "$width" '' | tr ' ' "$char"
+}
+
+#═══════════════════════════════════════════════════════════════════════════════
+# CONFIG & STATE
+#═══════════════════════════════════════════════════════════════════════════════
+
+ensure_state_dirs() {
+    mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$LOOT_DIR" "$SESSIONS_DIR" "$PROFILES_DIR"
+    touch "$HISTORY_FILE" "$FAVORITES_FILE" "$ALIASES_FILE"
+}
+
+load_config() {
+    ensure_state_dirs
+    if [[ -f "$CONFIG_FILE" ]]; then
+        while IFS='=' read -r key val; do
+            [[ -z "$key" ]] && continue
+            [[ "$key" =~ ^# ]] && continue
+            case "$key" in
+                DEFAULT_INTERFACE) DEFAULT_INTERFACE="$val" ;;
+                WORDLIST) DEFAULT_WORDLIST="$val" ;;
+                THEME) DEFAULT_THEME="$val" ;;
+            esac
+        done < "$CONFIG_FILE"
+    fi
+    DEFAULT_INTERFACE="${DEFAULT_INTERFACE:-wlan0}"
+    DEFAULT_WORDLIST="${DEFAULT_WORDLIST:-/usr/share/wordlists/rockyou.txt}"
+    DEFAULT_THEME="${DEFAULT_THEME:-default}"
+}
+
+record_history() {
+    local target="$1"
+    [[ -z "$target" ]] && return
+    ensure_state_dirs
+    local last
+    last=$(tail -n1 "$HISTORY_FILE" 2>/dev/null || true)
+    [[ "$last" == "$target" ]] && return
+    echo "$target" >> "$HISTORY_FILE"
+}
+
+show_history() {
+    ensure_state_dirs
+    if [[ ! -s "$HISTORY_FILE" ]]; then
+        log_warning "No history yet"
+        return
+    fi
+    nl -ba "$HISTORY_FILE" | tail -n 20
+}
+
+add_favorite() {
+    local name="$1" target="$2"
+    ensure_state_dirs
+    [[ -z "$name" || -z "$target" ]] && { log_error "Favorite name and target required"; return 1; }
+    grep -v "^${name}:" "$FAVORITES_FILE" 2>/dev/null >"${FAVORITES_FILE}.tmp" || true
+    mv "${FAVORITES_FILE}.tmp" "$FAVORITES_FILE"
+    echo "${name}:${target}" >> "$FAVORITES_FILE"
+    log_success "Favorite saved: ${name} -> ${target}"
+}
+
+list_favorites() {
+    ensure_state_dirs
+    if [[ ! -s "$FAVORITES_FILE" ]]; then
+        log_warning "No favorites configured"
+        return
+    fi
+    while IFS=':' read -r name target; do
+        printf "    %s => %s\n" "$name" "$target"
+    done < "$FAVORITES_FILE"
+}
+
+get_favorite() {
+    local name="$1"
+    ensure_state_dirs
+    grep -E "^${name}:" "$FAVORITES_FILE" 2>/dev/null | head -n1 | cut -d':' -f2-
+}
+
+resolve_target_alias() {
+    local input="$1"
+    if [[ "$input" == "@last" ]]; then
+        tail -n1 "$HISTORY_FILE" 2>/dev/null
+        return
+    fi
+    if [[ "$input" =~ ^@fav:(.+)$ ]]; then
+        get_favorite "${BASH_REMATCH[1]}"
+        return
+    fi
+    echo "$input"
+}
+
+add_alias() {
+    local name="$1" body="$2"
+    ensure_state_dirs
+    [[ -z "$name" || -z "$body" ]] && { log_error "Alias name and command required"; return 1; }
+    grep -v "^${name}:" "$ALIASES_FILE" 2>/dev/null >"${ALIASES_FILE}.tmp" || true
+    mv "${ALIASES_FILE}.tmp" "$ALIASES_FILE"
+    echo "${name}:${body}" >> "$ALIASES_FILE"
+    log_success "Alias added: ${name} -> ${body}"
+}
+
+list_aliases() {
+    ensure_state_dirs
+    if [[ ! -s "$ALIASES_FILE" ]]; then
+        log_warning "No aliases defined"
+        return
+    fi
+    while IFS=':' read -r name body; do
+        printf "    %s => %s\n" "$name" "$body"
+    done < "$ALIASES_FILE"
+}
+
+remove_alias() {
+    local name="$1"
+    ensure_state_dirs
+    grep -v "^${name}:" "$ALIASES_FILE" 2>/dev/null >"${ALIASES_FILE}.tmp" || true
+    mv "${ALIASES_FILE}.tmp" "$ALIASES_FILE"
+    log_success "Alias removed: $name"
+}
+
+expand_aliases() {
+    local first="$1"
+    shift || true
+    [[ -z "$first" ]] && return 1
+    ensure_state_dirs
+    local line
+    line=$(grep -E "^${first}:" "$ALIASES_FILE" 2>/dev/null | head -n1)
+    [[ -z "$line" ]] && return 1
+    local body
+    body=${line#*:}
+    read -r -a EXPANDED_ARGS <<< "$body"
+    EXPANDED_ARGS+=("$@")
+    return 0
+}
+
+profile_save() {
+    local name="$1"; shift
+    ensure_state_dirs
+    [[ -z "$name" ]] && { log_error "Profile name required"; return 1; }
+    mkdir -p "$PROFILES_DIR"
+    printf '%s\n' "$*" > "${PROFILES_DIR}/${name}.profile"
+    log_success "Profile saved: $name"
+}
+
+profile_load() {
+    local name="$1"
+    [[ -f "${PROFILES_DIR}/${name}.profile" ]] || return 1
+    cat "${PROFILES_DIR}/${name}.profile"
+}
+
+profile_list() {
+    ensure_state_dirs
+    ls "$PROFILES_DIR"/*.profile 2>/dev/null | sed 's#.*/##;s/\.profile$//' || true
+}
+
+discover_targets() {
+    ensure_state_dirs
+    local subnet="$1"
+    check_tool "nmap" || return 1
+    if [[ -z "$subnet" ]]; then
+        subnet=$(ip -o -f inet addr show | awk '/scope global/{print $4; exit}')
+        subnet="${subnet:-192.168.1.0/24}"
+    fi
+    log_info "Discovering hosts on $subnet"
+    local tmp="${TMP_DIR}/discover_$(date +%s).log"
+    mkdir -p "$TMP_DIR"
+    nmap -sn "$subnet" | tee "$tmp"
+    mapfile -t hosts < <(grep "Nmap scan report for" "$tmp" | awk '{print $5}' | sed 's/(//;s/)//')
+    if [[ ${#hosts[@]} -eq 0 ]]; then
+        log_warning "No hosts discovered"
+        return 1
+    fi
+    echo
+    local i=1
+    for h in "${hosts[@]}"; do
+        printf "    [%d] %s\n" "$i" "$h"
+        i=$((i+1))
+    done
+    echo -ne "    ${C_FIRE}Select target (0=cancel): ${C_RESET}"
+    read -r pick
+    [[ "$pick" == "0" || -z "$pick" ]] && return 0
+    local idx=$((pick-1))
+    if (( idx < 0 || idx >= ${#hosts[@]} )); then
+        log_error "Invalid selection"
+        return 1
+    fi
+    TARGET="${hosts[$idx]}"
+    record_history "$TARGET"
+    log_success "Selected target: $TARGET"
+    return 0
+}
+
+schedule_scan() {
+    local action="$1"; shift || true
+    case "$action" in
+        add)
+            local spec="$1"; shift
+            local args="$*"
+            [[ -z "$spec" || -z "$args" ]] && { log_error "Usage: schedule add \"CRON\" <netreaper args>"; return 1; }
+            local bin_path
+            bin_path=$(command -v "$SCRIPT_NAME" 2>/dev/null || true)
+            bin_path="${bin_path:-${SCRIPT_DIR}/${SCRIPT_NAME}}"
+            (crontab -l 2>/dev/null; echo "${spec} ${bin_path} ${args} >> ${LOG_DIR}/cron.log 2>&1") | crontab -
+            log_success "Scheduled: ${spec} ${bin_path} ${args}"
+            ;;
+        list)
+            crontab -l 2>/dev/null | grep "$SCRIPT_NAME" || log_warning "No scheduled scans"
+            ;;
+        clear)
+            crontab -l 2>/dev/null | grep -v "$SCRIPT_NAME" | crontab -
+            log_success "Cleared scheduled scans"
+            ;;
+        *)
+            log_error "Usage: schedule [add|list|clear]"
+            return 1
+            ;;
+    esac
+}
+
+diff_scans() {
+    local file_a="$1" file_b="$2"
+    [[ -z "$file_a" || -z "$file_b" ]] && { log_error "Usage: diff <file1> <file2>"; return 1; }
+    [[ -f "$file_a" && -f "$file_b" ]] || { log_error "Both files must exist"; return 1; }
+    diff -u "$file_a" "$file_b" | sed 's/^-/[ -]/;s/^+/[ +]/' || true
+}
+
+ensure_builtin_aliases() {
+    ensure_state_dirs
+    local builtin=("qs:scan --quick" "q:scan --quick" "full:scan --full" "stealth:scan --stealth" "vuln:scan --vuln")
+    for entry in "${builtin[@]}"; do
+        local name="${entry%%:*}" body="${entry#*:}"
+        if ! grep -q "^${name}:" "$ALIASES_FILE" 2>/dev/null; then
+            echo "${name}:${body}" >> "$ALIASES_FILE"
+        fi
+    done
+}
+
+favorite_cmd() {
+    local action="$1"; shift || true
+    case "$action" in
+        add) add_favorite "$1" "$2" ;;
+        list) list_favorites ;;
+        use)
+            local fav
+            fav=$(get_favorite "$1")
+            [[ -z "$fav" ]] && { log_error "Favorite not found"; return 1; }
+            echo "$fav"
+            ;;
+        *) log_error "Usage: favorite [add <name> <target>|list|use <name>]" ;;
+    esac
+}
+
+alias_cmd() {
+    local action="$1"; shift || true
+    case "$action" in
+        add) add_alias "$1" "$*" ;;
+        remove) remove_alias "$1" ;;
+        list|ls) list_aliases ;;
+        *) log_error "Usage: alias [add <name> <cmd>|remove <name>|list]" ;;
+    esac
+}
+
+profile_cmd() {
+    local action="$1"; shift || true
+    case "$action" in
+        save) profile_save "$1" "$@" ;;
+        load)
+            local args
+            args=$(profile_load "$1") || { log_error "Profile not found"; return 1; }
+            echo "$args"
+            ;;
+        list|ls) profile_list ;;
+        *) log_error "Usage: profile [save <name> <scan args>|load <name>|list]" ;;
+    esac
+}
+
+discover_cmd() {
+    local subnet="$1"
+    discover_targets "$subnet"
+}
+
+export_cmd() {
+    local file="$1" fmt="$2"
+    export_output "$file" "$fmt"
+}
+
+schedule_cmd() {
+    local action="$1"; shift || true
+    schedule_scan "$action" "$@"
+}
+
+diff_cmd() {
+    diff_scans "$1" "$2"
+}
+
+export_output() {
+    local infile="$1" format="$2"
+    [[ -z "$infile" || -z "$format" ]] && { log_error "Usage: export <file> <json|csv|html|md>"; return 1; }
+    [[ -f "$infile" ]] || { log_error "File not found: $infile"; return 1; }
+    local outfile="${infile%.*}.${format}"
+    case "$format" in
+        json)
+            python3 - <<PY > "$outfile"
+import json,sys
+text=open("$infile","r",encoding="utf-8",errors="ignore").read().splitlines()
+json.dump(text,sys.stdout,indent=2)
+PY
+            ;;
+        csv)
+            nl -ba "$infile" | awk -F"\t" '{print $1 "," $2}' > "$outfile"
+            ;;
+        html)
+            {
+                echo "<html><body><pre>"
+                sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g' "$infile"
+                echo "</pre></body></html>"
+            } > "$outfile"
+            ;;
+        md)
+            {
+                echo '```'
+                cat "$infile"
+                echo '```'
+            } > "$outfile"
+            ;;
+        *) log_error "Unknown format: $format"; return 1 ;;
+    esac
+    log_loot "Exported: $outfile"
+}
+
+check_for_update() {
+    local latest
+    latest=$(curl -fsSL "https://raw.githubusercontent.com/Nerds489/NETREAPER/main/VERSION" 2>/dev/null || true)
+    if [[ -z "$latest" ]]; then
+        log_warning "Could not check for updates"
+        return 1
+    fi
+    if [[ "$latest" != "$VERSION" ]]; then
+        log_info "Update available: ${latest} (current ${VERSION})"
+        log_info "Run: wget https://raw.githubusercontent.com/Nerds489/NETREAPER/main/netreaper -O netreaper && chmod +x netreaper"
+    else
+        log_success "You are on the latest version (${VERSION})"
+    fi
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -340,7 +756,9 @@ get_target() {
     read -r TARGET
     
     [[ -z "$TARGET" ]] && { log_error "No target specified"; return 1; }
+    TARGET="$(resolve_target_alias "$TARGET")"
     validate_target "$TARGET" || return 1
+    record_history "$TARGET"
     
     # Create output file path
     local safe_target="${TARGET//[^a-zA-Z0-9._-]/_}"
@@ -354,8 +772,9 @@ get_interface() {
     echo -e "    ${C_GHOST}Available interfaces:${C_RESET}"
     ip -o link show | awk -F': ' '{print "      " $2}' | grep -v "^lo$"
     echo
-    echo -ne "    ${C_FIRE}◎ INTERFACE: ${C_RESET}"
+    echo -ne "    ${C_FIRE}◎ INTERFACE [${DEFAULT_INTERFACE}]: ${C_RESET}"
     read -r IFACE
+    IFACE="${IFACE:-$DEFAULT_INTERFACE}"
     
     [[ -z "$IFACE" ]] && { log_error "No interface specified"; return 1; }
     ip link show "$IFACE" &>/dev/null || { log_error "Interface not found: $IFACE"; return 1; }
@@ -386,6 +805,9 @@ set_session_paths() {
 # shellcheck disable=SC2120
 session_start() {
     local provided_name="${1:-}" provided_scope="${2:-}"
+    operation_header "Session start" "${provided_name:-auto}"
+    local start_ms
+    start_ms=$(start_timer_ms)
     if [[ -z "$provided_name" ]]; then
         echo -ne "    ${C_GHOST}Session name [engagement_$(date +%Y%m%d_%H%M)]: ${C_RESET}"
         read -r provided_name
@@ -412,10 +834,14 @@ session_start() {
     echo "$name" > "$SESSION_FILE"
     log_success "Session started: $name"
     log_info "Output: $OUTPUT_DIR | Loot: $LOOT_DIR"
+    operation_summary "Session start" "$start_ms" "$meta_file"
 }
 
 # shellcheck disable=SC2120
 session_resume() {
+    operation_header "Session resume" "request"
+    local start_ms
+    start_ms=$(start_timer_ms)
     if [[ ! -d "$SESSIONS_DIR" ]] || [[ -z "$(ls -A "$SESSIONS_DIR" 2>/dev/null)" ]]; then
         log_warning "No sessions to resume"
         return 1
@@ -453,6 +879,7 @@ session_resume() {
         set_session_paths "$chosen"
         echo "$SESSION_NAME" > "$SESSION_FILE"
         log_success "Resumed session: $SESSION_NAME"
+        operation_summary "Session resume" "$start_ms" "$SESSION_NAME"
         return 0
     fi
 
@@ -461,9 +888,13 @@ session_resume() {
         echo "$SESSION_NAME" > "$SESSION_FILE"
         log_success "Resumed session: $SESSION_NAME"
     fi
+    operation_summary "Session resume" "$start_ms" "$SESSION_NAME"
 }
 
 session_status() {
+    operation_header "Session status" "$SESSION_NAME"
+    local start_ms
+    start_ms=$(start_timer_ms)
     if [[ -z "$CURRENT_SESSION" ]]; then
         log_info "No active session"
         return
@@ -497,6 +928,7 @@ session_status() {
     echo -e "    ${C_GHOST}Loot:${C_RESET} $(find "$CURRENT_SESSION/loot" -type f 2>/dev/null | wc -l)"
     echo -e "    ${C_GHOST}Logs:${C_RESET} $(find "$CURRENT_SESSION/logs" -type f 2>/dev/null | wc -l)"
     echo -e "    ${C_GHOST}Notes:${C_RESET} $(find "$CURRENT_SESSION/notes" -type f 2>/dev/null | wc -l)"
+    operation_summary "Session status" "$start_ms" "$CURRENT_SESSION"
 }
 
 session_export() {
@@ -504,6 +936,9 @@ session_export() {
         log_error "No active session to export"
         return 1
     fi
+    operation_header "Session export" "$SESSION_NAME"
+    local start_ms
+    start_ms=$(start_timer_ms)
     local meta_file="${CURRENT_SESSION}/session.meta"
     local scope=""
     if [[ -f "$meta_file" ]]; then
@@ -532,6 +967,7 @@ session_export() {
 
     (cd "$CURRENT_SESSION/.." && zip -r "$dest" "$SESSION_NAME" >/dev/null)
     log_loot "Session exported to $dest"
+    operation_summary "Session export" "$start_ms" "$dest"
 }
 
 session_notes() {
@@ -542,10 +978,18 @@ session_notes() {
     local notes_file="${CURRENT_SESSION}/notes/notes.md"
     mkdir -p "${CURRENT_SESSION}/notes"
     local editor="${EDITOR:-nano}"
+    operation_header "Session notes" "$SESSION_NAME"
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "$editor ${notes_file}"
     "$editor" "$notes_file"
+    operation_summary "Session notes" "$start_ms" "$notes_file"
 }
 
 session_list() {
+    operation_header "Session list" "all"
+    local start_ms
+    start_ms=$(start_timer_ms)
     if [[ ! -d "$SESSIONS_DIR" ]] || [[ -z "$(ls -A "$SESSIONS_DIR" 2>/dev/null)" ]]; then
         log_warning "No sessions found"
         return
@@ -553,6 +997,7 @@ session_list() {
     echo
     echo -e "    ${C_GHOST}All sessions:${C_RESET}"
     find "$SESSIONS_DIR" -maxdepth 1 -mindepth 1 -type d -printf '    %f\n' | sort
+    operation_summary "Session list" "$start_ms" "$SESSIONS_DIR"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -1096,69 +1541,119 @@ menu_post_exploit() {
 
 run_nmap_quick() {
     check_tool "nmap" || return 1
-    log_attack "Quick scan on $TARGET"
-    echo
-    nmap -T4 -F -oN "${OUTPUT_FILE}_quick.txt" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_quick.txt"
+    local outfile="${OUTPUT_FILE}_quick.txt"
+    operation_header "Quick Scan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap -T4 -F -oN \"${outfile}\" \"${TARGET}\""
+    log_info "Scanning ports..."
+    nmap -T4 -F -oN "$outfile" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
+    local open_ports
+    open_ports=$(get_open_ports "$outfile")
+    operation_summary "Quick scan" "$start_ms" "$outfile" "Open ports: ${open_ports:-unknown}"
 }
 
 run_nmap_full() {
     check_tool "nmap" || return 1
     require_root || return 1
-    log_attack "Full scan on $TARGET (this may take a while)"
-    echo
-    nmap -sS -sV -sC -A -p- -oN "${OUTPUT_FILE}_full.txt" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_full.txt"
+    local outfile="${OUTPUT_FILE}_full.txt"
+    operation_header "Full Scan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap -sS -sV -sC -A -p- -oN \"${outfile}\" \"${TARGET}\""
+    log_info "Scanning all ports with service detection..."
+    nmap -sS -sV -sC -A -p- -oN "$outfile" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
+    local open_ports
+    open_ports=$(get_open_ports "$outfile")
+    operation_summary "Full scan" "$start_ms" "$outfile" "Open ports: ${open_ports:-unknown}"
 }
 
 run_nmap_stealth() {
     check_tool "nmap" || return 1
     require_root || return 1
-    log_attack "Stealth scan on $TARGET"
-    echo
-    nmap -sS -T2 -f --data-length 24 -oN "${OUTPUT_FILE}_stealth.txt" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_stealth.txt"
+    local outfile="${OUTPUT_FILE}_stealth.txt"
+    operation_header "Stealth Scan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap -sS -T2 -f --data-length 24 -oN \"${outfile}\" \"${TARGET}\""
+    log_info "Scanning with fragmentation and low timing..."
+    nmap -sS -T2 -f --data-length 24 -oN "$outfile" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
+    local open_ports
+    open_ports=$(get_open_ports "$outfile")
+    operation_summary "Stealth scan" "$start_ms" "$outfile" "Open ports: ${open_ports:-unknown}"
 }
 
 run_nmap_vuln() {
     check_tool "nmap" || return 1
-    log_attack "Vulnerability scan on $TARGET"
-    echo
-    nmap --script vuln -oN "${OUTPUT_FILE}_vuln.txt" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_vuln.txt"
+    local outfile="${OUTPUT_FILE}_vuln.txt"
+    operation_header "Vulnerability Scan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap --script vuln -oN \"${outfile}\" \"${TARGET}\""
+    log_info "Running vuln scripts..."
+    nmap --script vuln -oN "$outfile" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
+    operation_summary "Vulnerability scan" "$start_ms" "$outfile"
 }
 
 run_nmap_udp() {
     check_tool "nmap" || return 1
     require_root || return 1
-    log_attack "UDP scan on $TARGET"
-    echo
-    nmap -sU --top-ports 100 -oN "${OUTPUT_FILE}_udp.txt" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_udp.txt"
+    local outfile="${OUTPUT_FILE}_udp.txt"
+    operation_header "UDP Scan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap -sU --top-ports 100 -oN \"${outfile}\" \"${TARGET}\""
+    log_info "Scanning top 100 UDP ports..."
+    nmap -sU --top-ports 100 -oN "$outfile" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
+    local open_ports
+    open_ports=$(get_open_ports "$outfile")
+    operation_summary "UDP scan" "$start_ms" "$outfile" "Open ports: ${open_ports:-unknown}"
 }
 
 run_nmap_service() {
     check_tool "nmap" || return 1
-    log_attack "Service detection on $TARGET"
-    echo
-    nmap -sV --version-intensity 5 -oN "${OUTPUT_FILE}_services.txt" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_services.txt"
+    local outfile="${OUTPUT_FILE}_services.txt"
+    operation_header "Service Detection" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap -sV --version-intensity 5 -oN \"${outfile}\" \"${TARGET}\""
+    log_info "Detecting services and versions..."
+    nmap -sV --version-intensity 5 -oN "$outfile" "$TARGET" | tee -a "${LOG_DIR}/nmap.log"
+    local open_ports
+    open_ports=$(get_open_ports "$outfile")
+    operation_summary "Service detection" "$start_ms" "$outfile" "Open ports: ${open_ports:-unknown}"
 }
 
 run_rustscan() {
     check_tool "rustscan" || return 1
-    log_attack "Rustscan fast scan on $TARGET"
-    echo
-    rustscan -a "$TARGET" --ulimit 5000 -- -sV -oN "${OUTPUT_FILE}_rustscan.txt" | tee -a "${LOG_DIR}/rustscan.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_rustscan.txt"
+    local outfile="${OUTPUT_FILE}_rustscan.txt"
+    operation_header "Rustscan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "rustscan -a \"${TARGET}\" --ulimit 5000 -- -sV -oN \"${outfile}\""
+    log_info "Scanning fast ports with rustscan..."
+    rustscan -a "$TARGET" --ulimit 5000 -- -sV -oN "$outfile" | tee -a "${LOG_DIR}/rustscan.log"
+    operation_summary "Rustscan" "$start_ms" "$outfile"
 }
 
 run_unicornscan() {
     check_tool "unicornscan" || return 1
-    log_attack "Unicornscan on $TARGET"
-    echo
-    unicornscan -Iv -p 1-65535 "$TARGET" | tee "${OUTPUT_FILE}_unicornscan.txt"
-    log_loot "Results saved: ${OUTPUT_FILE}_unicornscan.txt"
+    local outfile="${OUTPUT_FILE}_unicornscan.txt"
+    operation_header "Unicornscan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "unicornscan -Iv -p 1-65535 \"${TARGET}\""
+    log_info "Scanning full port range with unicornscan..."
+    unicornscan -Iv -p 1-65535 "$TARGET" | tee "$outfile"
+    operation_summary "Unicornscan" "$start_ms" "$outfile"
 }
 
 run_zmap() {
@@ -1170,10 +1665,15 @@ run_zmap() {
     echo -ne "    ${C_GHOST}Rate limit (pps) [10000]: ${C_RESET}"
     read -r zmap_rate
     zmap_rate="${zmap_rate:-10000}"
-    log_attack "Zmap scan on $TARGET port ${zmap_port}"
-    echo
-    zmap -p "$zmap_port" "$TARGET" -r "$zmap_rate" -o "${OUTPUT_FILE}_zmap.txt" | tee -a "${LOG_DIR}/zmap.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_zmap.txt"
+    local outfile="${OUTPUT_FILE}_zmap.txt"
+    operation_header "Zmap" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "zmap -p \"${zmap_port}\" \"${TARGET}\" -r \"${zmap_rate}\" -o \"${outfile}\""
+    log_info "Running high-speed zmap scan..."
+    zmap -p "$zmap_port" "$TARGET" -r "$zmap_rate" -o "$outfile" | tee -a "${LOG_DIR}/zmap.log"
+    operation_summary "Zmap" "$start_ms" "$outfile"
 }
 
 run_masscan() {
@@ -1182,10 +1682,15 @@ run_masscan() {
     echo -ne "    ${C_GHOST}Rate (default 10000): ${C_RESET}"
     read -r rate
     rate="${rate:-10000}"
-    log_attack "Masscan on $TARGET @ rate $rate"
-    echo
-    masscan -p1-65535 --rate="$rate" -oL "${OUTPUT_FILE}_masscan.txt" "$TARGET" | tee -a "${LOG_DIR}/masscan.log"
-    log_loot "Results saved: ${OUTPUT_FILE}_masscan.txt"
+    local outfile="${OUTPUT_FILE}_masscan.txt"
+    operation_header "Masscan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "masscan -p1-65535 --rate=\"${rate}\" -oL \"${outfile}\" \"${TARGET}\""
+    log_info "Running masscan at rate ${rate}..."
+    masscan -p1-65535 --rate="$rate" -oL "$outfile" "$TARGET" | tee -a "${LOG_DIR}/masscan.log"
+    operation_summary "Masscan" "$start_ms" "$outfile"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -1195,41 +1700,64 @@ run_masscan() {
 run_arp_scan() {
     check_tool "arp-scan" || return 1
     require_root || return 1
-    log_info "Running ARP scan on local network"
-    echo
+    operation_header "ARP Scan" "local"
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "arp-scan -l"
+    log_info "Scanning local network with arp-scan..."
     arp-scan -l | tee -a "${LOG_DIR}/arp-scan.log"
+    operation_summary "ARP scan" "$start_ms" "${LOG_DIR}/arp-scan.log"
 }
 
 run_ping_sweep() {
     check_tool "nmap" || return 1
-    log_info "Ping sweep on $TARGET"
-    echo
+    operation_header "Ping Sweep" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap -sn \"${TARGET}\""
+    log_info "Sweeping hosts with nmap ping scan..."
     nmap -sn "$TARGET" | tee -a "${LOG_DIR}/discovery.log"
+    operation_summary "Ping sweep" "$start_ms" "${LOG_DIR}/discovery.log"
 }
 
 run_netdiscover() {
     check_tool "netdiscover" || return 1
     require_root || return 1
-    log_info "Running netdiscover on $TARGET"
-    echo
+    operation_header "Netdiscover" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "timeout 30 netdiscover -r \"${TARGET}\" -P"
+    log_info "Running netdiscover (30s window)..."
     timeout 30 netdiscover -r "$TARGET" -P | tee -a "${LOG_DIR}/netdiscover.log"
+    operation_summary "Netdiscover" "$start_ms" "${LOG_DIR}/netdiscover.log"
 }
 
 run_os_detect() {
     check_tool "nmap" || return 1
     require_root || return 1
-    log_info "OS detection on $TARGET"
-    echo
+    operation_header "OS Detection" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap -O \"${TARGET}\""
+    log_info "Running nmap OS detection..."
     nmap -O "$TARGET" | tee -a "${LOG_DIR}/os-detect.log"
+    operation_summary "OS detection" "$start_ms" "${LOG_DIR}/os-detect.log"
 }
 
 run_p0f() {
     check_tool "p0f" || return 1
     require_root || return 1
     get_interface || return 1
+    operation_header "Passive fingerprinting" "$IFACE"
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "p0f -i \"${IFACE}\""
     log_info "Starting passive fingerprinting on $IFACE (Ctrl+C to stop)"
-    echo
     p0f -i "$IFACE" | tee -a "${LOG_DIR}/p0f.log"
+    operation_summary "Passive fingerprinting" "$start_ms" "${LOG_DIR}/p0f.log"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -1238,36 +1766,61 @@ run_p0f() {
 
 run_dnsenum() {
     check_tool "dnsenum" || return 1
+    operation_header "DNS Enum" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "dnsenum \"${TARGET}\""
     log_info "DNS enumeration on $TARGET"
-    echo
     dnsenum "$TARGET" | tee -a "${LOG_DIR}/dns.log"
+    operation_summary "DNS enumeration" "$start_ms" "${LOG_DIR}/dns.log"
 }
 
 run_dnsmap() {
     check_tool "dnsmap" || return 1
+    operation_header "DNS Map" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "dnsmap \"${TARGET}\""
     log_info "DNS mapping on $TARGET"
-    echo
     dnsmap "$TARGET" | tee -a "${LOG_DIR}/dns.log"
+    operation_summary "DNS mapping" "$start_ms" "${LOG_DIR}/dns.log"
 }
 
 run_dnsrecon() {
     check_tool "dnsrecon" || return 1
+    operation_header "DNS Recon" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "dnsrecon -d \"${TARGET}\""
     log_info "DNS recon on $TARGET"
-    echo
     dnsrecon -d "$TARGET" | tee -a "${LOG_DIR}/dns.log"
+    operation_summary "DNS recon" "$start_ms" "${LOG_DIR}/dns.log"
 }
 
 run_zone_transfer() {
+    operation_header "Zone transfer" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "dig axfr \"${TARGET}\""
     log_info "Attempting zone transfer on $TARGET"
-    echo
     dig axfr "$TARGET" | tee -a "${LOG_DIR}/dns.log"
+    operation_summary "Zone transfer" "$start_ms" "${LOG_DIR}/dns.log"
 }
 
 run_fierce() {
     check_tool "fierce" || return 1
+    operation_header "Fierce" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "fierce --domain \"${TARGET}\""
     log_info "Subdomain brute force on $TARGET"
-    echo
     fierce --domain "$TARGET" | tee -a "${LOG_DIR}/dns.log"
+    operation_summary "Subdomain brute force" "$start_ms" "${LOG_DIR}/dns.log"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -1276,23 +1829,38 @@ run_fierce() {
 
 run_sslscan() {
     check_tool "sslscan" || return 1
+    operation_header "SSL scan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "sslscan \"${TARGET}\""
     log_info "SSL scan on $TARGET"
-    echo
     sslscan "$TARGET" | tee -a "${LOG_DIR}/ssl.log"
+    operation_summary "SSL scan" "$start_ms" "${LOG_DIR}/ssl.log"
 }
 
 run_sslyze() {
     check_tool "sslyze" || return 1
+    operation_header "SSLyze" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "sslyze --regular \"${TARGET}\""
     log_info "SSLyze analysis on $TARGET"
-    echo
     sslyze --regular "$TARGET" | tee -a "${LOG_DIR}/ssl.log"
+    operation_summary "SSLyze" "$start_ms" "${LOG_DIR}/ssl.log"
 }
 
 run_testssl() {
     if [[ -x /usr/bin/testssl.sh ]] || [[ -x /usr/bin/testssl ]]; then
+        operation_header "testssl.sh" "$TARGET"
+        check_target_reachable "$TARGET" || true
+        local start_ms
+        start_ms=$(start_timer_ms)
+        log_command_preview "testssl.sh \"${TARGET}\""
         log_info "TestSSL on $TARGET"
-        echo
         testssl.sh "$TARGET" 2>/dev/null || testssl "$TARGET" | tee -a "${LOG_DIR}/ssl.log"
+        operation_summary "TestSSL" "$start_ms" "${LOG_DIR}/ssl.log"
     else
         log_warning "testssl.sh not found"
         echo -e "    ${C_SHADOW}Install: git clone https://github.com/drwetter/testssl.sh${C_RESET}"
@@ -1300,16 +1868,25 @@ run_testssl() {
 }
 
 run_cert_info() {
+    operation_header "Certificate info" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "echo | openssl s_client -connect \"${TARGET}:443\""
     log_info "Certificate info for $TARGET"
-    echo
     echo | openssl s_client -connect "${TARGET}:443" 2>/dev/null | openssl x509 -noout -text | tee -a "${LOG_DIR}/ssl.log"
+    operation_summary "Certificate info" "$start_ms" "${LOG_DIR}/ssl.log"
 }
 
 run_heartbleed() {
     check_tool "nmap" || return 1
+    operation_header "Heartbleed check" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "nmap --script ssl-heartbleed -p 443 \"${TARGET}\""
     log_attack "Heartbleed check on $TARGET"
-    echo
     nmap --script ssl-heartbleed -p 443 "$TARGET" | tee -a "${LOG_DIR}/ssl.log"
+    operation_summary "Heartbleed check" "$start_ms" "${LOG_DIR}/ssl.log"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -1319,26 +1896,38 @@ run_heartbleed() {
 cmd_snmp_sweep() {
     check_tool "onesixtyone" || return 1
     get_target || return 1
+    operation_header "SNMP sweep" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "onesixtyone -c /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt \"${TARGET}\""
     log_info "SNMP sweep on $TARGET"
-    echo
     onesixtyone -c /usr/share/seclists/Discovery/SNMP/common-snmp-community-strings.txt "$TARGET" 2>/dev/null || \
     onesixtyone "$TARGET" public private | tee -a "${LOG_DIR}/snmp.log"
+    operation_summary "SNMP sweep" "$start_ms" "${LOG_DIR}/snmp.log"
 }
 
 cmd_smb_enum() {
     get_target || return 1
+    operation_header "SMB enumeration" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_info "SMB enumeration on $TARGET"
-    echo
     
     if check_tool "enum4linux" 2>/dev/null; then
+        log_command_preview "enum4linux -a \"${TARGET}\""
         enum4linux -a "$TARGET" | tee -a "${LOG_DIR}/smb.log"
     elif check_tool "smbmap" 2>/dev/null; then
+        log_command_preview "smbmap -H \"${TARGET}\""
         smbmap -H "$TARGET" | tee -a "${LOG_DIR}/smb.log"
     elif check_tool "smbclient" 2>/dev/null; then
+        log_command_preview "smbclient -L \"//${TARGET}\" -N"
         smbclient -L "//${TARGET}" -N | tee -a "${LOG_DIR}/smb.log"
     else
         log_error "No SMB tools found. Install: sudo apt install enum4linux smbmap smbclient"
     fi
+    operation_summary "SMB enumeration" "$start_ms" "${LOG_DIR}/smb.log"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -1348,6 +1937,7 @@ cmd_smb_enum() {
 cmd_monitor_mode() {
     require_root || return 1
     get_interface || return 1
+    operation_header "WiFi monitor toggle" "$IFACE"
     
     echo
     echo -e "    ${C_GHOST}[1]${C_RESET} Enable monitor mode"
@@ -1358,28 +1948,36 @@ cmd_monitor_mode() {
     
     case "$choice" in
         1)
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_attack "Enabling monitor mode on $IFACE"
+            log_command_preview "airmon-ng check kill && airmon-ng start \"${IFACE}\""
             if check_tool "airmon-ng" 2>/dev/null; then
                 airmon-ng check kill
                 airmon-ng start "$IFACE"
             else
+                log_command_preview "ip link set \"${IFACE}\" down && iw dev \"${IFACE}\" set type monitor"
                 ip link set "$IFACE" down
                 iw dev "$IFACE" set type monitor
                 ip link set "$IFACE" up
             fi
-            log_success "Monitor mode enabled"
+            operation_summary "Monitor mode enabled" "$start_ms" "${LOG_DIR}/netreaper.log"
             ;;
         2)
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_info "Disabling monitor mode on $IFACE"
             if check_tool "airmon-ng" 2>/dev/null; then
+                log_command_preview "airmon-ng stop \"${IFACE}\""
                 airmon-ng stop "$IFACE"
                 systemctl restart NetworkManager 2>/dev/null || service networking restart
             else
+                log_command_preview "ip link set \"${IFACE}\" down && iw dev \"${IFACE}\" set type managed"
                 ip link set "$IFACE" down
                 iw dev "$IFACE" set type managed
                 ip link set "$IFACE" up
             fi
-            log_success "Monitor mode disabled"
+            operation_summary "Monitor mode disabled" "$start_ms" "${LOG_DIR}/netreaper.log"
             ;;
     esac
 }
@@ -1388,18 +1986,28 @@ cmd_wifi_scan() {
     require_root || return 1
     check_tool "airodump-ng" || return 1
     get_interface || return 1
+    operation_header "WiFi scan" "$IFACE"
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "airodump-ng \"${IFACE}\""
     log_attack "Scanning WiFi networks on $IFACE"
     echo -e "    ${C_SHADOW}Press Ctrl+C to stop${C_RESET}"
     echo
     airodump-ng "$IFACE"
+    operation_summary "WiFi scan" "$start_ms" "${LOG_DIR}/wifi_scan.log"
 }
 
 cmd_wifite() {
     require_root || return 1
     check_tool "wifite" || return 1
+    operation_header "Wifite" "auto"
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "wifite --kill"
     log_attack "Launching Wifite"
     echo
     wifite --kill
+    operation_summary "Wifite" "$start_ms" "${LOG_DIR}/wifite.log"
 }
 
 cmd_deauth() {
@@ -1415,14 +2023,20 @@ cmd_deauth() {
     read -r count
     count="${count:-10}"
     
+    operation_header "Deauth" "$bssid"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Deauth attack: BSSID=$bssid Client=$client Count=$count"
     echo
     
     if [[ "$client" == "all" ]]; then
+        log_command_preview "aireplay-ng --deauth ${count} -a ${bssid} ${IFACE}"
         aireplay-ng --deauth "$count" -a "$bssid" "$IFACE"
     else
+        log_command_preview "aireplay-ng --deauth ${count} -a ${bssid} -c ${client} ${IFACE}"
         aireplay-ng --deauth "$count" -a "$bssid" -c "$client" "$IFACE"
     fi
+    operation_summary "Deauth attack" "$start_ms" "${LOG_DIR}/wifi_deauth.log"
 }
 
 cmd_wps_attack() {
@@ -1445,18 +2059,33 @@ cmd_wps_attack() {
     case "$choice" in
         1)
             check_tool "reaver" || return 1
+            local start_ms
+            start_ms=$(start_timer_ms)
+            operation_header "Reaver WPS" "$bssid"
             log_attack "Reaver WPS attack on $bssid"
+            log_command_preview "reaver -i \"${IFACE}\" -b \"${bssid}\" -c \"${channel}\" -vv"
             reaver -i "$IFACE" -b "$bssid" -c "$channel" -vv
+            operation_summary "Reaver WPS" "$start_ms" "${LOG_DIR}/wps.log"
             ;;
         2)
             check_tool "bully" || return 1
+            local start_ms
+            start_ms=$(start_timer_ms)
+            operation_header "Bully WPS" "$bssid"
             log_attack "Bully WPS attack on $bssid"
+            log_command_preview "bully -b \"${bssid}\" -c \"${channel}\" \"${IFACE}\""
             bully -b "$bssid" -c "$channel" "$IFACE"
+            operation_summary "Bully WPS" "$start_ms" "${LOG_DIR}/wps.log"
             ;;
         3)
             check_tool "reaver" || return 1
+            local start_ms
+            start_ms=$(start_timer_ms)
+            operation_header "Pixie Dust" "$bssid"
             log_attack "Pixie Dust attack on $bssid"
+            log_command_preview "reaver -i \"${IFACE}\" -b \"${bssid}\" -c \"${channel}\" -K 1 -vv"
             reaver -i "$IFACE" -b "$bssid" -c "$channel" -K 1 -vv
+            operation_summary "Pixie Dust" "$start_ms" "${LOG_DIR}/wps.log"
             ;;
     esac
 }
@@ -1474,10 +2103,15 @@ cmd_handshake_capture() {
     read -r outfile
     outfile="${outfile:-${LOOT_DIR}/handshake_$(date +%Y%m%d_%H%M%S)}"
     
+    operation_header "Handshake capture" "$bssid"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Capturing handshake from $bssid on channel $channel"
     echo -e "    ${C_SHADOW}Waiting for handshake... (deauth clients to speed up)${C_RESET}"
     echo
+    log_command_preview "airodump-ng --bssid \"${bssid}\" -c \"${channel}\" -w \"${outfile}\" \"${IFACE}\""
     airodump-ng --bssid "$bssid" -c "$channel" -w "$outfile" "$IFACE"
+    operation_summary "Handshake capture" "$start_ms" "$outfile.cap"
 }
 
 cmd_channel_hop() {
@@ -1486,7 +2120,7 @@ cmd_channel_hop() {
     
     log_info "Channel hopping on $IFACE (Ctrl+C to stop)"
     echo
-    
+
     while true; do
         for ch in 1 2 3 4 5 6 7 8 9 10 11; do
             iw dev "$IFACE" set channel "$ch" 2>/dev/null || iwconfig "$IFACE" channel "$ch" 2>/dev/null
@@ -1508,7 +2142,11 @@ cmd_client_scan() {
     
     log_info "Scanning clients on $bssid"
     echo
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "airodump-ng --bssid \"${bssid}\" -c \"${channel}\" \"${IFACE}\""
     airodump-ng --bssid "$bssid" -c "$channel" "$IFACE"
+    operation_summary "Client scan" "$start_ms" "${LOG_DIR}/wifi_clients.log"
 }
 
 cmd_hidden_ssid() {
@@ -1524,14 +2162,20 @@ cmd_hidden_ssid() {
 
 cmd_signal_check() {
     get_interface || return 1
+    operation_header "Signal check" "$IFACE"
+    local start_ms
+    start_ms=$(start_timer_ms)
     
     if check_tool "wavemon" 2>/dev/null; then
+        log_command_preview "wavemon -i \"${IFACE}\""
         wavemon -i "$IFACE"
     else
         log_info "Signal info for $IFACE"
+        log_command_preview "iwconfig \"${IFACE}\""
         echo
         iwconfig "$IFACE" 2>/dev/null || iw dev "$IFACE" link
     fi
+    operation_summary "Signal check" "$start_ms" "${LOG_DIR}/wifi_signal.log"
 }
 
 cmd_aircrack_dict() {
@@ -1542,8 +2186,13 @@ cmd_aircrack_dict() {
     echo -ne "    ${C_GHOST}Wordlist [/usr/share/wordlists/rockyou.txt]: ${C_RESET}"
     read -r wordlist
     wordlist="${wordlist:-/usr/share/wordlists/rockyou.txt}"
+    operation_header "Aircrack dictionary" "$capfile"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Aircrack-ng dictionary attack on $capfile"
+    log_command_preview "aircrack-ng -w \"${wordlist}\" \"${capfile}\""
     aircrack-ng -w "$wordlist" "$capfile" | tee -a "${LOG_DIR}/aircrack.log"
+    operation_summary "Aircrack dictionary" "$start_ms" "${LOG_DIR}/aircrack.log"
 }
 
 cmd_aircrack_wordlist() {
@@ -1554,8 +2203,13 @@ cmd_aircrack_wordlist() {
     echo -ne "    ${C_GHOST}Custom wordlist: ${C_RESET}"
     read -r wordlist
     [[ -z "$wordlist" ]] && { log_error "Wordlist required"; return 1; }
+    operation_header "Aircrack custom" "$capfile"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Aircrack-ng custom wordlist on $capfile"
+    log_command_preview "aircrack-ng -w \"${wordlist}\" \"${capfile}\""
     aircrack-ng -w "$wordlist" "$capfile" | tee -a "${LOG_DIR}/aircrack.log"
+    operation_summary "Aircrack custom" "$start_ms" "${LOG_DIR}/aircrack.log"
 }
 
 cmd_convert_hashcat() {
@@ -1582,10 +2236,12 @@ cmd_convert_hashcat() {
 
     if [[ "$converter" == "hcxpcapngtool" ]]; then
         log_info "Converting with hcxpcapngtool"
+        log_command_preview "hcxpcapngtool -o \"${out_file}\" \"${capfile}\""
         hcxpcapngtool -o "$out_file" "$capfile"
     else
         out_file="${out_file%.hc22000}.hccapx"
         log_info "Converting with cap2hccapx"
+        log_command_preview "cap2hccapx \"${capfile}\" \"${out_file}\""
         cap2hccapx "$capfile" "$out_file"
     fi
 
@@ -1606,9 +2262,14 @@ cmd_hashcat_gpu() {
     echo -ne "    ${C_GHOST}Wordlist [/usr/share/wordlists/rockyou.txt]: ${C_RESET}"
     read -r wordlist
     wordlist="${wordlist:-/usr/share/wordlists/rockyou.txt}"
+    operation_header "Hashcat GPU" "$hashfile"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Hashcat GPU attack on $hashfile"
+    log_command_preview "hashcat -m 22000 -a 0 \"${hashfile}\" \"${wordlist}\" --status --status-timer=15 --potfile-path \"${LOG_DIR}/hashcat.pot\" --session netreaper"
     hashcat -m 22000 -a 0 "$hashfile" "$wordlist" --status --status-timer=15 --potfile-path "${LOG_DIR}/hashcat.pot" --session netreaper | tee -a "${LOG_DIR}/hashcat.log"
     hashcat --show -m 22000 "$hashfile" --potfile-path "${LOG_DIR}/hashcat.pot" | tee -a "${LOG_DIR}/hashcat.log"
+    operation_summary "Hashcat GPU" "$start_ms" "${LOG_DIR}/hashcat.log"
 }
 
 cmd_hashcat_rules() {
@@ -1627,9 +2288,14 @@ cmd_hashcat_rules() {
     echo -ne "    ${C_GHOST}Rules file [/usr/share/hashcat/rules/best64.rule]: ${C_RESET}"
     read -r rules
     rules="${rules:-/usr/share/hashcat/rules/best64.rule}"
+    operation_header "Hashcat rules" "$hashfile"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Hashcat rules attack on $hashfile using $rules"
+    log_command_preview "hashcat -m 22000 -a 0 \"${hashfile}\" \"${wordlist}\" -r \"${rules}\" --status --status-timer=15 --potfile-path \"${LOG_DIR}/hashcat.pot\" --session netreaper"
     hashcat -m 22000 -a 0 "$hashfile" "$wordlist" -r "$rules" --status --status-timer=15 --potfile-path "${LOG_DIR}/hashcat.pot" --session netreaper | tee -a "${LOG_DIR}/hashcat.log"
     hashcat --show -m 22000 "$hashfile" --potfile-path "${LOG_DIR}/hashcat.pot" | tee -a "${LOG_DIR}/hashcat.log"
+    operation_summary "Hashcat rules" "$start_ms" "${LOG_DIR}/hashcat.log"
 }
 
 cmd_john_the_ripper() {
@@ -1645,9 +2311,14 @@ cmd_john_the_ripper() {
     local john_hash
     john_hash="${LOOT_DIR}/john_$(date +%Y%m%d_%H%M%S).hash"
     hccap2john "$capfile" > "$john_hash"
+    operation_header "John the Ripper" "$capfile"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "John the Ripper on $john_hash"
+    log_command_preview "john --wordlist=\"${wordlist}\" \"${john_hash}\""
     john --wordlist="$wordlist" "$john_hash" | tee -a "${LOG_DIR}/john.log"
     john --show "$john_hash" | tee -a "${LOG_DIR}/john.log"
+    operation_summary "John the Ripper" "$start_ms" "${LOG_DIR}/john.log"
 }
 
 cmd_cowpatty() {
@@ -1661,8 +2332,13 @@ cmd_cowpatty() {
     echo -ne "    ${C_GHOST}Wordlist [/usr/share/wordlists/rockyou.txt]: ${C_RESET}"
     read -r wordlist
     wordlist="${wordlist:-/usr/share/wordlists/rockyou.txt}"
+    operation_header "Cowpatty" "$ssid"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Cowpatty WPA crack on $ssid"
+    log_command_preview "cowpatty -r \"${capfile}\" -s \"${ssid}\" -f \"${wordlist}\" -2"
     cowpatty -r "$capfile" -s "$ssid" -f "$wordlist" -2 | tee -a "${LOG_DIR}/cowpatty.log"
+    operation_summary "Cowpatty" "$start_ms" "${LOG_DIR}/cowpatty.log"
 }
 
 cmd_bettercap_wifi() {
@@ -1671,24 +2347,39 @@ cmd_bettercap_wifi() {
     get_interface || return 1
     local log_file
     log_file="${LOG_DIR}/bettercap_${IFACE}_$(date +%Y%m%d_%H%M%S).log"
+    operation_header "Bettercap WiFi" "$IFACE"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Bettercap WiFi recon on $IFACE"
+    log_command_preview "bettercap -iface \"${IFACE}\" -log \"${log_file}\" -eval ..."
     bettercap -iface "$IFACE" -log "$log_file" -eval "set wifi.recon.channel_hop true; wifi.recon on; set ticker.commands 'wifi.show'; ticker on"
     log_loot "Bettercap log: $log_file"
+    operation_summary "Bettercap WiFi" "$start_ms" "$log_file"
 }
 
 cmd_fluxion() {
     require_root || return 1
     check_tool "fluxion" || return 1
+    operation_header "Fluxion" "rogue"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Launching Fluxion"
+    log_command_preview "fluxion"
     fluxion
+    operation_summary "Fluxion" "$start_ms" "${LOG_DIR}/fluxion.log"
 }
 
 cmd_wifiphisher() {
     require_root || return 1
     check_tool "wifiphisher" || return 1
     get_interface || return 1
+    operation_header "Wifiphisher" "$IFACE"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Starting Wifiphisher on $IFACE"
+    log_command_preview "wifiphisher -i \"${IFACE}\""
     wifiphisher -i "$IFACE"
+    operation_summary "Wifiphisher" "$start_ms" "${LOG_DIR}/wifiphisher.log"
 }
 
 cmd_mdk_dos() {
@@ -1711,20 +2402,31 @@ cmd_mdk_dos() {
     mkdir -p "$TMP_DIR"
     local bssid_list="${TMP_DIR}/mdk_bssids.txt"
     echo "$bssid" > "$bssid_list"
+    operation_header "${tool^^} DoS" "$bssid"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "${tool^^} DoS on $bssid channel $channel"
     if [[ "$tool" == "mdk4" ]]; then
+        log_command_preview "mdk4 \"${IFACE}\" d -B \"${bssid}\" -c \"${channel}\""
         mdk4 "$IFACE" d -B "$bssid" -c "$channel"
     else
+        log_command_preview "mdk3 \"${IFACE}\" d -b \"${bssid_list}\" -c \"${channel}\""
         mdk3 "$IFACE" d -b "$bssid_list" -c "$channel"
     fi
+    operation_summary "${tool^^} DoS" "$start_ms" "${LOG_DIR}/mdk.log"
 }
 
 cmd_evil_twin_scan() {
     require_root || return 1
     check_tool "airodump-ng" || return 1
     get_interface || return 1
+    operation_header "Evil twin scan" "$IFACE"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Scanning for APs to clone on $IFACE"
+    log_command_preview "airodump-ng \"${IFACE}\""
     airodump-ng "$IFACE"
+    operation_summary "Evil twin scan" "$start_ms" "${LOG_DIR}/evil_scan.log"
 }
 
 cmd_evil_twin_create() {
@@ -1761,6 +2463,8 @@ cmd_evil_twin_create() {
     local ap_log
     ap_log="${LOOT_DIR}/evil_twin_clients_$(date +%Y%m%d_%H%M%S).log"
     local hostapd_pid_file="${TMP_DIR}/hostapd_${IFACE}.pid"
+    local start_ms
+    start_ms=$(start_timer_ms)
     dnsmasq -C "$dnsmasq_conf" --pid-file="$dns_pid_file"
     hostapd -B -P "$hostapd_pid_file" -f "$ap_log" "$hostapd_conf"
 
@@ -1773,6 +2477,7 @@ cmd_evil_twin_create() {
 
     log_loot "Evil twin running on $IFACE (log: $ap_log)"
     [[ -n "$TARGET_BSSID" ]] && log_info "Cloning BSSID: $TARGET_BSSID"
+    operation_summary "Evil twin" "$start_ms" "$ap_log"
 }
 
 cmd_captive_portal() {
@@ -1781,6 +2486,9 @@ cmd_captive_portal() {
     echo -ne "    ${C_GHOST}Interface to listen on [${IFACE:-wlan0}]: ${C_RESET}"
     read -r portal_iface
     portal_iface="${portal_iface:-${IFACE:-wlan0}}"
+    operation_header "Captive portal" "$portal_iface"
+    local start_ms
+    start_ms=$(start_timer_ms)
     echo "$portal_iface" > "${TMP_DIR}/portal_iface.txt"
     local creds_file
     creds_file="${LOOT_DIR}/creds_$(date +%Y%m%d_%H%M%S).txt"
@@ -1816,6 +2524,7 @@ HTML
     (cd "$portal_dir" && python3 portal.py >/dev/null 2>&1 & echo $! > "$portal_pid_file")
     iptables -t nat -A PREROUTING -i "$portal_iface" -p tcp --dport 80 -j REDIRECT --to-port 8080
     log_loot "Captive portal running on $portal_iface (creds -> $creds_file)"
+    operation_summary "Captive portal" "$start_ms" "$creds_file"
 }
 
 cmd_karma_attack() {
@@ -1824,11 +2533,21 @@ cmd_karma_attack() {
     mkdir -p "$TMP_DIR"
     local karma_pid_file="${TMP_DIR}/karma_${IFACE}.pid"
     if check_tool "hostapd-mana" 2>/dev/null; then
+        operation_header "hostapd-mana" "$IFACE"
+        local start_ms
+        start_ms=$(start_timer_ms)
         log_attack "Starting hostapd-mana karma on $IFACE"
+        log_command_preview "hostapd-mana -i \"${IFACE}\" -m"
         hostapd-mana -i "$IFACE" -m >> "${LOG_DIR}/karma.log" 2>&1 & echo $! > "$karma_pid_file"
+        operation_summary "hostapd-mana" "$start_ms" "${LOG_DIR}/karma.log"
     elif check_tool "airbase-ng" 2>/dev/null; then
+        operation_header "airbase-ng" "$IFACE"
+        local start_ms
+        start_ms=$(start_timer_ms)
         log_attack "Starting airbase-ng karma on $IFACE"
+        log_command_preview "airbase-ng -P -C 30 -v \"${IFACE}\""
         airbase-ng -P -C 30 -v "$IFACE" >> "${LOG_DIR}/karma.log" 2>&1 & echo $! > "$karma_pid_file"
+        operation_summary "airbase-ng" "$start_ms" "${LOG_DIR}/karma.log"
     else
         log_error "hostapd-mana or airbase-ng required"
         return 1
@@ -1837,6 +2556,9 @@ cmd_karma_attack() {
 
 cmd_evil_twin_stop() {
     require_root || return 1
+    operation_header "Rogue AP stop" "active APs"
+    local start_ms
+    start_ms=$(start_timer_ms)
     local ap_iface=""
     local portal_iface=""
     [[ -f "${TMP_DIR}/evil_iface.txt" ]] && ap_iface="$(cat "${TMP_DIR}/evil_iface.txt")"
@@ -1862,7 +2584,7 @@ cmd_evil_twin_stop() {
         iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080 2>/dev/null || true
     fi
     rm -f "${TMP_DIR}/evil_iface.txt" "${TMP_DIR}/portal_iface.txt"
-    log_success "Rogue AP processes stopped"
+    operation_summary "Rogue AP stop" "$start_ms" "${LOG_DIR}/evil_twin_stop.log"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -1896,9 +2618,14 @@ cmd_hydra_bruteforce() {
     args+=("-P" "$passlist")
     [[ -n "$port" ]] && args+=("-s" "$port")
     args+=("$TARGET" "$service")
+    operation_header "Hydra" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Hydra attack on $TARGET ($service)"
+    log_command_preview "hydra ${args[*]} -o ${OUTPUT_FILE}_hydra.txt"
     hydra "${args[@]}" -o "${OUTPUT_FILE}_hydra.txt" | tee -a "${LOG_DIR}/hydra.log"
     log_loot "Results saved: ${OUTPUT_FILE}_hydra.txt"
+    operation_summary "Hydra" "$start_ms" "${OUTPUT_FILE}_hydra.txt"
 }
 
 cmd_medusa_bruteforce() {
@@ -1918,8 +2645,13 @@ cmd_medusa_bruteforce() {
 
     local args=("-h" "$TARGET" "-U" "$userlist" "-P" "$passlist" "-M" "$service")
     [[ -n "$port" ]] && args+=("-n" "$port")
+    operation_header "Medusa" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Medusa attack on $TARGET ($service)"
+    log_command_preview "medusa ${args[*]}"
     medusa "${args[@]}" | tee -a "${LOG_DIR}/medusa.log"
+    operation_summary "Medusa" "$start_ms" "${LOG_DIR}/medusa.log"
 }
 
 cmd_crackmapexec() {
@@ -1937,20 +2669,35 @@ cmd_crackmapexec() {
     [[ -n "$user" ]] && args+=("-u" "$user")
     [[ -n "$pass" ]] && args+=("-p" "$pass")
     args+=("--shares")
+    operation_header "CrackMapExec" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "CrackMapExec on $TARGET ($protocol)"
+    log_command_preview "crackmapexec ${args[*]}"
     crackmapexec "${args[@]}" | tee -a "${LOG_DIR}/cme.log"
+    operation_summary "CrackMapExec" "$start_ms" "${LOG_DIR}/cme.log"
 }
 
 cmd_empire() {
     check_tool "empire" || return 1
+    operation_header "Empire" "C2"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Launching Empire C2"
+    log_command_preview "empire"
     empire
+    operation_summary "Empire" "$start_ms" "${LOG_DIR}/empire.log"
 }
 
 cmd_covenant() {
     if command -v covenant &>/dev/null; then
+        operation_header "Covenant" "C2"
+        local start_ms
+        start_ms=$(start_timer_ms)
         log_attack "Launching Covenant"
+        log_command_preview "covenant"
         covenant
+        operation_summary "Covenant" "$start_ms" "${LOG_DIR}/covenant.log"
     else
         log_error "Covenant launcher not found (expected 'covenant')"
         echo -e "    ${C_SHADOW}Start manually from Covenant directory if installed${C_RESET}"
@@ -1972,9 +2719,14 @@ cmd_mimikatz() {
     echo -ne "    ${C_GHOST}Password/NTLM hash: ${C_RESET}"
     read -r secret
     local out_file="${LOOT_DIR}/secrets_${TARGET//[^a-zA-Z0-9._-]/_}.txt"
+    operation_header "Secretsdump" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Impacket secretsdump against $TARGET"
+    log_command_preview "$secrets_cmd ${domain}/${user}:***@${TARGET} -outputfile ${out_file}"
     $secrets_cmd "${domain}/${user}:${secret}@${TARGET}" -outputfile "$out_file"
     log_loot "Dump saved: $out_file"
+    operation_summary "Secretsdump" "$start_ms" "$out_file"
 }
 
 cmd_impacket_scripts() {
@@ -1985,13 +2737,18 @@ cmd_impacket_scripts() {
     read -r args
     local script_base="${script%.py}"
     IFS=' ' read -r -a arg_array <<< "$args"
+    local start_ms
+    start_ms=$(start_timer_ms)
     if command -v "$script" &>/dev/null; then
+        operation_header "Impacket" "$script"
         log_attack "Running $script $args"
         $script "${arg_array[@]}" | tee -a "${LOG_DIR}/impacket.log"
     else
+        operation_header "Impacket" "$script_base"
         log_attack "Running python impacket.examples.${script_base}"
         python3 -m "impacket.examples.${script_base}" "${arg_array[@]}" | tee -a "${LOG_DIR}/impacket.log"
     fi
+    operation_summary "Impacket" "$start_ms" "${LOG_DIR}/impacket.log"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -2000,17 +2757,27 @@ cmd_impacket_scripts() {
 
 run_nikto() {
     check_tool "nikto" || return 1
+    operation_header "Nikto" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Nikto scan on $TARGET"
-    echo
+    log_command_preview "nikto -h \"${TARGET}\" -o \"${OUTPUT_FILE}_nikto.txt\""
     nikto -h "$TARGET" -o "${OUTPUT_FILE}_nikto.txt" | tee -a "${LOG_DIR}/web.log"
     log_loot "Results saved: ${OUTPUT_FILE}_nikto.txt"
+    operation_summary "Nikto" "$start_ms" "${OUTPUT_FILE}_nikto.txt"
 }
 
 run_wpscan() {
     check_tool "wpscan" || return 1
+    operation_header "WPScan" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "WordPress scan on $TARGET"
-    echo
+    log_command_preview "wpscan --url \"${TARGET}\" --enumerate u,p,t"
     wpscan --url "$TARGET" --enumerate u,p,t | tee -a "${LOG_DIR}/web.log"
+    operation_summary "WPScan" "$start_ms" "${LOG_DIR}/web.log"
 }
 
 run_gobuster() {
@@ -2019,10 +2786,15 @@ run_gobuster() {
     local wordlist="/usr/share/wordlists/dirb/common.txt"
     [[ ! -f "$wordlist" ]] && wordlist="/usr/share/seclists/Discovery/Web-Content/common.txt"
     
+    operation_header "Gobuster" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Directory brute force on $TARGET"
-    echo
+    log_command_preview "gobuster dir -u \"${TARGET}\" -w \"${wordlist}\" -o \"${OUTPUT_FILE}_gobuster.txt\""
     gobuster dir -u "$TARGET" -w "$wordlist" -o "${OUTPUT_FILE}_gobuster.txt" | tee -a "${LOG_DIR}/web.log"
     log_loot "Results saved: ${OUTPUT_FILE}_gobuster.txt"
+    operation_summary "Gobuster" "$start_ms" "${OUTPUT_FILE}_gobuster.txt"
 }
 
 run_ffuf() {
@@ -2033,45 +2805,73 @@ run_ffuf() {
     read -r custom_wordlist
     wordlist="${custom_wordlist:-$wordlist}"
     
+    operation_header "FFUF" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "FFUF fuzzing on $TARGET"
-    echo
+    log_command_preview "ffuf -u ${TARGET}/FUZZ -w ${wordlist} -o ${OUTPUT_FILE}_ffuf.json"
     ffuf -u "${TARGET}/FUZZ" -w "$wordlist" -o "${OUTPUT_FILE}_ffuf.json" | tee -a "${LOG_DIR}/web.log"
+    operation_summary "FFUF" "$start_ms" "${OUTPUT_FILE}_ffuf.json"
 }
 
 run_nuclei() {
     check_tool "nuclei" || return 1
+    operation_header "Nuclei" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Nuclei scan on $TARGET"
-    echo
+    log_command_preview "nuclei -u \"${TARGET}\" -o \"${OUTPUT_FILE}_nuclei.txt\""
     nuclei -u "$TARGET" -o "${OUTPUT_FILE}_nuclei.txt" | tee -a "${LOG_DIR}/web.log"
     log_loot "Results saved: ${OUTPUT_FILE}_nuclei.txt"
+    operation_summary "Nuclei" "$start_ms" "${OUTPUT_FILE}_nuclei.txt"
 }
 
 run_httpx() {
     check_tool "httpx" || return 1
+    operation_header "httpx" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "httpx probing for $TARGET"
+    log_command_preview "echo ${TARGET} | httpx -title -status-code -tech-detect -o ${OUTPUT_FILE}_httpx.txt"
     echo "$TARGET" | httpx -title -status-code -tech-detect -o "${OUTPUT_FILE}_httpx.txt" | tee -a "${LOG_DIR}/web.log"
     log_loot "Results saved: ${OUTPUT_FILE}_httpx.txt"
+    operation_summary "httpx" "$start_ms" "${OUTPUT_FILE}_httpx.txt"
 }
 
 run_subfinder() {
     check_tool "subfinder" || return 1
+    operation_header "Subfinder" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Subfinder enumeration for $TARGET"
-    echo
+    log_command_preview "subfinder -d \"${TARGET}\" -o \"${OUTPUT_FILE}_subfinder.txt\""
     subfinder -d "$TARGET" -o "${OUTPUT_FILE}_subfinder.txt" | tee -a "${LOG_DIR}/web.log"
     log_loot "Results saved: ${OUTPUT_FILE}_subfinder.txt"
+    operation_summary "Subfinder" "$start_ms" "${OUTPUT_FILE}_subfinder.txt"
 }
 
 run_amass() {
     check_tool "amass" || return 1
+    operation_header "Amass" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Amass mapping for $TARGET"
-    echo
+    log_command_preview "amass enum -d \"${TARGET}\" -o \"${OUTPUT_FILE}_amass.txt\""
     amass enum -d "$TARGET" -o "${OUTPUT_FILE}_amass.txt" | tee -a "${LOG_DIR}/web.log"
     log_loot "Results saved: ${OUTPUT_FILE}_amass.txt"
+    operation_summary "Amass" "$start_ms" "${OUTPUT_FILE}_amass.txt"
 }
 
 run_burpsuite() {
     check_tool "burpsuite" || return 1
+    operation_header "Burp Suite" "$TARGET"
     log_info "Launching Burp Suite"
+    log_command_preview "burpsuite"
     burpsuite &
 }
 
@@ -2083,9 +2883,14 @@ cmd_sqlmap() {
     
     [[ -z "$url" ]] && { log_error "URL required"; return 1; }
     
+    operation_header "sqlmap" "$url"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "SQL injection on $url"
+    log_command_preview "sqlmap -u \"${url}\" --batch --risk=2 --level=3"
     echo
     sqlmap -u "$url" --batch --risk=2 --level=3 | tee -a "${LOG_DIR}/web.log"
+    operation_summary "sqlmap" "$start_ms" "${LOG_DIR}/web.log"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -2094,9 +2899,14 @@ cmd_sqlmap() {
 
 cmd_metasploit() {
     check_tool "msfconsole" || return 1
+    operation_header "Metasploit" "console"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Launching Metasploit Framework"
+    log_command_preview "msfconsole"
     echo
     msfconsole
+    operation_summary "Metasploit" "$start_ms" "${LOG_DIR}/metasploit.log"
 }
 
 cmd_searchsploit() {
@@ -2107,9 +2917,14 @@ cmd_searchsploit() {
     
     [[ -z "$term" ]] && { log_error "Search term required"; return 1; }
     
+    operation_header "searchsploit" "$term"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_info "Searching exploits for: $term"
     echo
+    log_command_preview "searchsploit ${term}"
     searchsploit "$term"
+    operation_summary "searchsploit" "$start_ms" "${LOG_DIR}/searchsploit.log"
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -2128,8 +2943,13 @@ cmd_iperf3() {
     
     case "$choice" in
         1)
+            operation_header "iperf3" "server"
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_info "Starting iperf3 server"
+            log_command_preview "iperf3 -s"
             iperf3 -s
+            operation_summary "iperf3 server" "$start_ms" "${LOG_DIR}/iperf3_server.log"
             ;;
         2)
             echo -ne "    ${C_GHOST}Server IP: ${C_RESET}"
@@ -2138,8 +2958,13 @@ cmd_iperf3() {
             read -r duration
             duration="${duration:-10}"
             
+            operation_header "iperf3" "$server"
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_info "Bandwidth test to $server for ${duration}s"
+            log_command_preview "iperf3 -c ${server} -t ${duration}"
             iperf3 -c "$server" -t "$duration"
+            operation_summary "iperf3 client" "$start_ms" "${LOG_DIR}/iperf3_client.log"
             ;;
     esac
 }
@@ -2169,13 +2994,15 @@ cmd_hping3() {
     log_attack "hping3 attack on $TARGET:$port"
     
     case "$choice" in
-        1) hping3 -S --flood -p "$port" -c "$count" "$TARGET" ;;
-        2) hping3 --udp --flood -p "$port" -c "$count" "$TARGET" ;;
-        3) hping3 --icmp --flood -c "$count" "$TARGET" ;;
+        1) operation_header "hping3 SYN" "$TARGET"; log_command_preview "hping3 -S --flood -p ${port} -c ${count} ${TARGET}"; hping3 -S --flood -p "$port" -c "$count" "$TARGET" ;;
+        2) operation_header "hping3 UDP" "$TARGET"; log_command_preview "hping3 --udp --flood -p ${port} -c ${count} ${TARGET}"; hping3 --udp --flood -p "$port" -c "$count" "$TARGET" ;;
+        3) operation_header "hping3 ICMP" "$TARGET"; log_command_preview "hping3 --icmp --flood -c ${count} ${TARGET}"; hping3 --icmp --flood -c "$count" "$TARGET" ;;
         4)
             echo -ne "    ${C_GHOST}Custom flags: ${C_RESET}"
             read -r flags
             IFS=' ' read -r -a flag_array <<< "$flags"
+            operation_header "hping3 custom" "$TARGET"
+            log_command_preview "hping3 ${flag_array[*]} ${TARGET}"
             hping3 "${flag_array[@]}" "$TARGET"
             ;;
     esac
@@ -2193,9 +3020,14 @@ cmd_http_load() {
     read -r reqs
     reqs="${reqs:-1000}"
     
+    operation_header "ab" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "HTTP load test on $TARGET ($reqs requests, $conns concurrent)"
+    log_command_preview "ab -n ${reqs} -c ${conns} ${TARGET}/"
     echo
     ab -n "$reqs" -c "$conns" "$TARGET/"
+    operation_summary "HTTP load" "$start_ms" "${LOG_DIR}/http_load.log"
 }
 
 cmd_netem() {
@@ -2216,26 +3048,35 @@ cmd_netem() {
         1)
             echo -ne "    ${C_GHOST}Latency (ms): ${C_RESET}"
             read -r latency
+            local start_ms
+            start_ms=$(start_timer_ms)
             tc qdisc add dev "$IFACE" root netem delay "${latency}ms"
-            log_success "Added ${latency}ms latency to $IFACE"
+            operation_summary "Netem latency" "$start_ms" "$IFACE"
             ;;
         2)
             echo -ne "    ${C_GHOST}Packet loss (%): ${C_RESET}"
             read -r loss
+            local start_ms
+            start_ms=$(start_timer_ms)
             tc qdisc add dev "$IFACE" root netem loss "${loss}%"
-            log_success "Added ${loss}% packet loss to $IFACE"
+            operation_summary "Netem loss" "$start_ms" "$IFACE"
             ;;
         3)
             echo -ne "    ${C_GHOST}Rate limit (e.g., 1mbit): ${C_RESET}"
             read -r rate
+            local start_ms
+            start_ms=$(start_timer_ms)
             tc qdisc add dev "$IFACE" root tbf rate "$rate" burst 32kbit latency 400ms
-            log_success "Limited $IFACE to $rate"
+            operation_summary "Netem rate" "$start_ms" "$rate"
             ;;
         4)
+            local start_ms
+            start_ms=$(start_timer_ms)
             tc qdisc del dev "$IFACE" root 2>/dev/null
-            log_success "Cleared impairments on $IFACE"
+            operation_summary "Netem clear" "$start_ms" "$IFACE"
             ;;
         5)
+            operation_header "Netem show" "$IFACE"
             tc qdisc show dev "$IFACE"
             ;;
     esac
@@ -2247,15 +3088,26 @@ cmd_netem() {
 
 run_theharvester() {
     check_tool "theHarvester" || check_tool "theharvester" || return 1
+    operation_header "theHarvester" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_info "theHarvester on $TARGET"
     echo
+    log_command_preview "theHarvester -d ${TARGET} -b all"
     theHarvester -d "$TARGET" -b all 2>/dev/null || theharvester -d "$TARGET" -b all
+    operation_summary "theHarvester" "$start_ms" "${LOG_DIR}/osint.log"
 }
 
 run_reconng() {
     check_tool "recon-ng" || return 1
+    operation_header "Recon-ng" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_info "Launching Recon-ng"
+    log_command_preview "recon-ng"
     recon-ng
+    operation_summary "Recon-ng" "$start_ms" "${LOG_DIR}/osint.log"
 }
 
 run_shodan() {
@@ -2264,16 +3116,26 @@ run_shodan() {
         echo -e "    ${C_SHADOW}Install: pip3 install shodan && shodan init <API_KEY>${C_RESET}"
         return 1
     fi
+    operation_header "Shodan" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_info "Shodan search for $TARGET"
     echo
+    log_command_preview "shodan host ${TARGET}"
     shodan host "$TARGET"
+    operation_summary "Shodan" "$start_ms" "${LOG_DIR}/osint.log"
 }
 
 run_whois() {
     check_tool "whois" || return 1
+    operation_header "WHOIS" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_info "WHOIS lookup for $TARGET"
     echo
+    log_command_preview "whois ${TARGET}"
     whois "$TARGET"
+    operation_summary "WHOIS" "$start_ms" "${LOG_DIR}/osint.log"
 }
 
 cmd_google_dork() {
@@ -2301,6 +3163,7 @@ cmd_google_dork() {
 
 cmd_traffic_capture() {
     get_interface || return 1
+    operation_header "Traffic capture" "$IFACE"
     
     echo
     echo -e "    ${C_GHOST}[1]${C_RESET} tcpdump (CLI)"
@@ -2317,26 +3180,41 @@ cmd_traffic_capture() {
         1)
             check_tool "tcpdump" || return 1
             require_root || return 1
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_info "Starting tcpdump on $IFACE (Ctrl+C to stop)"
             echo -e "    ${C_SHADOW}Output: $outfile${C_RESET}"
+            log_command_preview "tcpdump -i ${IFACE} -w ${outfile}"
             tcpdump -i "$IFACE" -w "$outfile"
+            operation_summary "tcpdump" "$start_ms" "$outfile"
             ;;
         2)
             check_tool "wireshark" || return 1
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_info "Launching Wireshark on $IFACE"
+            log_command_preview "wireshark -i ${IFACE} -k"
             wireshark -i "$IFACE" -k &
+            operation_summary "Wireshark" "$start_ms" "$outfile"
             ;;
         3)
             check_tool "tshark" || return 1
             require_root || return 1
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_info "Starting tshark on $IFACE (Ctrl+C to stop)"
+            log_command_preview "tshark -i ${IFACE} -w ${outfile}"
             tshark -i "$IFACE" -w "$outfile"
+            operation_summary "tshark" "$start_ms" "$outfile"
             ;;
     esac
 }
 
 cmd_install_arsenal() {
     require_root || return 1
+    operation_header "Install arsenal" "packages"
+    local start_ms
+    start_ms=$(start_timer_ms)
     
     echo
     echo -e "    ${C_SKULL}Install Categories:${C_RESET}"
@@ -2353,12 +3231,12 @@ cmd_install_arsenal() {
     read -r choice
     
     case "$choice" in
-        1) apt install -y nmap masscan unicornscan netdiscover arp-scan fping hping3 p0f arping nbtscan amap ;;
-        2) apt install -y aircrack-ng wifite reaver bully pixiewps ;;
-        3) apt install -y nikto wpscan sqlmap dirb gobuster ffuf ;;
-        4) apt install -y theharvester recon-ng maltego whois ;;
-        5) apt install -y tcpdump wireshark tshark ettercap-graphical bettercap ;;
-        6) apt install -y hping3 iperf3 apache2-utils ;;
+        1) log_command_preview "apt install -y nmap masscan ..."; apt install -y nmap masscan unicornscan netdiscover arp-scan fping hping3 p0f arping nbtscan amap ;;
+        2) log_command_preview "apt install -y aircrack-ng wifite reaver bully pixiewps"; apt install -y aircrack-ng wifite reaver bully pixiewps ;;
+        3) log_command_preview "apt install -y nikto wpscan sqlmap dirb gobuster ffuf"; apt install -y nikto wpscan sqlmap dirb gobuster ffuf ;;
+        4) log_command_preview "apt install -y theharvester recon-ng maltego whois"; apt install -y theharvester recon-ng maltego whois ;;
+        5) log_command_preview "apt install -y tcpdump wireshark tshark ettercap-graphical bettercap"; apt install -y tcpdump wireshark tshark ettercap-graphical bettercap ;;
+        6) log_command_preview "apt install -y hping3 iperf3 apache2-utils"; apt install -y hping3 iperf3 apache2-utils ;;
         a|A)
             log_info "Installing full arsenal (this may take a while)"
             apt update
@@ -2373,9 +3251,9 @@ cmd_install_arsenal() {
                 sslscan sslyze \
                 onesixtyone snmpwalk smbmap smbclient enum4linux \
                 metasploit-framework exploitdb
-            log_success "Arsenal installed"
             ;;
     esac
+    operation_summary "Arsenal install" "$start_ms" "${LOG_DIR}/install.log"
 }
 
 cmd_tool_status() {
@@ -2460,9 +3338,13 @@ cmd_run_direct() {
     echo -ne "    ${C_GHOST}Command: ${C_RESET}"
     read -r cmd
     [[ -z "$cmd" ]] && return
+    operation_header "Direct command" "manual"
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_info "Executing: $cmd"
     echo
     eval "$cmd"
+    operation_summary "Direct command" "$start_ms" "${LOG_DIR}/netreaper.log"
 }
 
 show_help() {
@@ -2479,6 +3361,14 @@ show_help() {
     echo "        wifi <mode> <if>    WiFi monitor/managed/scan"
     echo "        crack <cap>         Handshake cracking (hashcat/aircrack/john/cowpatty)"
     echo "        session <action>    start|resume|status|list|export|notes"
+    echo "        history             Show target history"
+    echo "        favorite            Manage favorites (add/list/use)"
+    echo "        alias               Manage aliases"
+    echo "        profile             Manage scan presets"
+    echo "        discover [net]      Discover hosts and pick target"
+    echo "        export <f> <fmt>    Export to json/csv/html/md"
+    echo "        schedule            Manage scheduled scans"
+    echo "        diff <f1> <f2>      Compare two scan outputs"
     echo "        status              Show installed tools"
     echo "        install             Install security tools"
     echo "        menu                Interactive menu (default)"
@@ -2490,6 +3380,9 @@ show_help() {
     echo "        $SCRIPT_NAME wifi --monitor wlan0"
     echo "        $SCRIPT_NAME crack handshake.cap --hashcat-rules --wordlist custom.txt"
     echo "        $SCRIPT_NAME session start"
+    echo "        $SCRIPT_NAME profile save fast --quick"
+    echo "        $SCRIPT_NAME discover 192.168.1.0/24"
+    echo "        $SCRIPT_NAME schedule add '0 2 * * *' 'scan 192.168.1.1 --full'"
     echo
     echo -e "    ${C_SHADOW}Config: $CONFIG_DIR${C_RESET}"
     echo -e "    ${C_SHADOW}Logs:   $LOG_DIR${C_RESET}"
@@ -2505,21 +3398,38 @@ show_help() {
 cli_scan() {
     TARGET="$1"
     shift
-    local scan_type="quick"
-    
+    local scan_type="quick" profile_name=""
+
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --full)    scan_type="full" ;;
             --stealth) scan_type="stealth" ;;
             --vuln)    scan_type="vuln" ;;
             --udp)     scan_type="udp" ;;
+            --profile) shift; profile_name="$1" ;;
             *)         TARGET="$1" ;;
         esac
         shift
     done
-    
+
     [[ -z "$TARGET" ]] && { show_usage; exit 1; }
+    TARGET="$(resolve_target_alias "$TARGET")"
     validate_target "$TARGET" || exit 1
+    record_history "$TARGET"
+
+    if [[ -n "$profile_name" ]]; then
+        local p_args
+        p_args=$(profile_load "$profile_name") || { log_error "Profile not found"; exit 1; }
+        for opt in $p_args; do
+            case "$opt" in
+                --full|full) scan_type="full" ;;
+                --stealth|stealth) scan_type="stealth" ;;
+                --vuln|vuln) scan_type="vuln" ;;
+                --udp|udp) scan_type="udp" ;;
+                *) ;; 
+            esac
+        done
+    fi
     OUTPUT_FILE="${OUTPUT_DIR}/${TARGET//[^a-zA-Z0-9._-]/_}_$(date +%Y%m%d_%H%M%S)"
     
     case "$scan_type" in
@@ -2539,25 +3449,38 @@ cli_wifi() {
             [[ -z "$iface" ]] && { log_error "Interface required"; exit 1; }
             require_root || exit 1
             IFACE="$iface"
+            operation_header "WiFi monitor (CLI)" "$IFACE"
+            local start_ms
+            start_ms=$(start_timer_ms)
+            log_command_preview "ip link set ${IFACE} down && iw dev ${IFACE} set type monitor"
             ip link set "$IFACE" down
             iw dev "$IFACE" set type monitor 2>/dev/null || iwconfig "$IFACE" mode monitor
             ip link set "$IFACE" up
-            log_success "Monitor mode enabled on $IFACE"
+            operation_summary "Monitor mode enabled" "$start_ms" "${LOG_DIR}/netreaper.log"
             ;;
         --managed)
             [[ -z "$iface" ]] && { log_error "Interface required"; exit 1; }
             require_root || exit 1
             IFACE="$iface"
+            operation_header "WiFi managed (CLI)" "$IFACE"
+            local start_ms
+            start_ms=$(start_timer_ms)
+            log_command_preview "ip link set ${IFACE} down && iw dev ${IFACE} set type managed"
             ip link set "$IFACE" down
             iw dev "$IFACE" set type managed 2>/dev/null || iwconfig "$IFACE" mode managed
             ip link set "$IFACE" up
-            log_success "Managed mode enabled on $IFACE"
+            operation_summary "Managed mode enabled" "$start_ms" "${LOG_DIR}/netreaper.log"
             ;;
         --scan)
             require_root || exit 1
             check_tool "airodump-ng" || exit 1
             IFACE="${iface:-wlan0}"
+            operation_header "WiFi scan (CLI)" "$IFACE"
+            local start_ms
+            start_ms=$(start_timer_ms)
+            log_command_preview "airodump-ng ${IFACE}"
             airodump-ng "$IFACE"
+            operation_summary "WiFi scan" "$start_ms" "${LOG_DIR}/wifi_scan.log"
             ;;
         *)
             echo "Usage: $SCRIPT_NAME wifi [--monitor|--managed|--scan] <interface>"
@@ -2566,7 +3489,7 @@ cli_wifi() {
 }
 
 cli_crack() {
-    local mode="hashcat" capfile="" wordlist="/usr/share/wordlists/rockyou.txt" ssid="" rules=""
+    local mode="hashcat" capfile="" wordlist="${DEFAULT_WORDLIST}" ssid="" rules=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --aircrack) mode="aircrack" ;;
@@ -2585,8 +3508,13 @@ cli_crack() {
     case "$mode" in
         aircrack)
             check_tool "aircrack-ng" || exit 1
+            operation_header "Aircrack (CLI)" "$capfile"
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_attack "Aircrack-ng dictionary attack (CLI)"
+            log_command_preview "aircrack-ng -w ${wordlist} ${capfile}"
             aircrack-ng -w "$wordlist" "$capfile" || exit 1
+            operation_summary "Aircrack" "$start_ms" "${LOG_DIR}/aircrack_cli.log"
             ;;
         john)
             check_tool "john" || exit 1
@@ -2594,14 +3522,24 @@ cli_crack() {
             local john_hash
             john_hash="${LOOT_DIR}/john_cli_$(date +%Y%m%d_%H%M%S).hash"
             hccap2john "$capfile" > "$john_hash"
+            operation_header "John (CLI)" "$capfile"
+            local start_ms
+            start_ms=$(start_timer_ms)
+            log_command_preview "john --wordlist=${wordlist} ${john_hash}"
             john --wordlist="$wordlist" "$john_hash" || exit 1
             john --show "$john_hash" || true
+            operation_summary "John" "$start_ms" "${LOG_DIR}/john_cli.log"
             ;;
         cowpatty)
             check_tool "cowpatty" || exit 1
             [[ -z "$ssid" ]] && { log_error "SSID required (--ssid)"; exit 1; }
+            operation_header "Cowpatty (CLI)" "$ssid"
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_attack "Cowpatty WPA crack (CLI)"
+            log_command_preview "cowpatty -r ${capfile} -s ${ssid} -f ${wordlist} -2"
             cowpatty -r "$capfile" -s "$ssid" -f "$wordlist" -2 || exit 1
+            operation_summary "Cowpatty" "$start_ms" "${LOG_DIR}/cowpatty_cli.log"
             ;;
         hashcat-rules)
             rules="${rules:-/usr/share/hashcat/rules/best64.rule}"
@@ -2611,7 +3549,12 @@ cli_crack() {
                 hashfile_hr=$(cmd_convert_hashcat "$capfile" | tail -n 1)
                 [[ -z "$hashfile_hr" ]] && { log_error "Conversion failed"; exit 1; }
             fi
+            operation_header "Hashcat rules (CLI)" "$hashfile_hr"
+            local start_ms
+            start_ms=$(start_timer_ms)
+            log_command_preview "hashcat -m 22000 -a 0 ${hashfile_hr} ${wordlist} -r ${rules} --status --status-timer=15 --potfile-path ${LOG_DIR}/hashcat.pot --session netreaper"
             hashcat -m 22000 -a 0 "$hashfile_hr" "$wordlist" -r "$rules" --status --status-timer=15 --potfile-path "${LOG_DIR}/hashcat.pot" --session netreaper || exit 1
+            operation_summary "Hashcat rules" "$start_ms" "${LOG_DIR}/hashcat.log"
             ;;
         *)
             check_tool "hashcat" || exit 1
@@ -2620,7 +3563,12 @@ cli_crack() {
                 hashfile=$(cmd_convert_hashcat "$capfile" | tail -n 1)
                 [[ -z "$hashfile" ]] && { log_error "Conversion failed"; exit 1; }
             fi
+            operation_header "Hashcat (CLI)" "$hashfile"
+            local start_ms
+            start_ms=$(start_timer_ms)
+            log_command_preview "hashcat -m 22000 -a 0 ${hashfile} ${wordlist} --status --status-timer=15 --potfile-path ${LOG_DIR}/hashcat.pot --session netreaper"
             hashcat -m 22000 -a 0 "$hashfile" "$wordlist" --status --status-timer=15 --potfile-path "${LOG_DIR}/hashcat.pot" --session netreaper || exit 1
+            operation_summary "Hashcat" "$start_ms" "${LOG_DIR}/hashcat.log"
             ;;
     esac
 }
@@ -2648,6 +3596,14 @@ show_usage() {
     echo "    wifi             WiFi operations (--monitor, --managed, --scan)"
     echo "    crack <cap>      Handshake cracking (hashcat/aircrack/john/cowpatty)"
     echo "    session <act>    start|resume|status|list|export|notes"
+    echo "    history          Show target history"
+    echo "    favorite         Manage favorites (add/list/use)"
+    echo "    alias            Manage aliases"
+    echo "    profile          Manage scan presets"
+    echo "    discover [net]   Discover hosts and pick target"
+    echo "    export <f> <fmt> Export to json/csv/html/md"
+    echo "    schedule         Manage scheduled scans"
+    echo "    diff <f1> <f2>   Compare two scan outputs"
     echo "    status           Show installed tools"
     echo "    install          Install tools (requires root)"
     echo "    menu             Interactive menu"
@@ -2657,6 +3613,9 @@ show_usage() {
     echo "    $SCRIPT_NAME scan 192.168.1.0/24 --quick"
     echo "    $SCRIPT_NAME wifi --monitor wlan0"
     echo "    $SCRIPT_NAME crack handshake.cap --hashcat-rules"
+    echo "    $SCRIPT_NAME profile save fast --quick"
+    echo "    $SCRIPT_NAME schedule add '0 2 * * *' 'scan 192.168.1.1 --full'"
+    echo "    $SCRIPT_NAME discover 192.168.1.0/24"
     echo "    $SCRIPT_NAME status"
     echo "    $SCRIPT_NAME menu"
 }
@@ -2703,18 +3662,26 @@ main() {
         --uninstall) self_uninstall; exit 0 ;;
     esac
 
+    load_config
+    ensure_builtin_aliases
+
+    if expand_aliases "$@"; then
+        set -- "${EXPANDED_ARGS[@]}"
+    fi
+
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -q|--quiet) QUIET=1; shift ;;
             --json) JSON_OUTPUT=1; QUIET=1; NO_COLOR=1; shift ;;
             --no-color) NO_COLOR=1; shift ;;
+            --update) check_for_update; exit 0 ;;
             *) break ;;
         esac
     done
 
     # Initialize directories
     mkdir -p "$LOG_DIR" "$OUTPUT_DIR" "$LOOT_DIR"
-    
+
     # Legal disclaimer check
     check_legal
     
@@ -2725,6 +3692,14 @@ main() {
         wifi)        shift; cli_wifi "$@" ;;
         crack)       shift; cli_crack "$@" ;;
         session)     shift; cli_session "$@" ;;
+        history)     show_history ;;
+        favorite)    shift; favorite_cmd "$@" ;;
+        alias)       shift; alias_cmd "$@" ;;
+        profile)     shift; profile_cmd "$@" ;;
+        discover)    shift; discover_cmd "$@" ;;
+        export)      shift; export_cmd "$@" ;;
+        schedule)    shift; schedule_cmd "$@" ;;
+        diff)        shift; diff_cmd "$@" ;;
         status)      cmd_tool_status ;;
         install)     cmd_install_arsenal ;;
         help|-h|--help) show_usage ;;
