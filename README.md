@@ -449,3 +449,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Single-tool packaging: netreaper-only installer/uninstaller and completions.
 - Cleaned legacy wifi_multitool/nft-multitool artifacts; session dirs created automatically.
 - Fresh bash completion covering scan, wifi, crack, session, osint, web, exploit, stress, traffic.
+# NETREAPER
