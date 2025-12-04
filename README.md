@@ -114,14 +114,14 @@ Built for red teamers, penetration testers, and security researchers who want po
 ```bash
 # Clone the repository
 git clone https://github.com/Nerds489/NETREAPER.git
-cd netreaper
+cd NETREAPER
 
 # Make executable and install system-wide
 chmod +x netreaper
 sudo ./netreaper --install
 
 # Run it
-netreaper
+sudo netreaper
 ```
 
 ### Manual Install
