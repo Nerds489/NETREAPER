@@ -15,7 +15,7 @@
 
 > *"Some tools scan. Some tools attack. I do both."*
 
-[![Version](https://img.shields.io/badge/version-3.3.4-red?style=for-the-badge)](https://github.com/Nerds489/NETREAPER)
+[![Version](https://img.shields.io/badge/version-3.4.9-red?style=for-the-badge)](https://github.com/Nerds489/NETREAPER)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux-blue?style=for-the-badge)](https://www.linux.org/)
 [![Bash](https://img.shields.io/badge/bash-5.0%2B-orange?style=for-the-badge)](https://www.gnu.org/software/bash/)
