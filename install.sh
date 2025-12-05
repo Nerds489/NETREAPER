@@ -22,7 +22,7 @@ cat << 'EOF_ART'
     ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
 EOF_ART
 echo -e "${NC}"
-echo -e "    ${CYAN}NETREAPER v5.0.0 Installer${NC}"
+echo -e "    ${CYAN}NETREAPER v5.1.0 Installer${NC}"
 echo
 
 # Check root
@@ -58,7 +58,7 @@ echo -e "    ${GREEN}[✓]${NC} Created /etc/netreaper"
 
 echo
 echo -e "    ${GREEN}════════════════════════════════════════════════════════${NC}"
-echo -e "    ${GREEN}    ✓ NETREAPER v5.0.0 installed successfully!${NC}"
+echo -e "    ${GREEN}    ✓ NETREAPER v5.1.0 installed successfully!${NC}"
 echo -e "    ${GREEN}════════════════════════════════════════════════════════${NC}"
 echo
 echo -e "    ${CYAN}Quick Start:${NC}"

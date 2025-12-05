@@ -1,5 +1,5 @@
 # NETREAPER bash completion
-# Version: 5.0.0
+# Version: 5.1.0
 
 _netreaper() {
     local cur prev words cword

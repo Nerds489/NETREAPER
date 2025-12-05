@@ -9,7 +9,7 @@
 #    ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
 #
 #    NETREAPER - Network Security & WiFi Assault Toolkit
-#    Version: 5.1.0 "Phantom Protocol"
+#    Version: 5.0.0 "Phantom Protocol"
 #
 #    Copyright (c) 2025 OFFTRACKMEDIA Studios
 #    Licensed under the Apache License, Version 2.0
@@ -17,576 +17,40 @@
 #
 #═══════════════════════════════════════════════════════════════════════════════
 
-set -o pipefail
+set -uo pipefail
 
-readonly VERSION="5.1.0"
-readonly CODENAME="Phantom Protocol"
-readonly SCRIPT_NAME="netreaper"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SCRIPT_DIR
-
+QUIET=0
 JSON_OUTPUT=0
 
-#═══════════════════════════════════════════════════════════════════════════════
-# COLOR DEFINITIONS
-#═══════════════════════════════════════════════════════════════════════════════
-
-# Check if colors are supported
-if [[ -t 1 ]] && [[ "${NO_COLOR:-}" != "1" ]]; then
-    # Reset
-    C_RESET='\033[0m'
-    
-    # Basic colors
-    C_BLACK='\033[0;30m'
-    C_RED='\033[0;31m'
-    C_GREEN='\033[0;32m'
-    C_YELLOW='\033[0;33m'
-    C_BLUE='\033[0;34m'
-    C_PURPLE='\033[0;35m'
-    C_CYAN='\033[0;36m'
-    C_WHITE='\033[0;37m'
-    
-    # Bold colors
-    C_BOLD='\033[1m'
-    C_BRED='\033[1;31m'
-    C_BGREEN='\033[1;32m'
-    C_BYELLOW='\033[1;33m'
-    C_BCYAN='\033[1;36m'
-    
-    # Custom theme colors
-    C_FIRE='\033[1;31m'
-    C_BLOOD='\033[0;31m'
-    C_GHOST='\033[0;90m'
-    C_SHADOW='\033[0;90m'
-    C_BORDER='\033[0;36m'
-    C_PROMPT='\033[0;33m'
-    C_ORANGE='\033[0;33m'
-    
-    # Semantic aliases
-    C_SUCCESS="$C_GREEN"
-    C_ERROR="$C_RED"
-    C_WARNING="$C_YELLOW"
-    C_INFO="$C_CYAN"
-else
-    # No colors
-    C_RESET='' C_BLACK='' C_RED='' C_GREEN='' C_YELLOW=''
-    C_BLUE='' C_PURPLE='' C_CYAN='' C_WHITE=''
-    C_BOLD='' C_BRED='' C_BGREEN='' C_BYELLOW='' C_BCYAN=''
-    C_FIRE='' C_BLOOD='' C_GHOST='' C_SHADOW='' C_BORDER=''
-    C_PROMPT='' C_ORANGE='' C_SUCCESS='' C_ERROR='' C_WARNING='' C_INFO=''
-fi
-
-# Legacy aliases to preserve existing styling
-readonly C_VENOM="${C_GREEN}"
-readonly C_SKULL="${C_WHITE}"
-readonly C_GOLD="${C_ORANGE}"
-
-# Compatibility for legacy color references
-[[ -z "${C_STEEL:-}" ]] && C_STEEL="${C_CYAN}"
-[[ -z "${C_DIM:-}" ]] && C_DIM="${C_SHADOW}"
-
-#═══════════════════════════════════════════════════════════════════════════════
-# DIRECTORY & FILE SETUP
-#═══════════════════════════════════════════════════════════════════════════════
-
-NETREAPER_HOME="${HOME}/.netreaper"
-CONFIG_DIR="${NETREAPER_HOME}/config"
-CONFIG_FILE="${CONFIG_DIR}/netreaper.conf"
-LOG_DIR="${NETREAPER_HOME}/logs"
-OUTPUT_DIR="${NETREAPER_HOME}/output"
-LOOT_DIR="${NETREAPER_HOME}/loot"
-SESSION_DIR="${NETREAPER_HOME}/sessions"
-HISTORY_FILE="${NETREAPER_HOME}/target_history"
-
-# Log files
-LOG_FILE="${LOG_DIR}/netreaper_$(date +%Y%m%d).log"
-AUDIT_LOG="${LOG_DIR}/audit.log"
-
-# Runtime flags
-VERBOSE="${VERBOSE:-false}"
-DEBUG="${DEBUG:-false}"
-QUIET="${QUIET:-false}"
-
-# Handle legacy config file path (previously a file at $CONFIG_DIR)
-if [[ -e "$CONFIG_DIR" && ! -d "$CONFIG_DIR" ]]; then
-    LEGACY_CONFIG_BACKUP="${CONFIG_DIR}.bak.$(date +%Y%m%d%H%M%S)"
-    mv "$CONFIG_DIR" "$LEGACY_CONFIG_BACKUP" 2>/dev/null || cp "$CONFIG_DIR" "$LEGACY_CONFIG_BACKUP" 2>/dev/null
-    mkdir -p "$CONFIG_DIR"
-    mv "$LEGACY_CONFIG_BACKUP" "$CONFIG_FILE" 2>/dev/null || cp "$LEGACY_CONFIG_BACKUP" "$CONFIG_FILE" 2>/dev/null
-fi
-
-# Create all directories on load
-mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$LOOT_DIR" "$SESSION_DIR" 2>/dev/null
-chmod 700 "$NETREAPER_HOME" 2>/dev/null
-touch "$LOG_FILE" "$AUDIT_LOG" 2>/dev/null
-
-# Migrate legacy flat-file locations into new structure
-for legacy_file in "$NETREAPER_HOME/favorites" "$NETREAPER_HOME/aliases"; do
-    dest_path="$CONFIG_DIR/$(basename "$legacy_file")"
-    if [[ -f "$legacy_file" && ! -f "$dest_path" ]]; then
-        mv "$legacy_file" "$dest_path" 2>/dev/null || cp "$legacy_file" "$dest_path" 2>/dev/null
-    fi
-done
-
-if [[ -f "$NETREAPER_HOME/history" && ! -f "$HISTORY_FILE" ]]; then
-    mv "$NETREAPER_HOME/history" "$HISTORY_FILE" 2>/dev/null || cp "$NETREAPER_HOME/history" "$HISTORY_FILE" 2>/dev/null
-fi
-
-# Compatibility/legacy paths
-BASE_LOG_DIR="$LOG_DIR"
-BASE_OUTPUT_DIR="$OUTPUT_DIR"
-BASE_LOOT_DIR="$LOOT_DIR"
-SESSIONS_DIR="$SESSION_DIR"
-SESSION_FILE="${SESSION_DIR}/.current_session"
-LEGAL_FILE="${CONFIG_DIR}/.legal_accepted"
-FAVORITES_FILE="${CONFIG_DIR}/favorites"
-ALIASES_FILE="${CONFIG_DIR}/aliases"
-PROFILES_DIR="${CONFIG_DIR}/profiles"
-TMP_DIR="/tmp/netreaper"
+readonly VERSION="5.0.0"
+readonly CODENAME="Phantom Protocol"
+readonly SCRIPT_NAME="netreaper"
+# shellcheck disable=SC2034
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC2034
+readonly SCRIPT_DIR
+readonly CONFIG_DIR="${HOME}/.netreaper"
+readonly CONFIG_FILE="${CONFIG_DIR}/config"
+readonly BASE_LOG_DIR="${CONFIG_DIR}/logs"
+LOG_DIR="$BASE_LOG_DIR"
+readonly BASE_OUTPUT_DIR="${CONFIG_DIR}/output"
+readonly BASE_LOOT_DIR="${CONFIG_DIR}/loot"
+OUTPUT_DIR="$BASE_OUTPUT_DIR"
+LOOT_DIR="$BASE_LOOT_DIR"
+readonly LEGAL_FILE="${CONFIG_DIR}/.legal_accepted"
+readonly SESSION_FILE="${CONFIG_DIR}/.current_session"
+readonly SESSIONS_DIR="${CONFIG_DIR}/sessions"
+readonly HISTORY_FILE="${CONFIG_DIR}/history"
+readonly FAVORITES_FILE="${CONFIG_DIR}/favorites"
+readonly ALIASES_FILE="${CONFIG_DIR}/aliases"
+readonly PROFILES_DIR="${CONFIG_DIR}/profiles"
 CURRENT_SESSION=""
 SESSION_NAME=""
+readonly TMP_DIR="/tmp/netreaper"
 
 DEFAULT_INTERFACE=""
 DEFAULT_WORDLIST="/usr/share/wordlists/rockyou.txt"
 DEFAULT_THEME="default"
-
-#═══════════════════════════════════════════════════════════════════════════════
-# CORE FUNCTIONS - v5.1.0 FIX
-#═══════════════════════════════════════════════════════════════════════════════
-
-#───────────────────────────────────────────────────────────────────────────────
-# TIMING FUNCTIONS
-#───────────────────────────────────────────────────────────────────────────────
-
-declare -g TIMER_START_MS=0
-
-start_timer_ms() {
-    if [[ -f /proc/uptime ]]; then
-        TIMER_START_MS=$(awk '{printf "%.0f", $1 * 1000}' /proc/uptime 2>/dev/null) || TIMER_START_MS=$(($(date +%s) * 1000))
-    else
-        TIMER_START_MS=$(($(date +%s) * 1000))
-    fi
-}
-
-end_timer_ms() {
-    local end_ms
-    if [[ -f /proc/uptime ]]; then
-        end_ms=$(awk '{printf "%.0f", $1 * 1000}' /proc/uptime 2>/dev/null) || end_ms=$(($(date +%s) * 1000))
-    else
-        end_ms=$(($(date +%s) * 1000))
-    fi
-    
-    local duration_ms=$((end_ms - TIMER_START_MS))
-    
-    if ((duration_ms < 0)); then
-        echo "0ms"
-    elif ((duration_ms < 1000)); then
-        echo "${duration_ms}ms"
-    elif ((duration_ms < 60000)); then
-        printf "%d.%ds" $((duration_ms / 1000)) $((duration_ms % 1000 / 100))
-    else
-        printf "%dm %ds" $((duration_ms / 60000)) $(((duration_ms % 60000) / 1000))
-    fi
-}
-
-# Aliases for compatibility
-start_timer() { start_timer_ms; }
-end_timer() { end_timer_ms; }
-
-#───────────────────────────────────────────────────────────────────────────────
-# LOGGING FUNCTIONS
-#───────────────────────────────────────────────────────────────────────────────
-
-log_to_file() {
-    local message="$1"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] $message" >> "$LOG_FILE" 2>/dev/null
-}
-
-log_debug() {
-    if [[ "$DEBUG" == "true" ]]; then
-        echo -e "    ${C_SHADOW}[~]${C_RESET} $*"
-    fi
-    log_to_file "[DEBUG] $*"
-}
-
-log_verbose() {
-    if [[ "$VERBOSE" == "true" ]]; then
-        echo -e "    ${C_SHADOW}[*]${C_RESET} $*"
-    fi
-    log_to_file "[VERBOSE] $*"
-}
-
-log_info() {
-    [[ "$QUIET" != "true" && "$QUIET" != "1" ]] && echo -e "    ${C_CYAN}[*]${C_RESET} $*"
-    log_to_file "[INFO] $*"
-}
-
-log_success() {
-    [[ "$QUIET" != "true" && "$QUIET" != "1" ]] && echo -e "    ${C_GREEN}[✓]${C_RESET} $*"
-    log_to_file "[SUCCESS] $*"
-}
-
-log_warning() {
-    echo -e "    ${C_YELLOW}[!]${C_RESET} $*"
-    log_to_file "[WARNING] $*"
-}
-
-log_error() {
-    echo -e "    ${C_RED}[✗]${C_RESET} $*" >&2
-    log_to_file "[ERROR] $*"
-}
-
-log_fatal() {
-    echo -e "    ${C_BRED}[☠]${C_RESET} $*" >&2
-    log_to_file "[FATAL] $*"
-    exit 1
-}
-
-log_audit() {
-    local action="${1:-ACTION}"
-    local target="${2:-}"
-    local result="${3:-}"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    echo "[$timestamp] [AUDIT] action=\"$action\" target=\"$target\" result=\"$result\" user=\"$(whoami)\" pid=\"$$\"" >> "$AUDIT_LOG" 2>/dev/null
-}
-
-log_command_preview() {
-    local cmd="${1:-}"
-    
-    if [[ "$VERBOSE" == "true" ]]; then
-        echo -e "    ${C_SHADOW}\$ ${cmd}${C_RESET}"
-    fi
-    
-    log_to_file "[EXEC] $cmd"
-    log_audit "EXECUTE" "${cmd:0:200}" "started"
-}
-
-log_attack()  { log_warning "$@"; }
-log_target()  { log_info "$@"; }
-log_loot()    { log_success "$@"; }
-
-init_logging() {
-    mkdir -p "$LOG_DIR"
-    touch "$LOG_FILE" "$AUDIT_LOG"
-    chmod 600 "$LOG_FILE" "$AUDIT_LOG" 2>/dev/null || true
-    log_debug "NETREAPER v${VERSION} (${CODENAME}) started at $(date '+%Y-%m-%d %H:%M:%S')"
-}
-
-#───────────────────────────────────────────────────────────────────────────────
-# OPERATION DISPLAY FUNCTIONS
-#───────────────────────────────────────────────────────────────────────────────
-
-operation_header() {
-    local title="${1:-Operation}"
-    local target="${2:-}"
-    
-    echo
-    echo -e "    ${C_CYAN}┌─────────────────────────────────────────────────────────────┐${C_RESET}"
-    echo -e "    ${C_CYAN}│${C_RESET} ${C_FIRE}⚔${C_RESET}  ${C_WHITE}${title}${C_RESET}"
-    if [[ -n "$target" ]]; then
-        # Sanitize target for display
-        local clean_target
-        clean_target=$(strip_ansi "$target")
-        echo -e "    ${C_CYAN}│${C_RESET} ${C_SHADOW}Target:${C_RESET} ${C_GREEN}${clean_target}${C_RESET}"
-    fi
-    echo -e "    ${C_CYAN}└─────────────────────────────────────────────────────────────┘${C_RESET}"
-    echo
-    
-    log_audit "OPERATION" "$title" "started"
-}
-
-operation_summary() {
-    local status="${1:-info}"
-    local message="${2:-Complete}"
-    local extra="${3:-}"
-
-    if [[ ! "$status" =~ ^(success|ok|done|0|fail|failed|error|1|warn|warning|partial|info)$ ]]; then
-        extra="${message}${extra:+\n$extra}"
-        message="$status"
-        status="info"
-    fi
-    
-    echo
-    case "$status" in
-        success|ok|done|0)
-            echo -e "    ${C_GREEN}[✓]${C_RESET} ${message}"
-            log_audit "RESULT" "$message" "success"
-            ;;
-        fail|failed|error|1)
-            echo -e "    ${C_RED}[✗]${C_RESET} ${message}"
-            log_audit "RESULT" "$message" "failed"
-            ;;
-        warn|warning|partial)
-            echo -e "    ${C_YELLOW}[!]${C_RESET} ${message}"
-            log_audit "RESULT" "$message" "warning"
-            ;;
-        info|*)
-            echo -e "    ${C_CYAN}[*]${C_RESET} ${message}"
-            log_audit "RESULT" "$message" "info"
-            ;;
-    esac
-    
-    [[ -n "$extra" ]] && echo -e "    ${C_SHADOW}${extra}${C_RESET}"
-}
-
-# Alias for consistency
-operation_footer() {
-    operation_summary "$@"
-}
-
-#───────────────────────────────────────────────────────────────────────────────
-# INPUT SANITIZATION FUNCTIONS
-#───────────────────────────────────────────────────────────────────────────────
-
-# Strip ANSI color/escape codes from string
-strip_ansi() {
-    local text="$1"
-    # Remove all ANSI escape sequences
-    echo -e "$text" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | sed 's/\x1b\[[0-9;]*m//g' | sed 's/\x1b(B//g'
-}
-
-# Clean input for use in filenames (aggressive sanitization)
-sanitize_filename() {
-    local input="$1"
-    # Strip ANSI, then keep only safe filename characters
-    strip_ansi "$input" | tr -cd '[:alnum:]._-' | cut -c1-100
-}
-
-# Clean target input (preserve valid target characters)
-sanitize_target() {
-    local input="$1"
-    # Strip ANSI and trim whitespace
-    strip_ansi "$input" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
-}
-
-#───────────────────────────────────────────────────────────────────────────────
-# SAFE INPUT FUNCTIONS (CRITICAL - FIXES INPUT BUG)
-#───────────────────────────────────────────────────────────────────────────────
-
-# Get target with proper prompt - DOES NOT MIX PROMPT WITH VALUE
-get_target_input() {
-    local prompt="${1:-Enter target}"
-    local default="${2:-}"
-    local target=""
-    
-    if [[ -n "$default" ]]; then
-        echo -ne "    ${C_PROMPT}${prompt} ${C_SHADOW}[${default}]${C_RESET}: " >&2
-    else
-        echo -ne "    ${C_PROMPT}${prompt}: ${C_RESET}" >&2
-    fi
-    
-    read -r target
-    
-    # Use default if empty
-    [[ -z "$target" ]] && target="$default"
-    
-    # Sanitize and return (echo to stdout, prompts went to stderr)
-    sanitize_target "$target"
-}
-
-# Get generic input with default value
-get_input() {
-    local prompt="${1:-Input}"
-    local default="${2:-}"
-    local input=""
-    
-    if [[ -n "$default" ]]; then
-        echo -ne "    ${C_PROMPT}${prompt} ${C_SHADOW}[${default}]${C_RESET}: " >&2
-    else
-        echo -ne "    ${C_PROMPT}${prompt}: ${C_RESET}" >&2
-    fi
-    
-    read -r input
-    
-    # Use default if empty
-    [[ -z "$input" ]] && input="$default"
-    
-    # Sanitize and return
-    strip_ansi "$input"
-}
-
-# Get password (hidden input)
-get_password_input() {
-    local prompt="${1:-Password}"
-    local password=""
-    
-    echo -ne "    ${C_PROMPT}${prompt}: ${C_RESET}" >&2
-    read -rs password
-    echo >&2  # Newline after hidden input
-    
-    echo "$password"
-}
-
-# Yes/No confirmation - returns 0 for yes, 1 for no
-confirm_action() {
-    local prompt="${1:-Continue?}"
-    local default="${2:-n}"
-    local response=""
-    
-    if [[ "$default" == "y" ]]; then
-        echo -ne "    ${C_PROMPT}${prompt} [Y/n]: ${C_RESET}" >&2
-    else
-        echo -ne "    ${C_PROMPT}${prompt} [y/N]: ${C_RESET}" >&2
-    fi
-    
-    read -r response
-    response="${response:-$default}"
-    
-    [[ "${response,,}" == "y" || "${response,,}" == "yes" ]]
-}
-
-# Dangerous operation confirmation (requires typing YES)
-confirm_dangerous() {
-    local message="${1:-This is a dangerous operation}"
-    local confirm_word="${2:-YES}"
-    local response=""
-    
-    echo >&2
-    echo -e "    ${C_RED}╔══════════════════════════════════════════════════════════════╗${C_RESET}" >&2
-    echo -e "    ${C_RED}║${C_RESET}  ${C_YELLOW}⚠️  WARNING: POTENTIALLY DANGEROUS OPERATION  ⚠️${C_RESET}            ${C_RED}║${C_RESET}" >&2
-    echo -e "    ${C_RED}╚══════════════════════════════════════════════════════════════╝${C_RESET}" >&2
-    echo >&2
-    echo -e "    ${C_SHADOW}$message${C_RESET}" >&2
-    echo >&2
-    echo -ne "    ${C_YELLOW}Type '${confirm_word}' to confirm: ${C_RESET}" >&2
-    read -r response
-    
-    [[ "$response" == "$confirm_word" ]]
-}
-
-#───────────────────────────────────────────────────────────────────────────────
-# TARGET VALIDATION FUNCTIONS
-#───────────────────────────────────────────────────────────────────────────────
-
-# Check if input is valid IPv4
-is_valid_ip() {
-    local ip="$1"
-    local regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
-    
-    if [[ ! "$ip" =~ $regex ]]; then
-        return 1
-    fi
-    
-    # Validate each octet
-    local IFS='.'
-    read -ra octets <<< "$ip"
-    for octet in "${octets[@]}"; do
-        ((octet > 255)) && return 1
-    done
-    
-    return 0
-}
-
-# Check if input is valid CIDR
-is_valid_cidr() {
-    local cidr="$1"
-    local regex='^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'
-    
-    if [[ ! "$cidr" =~ $regex ]]; then
-        return 1
-    fi
-    
-    local ip="${cidr%/*}"
-    local mask="${cidr#*/}"
-    
-    is_valid_ip "$ip" && ((mask >= 0 && mask <= 32))
-}
-
-# Check if input is valid MAC address
-is_valid_mac() {
-    local mac="$1"
-    [[ "$mac" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]
-}
-
-# Check if input is valid domain
-is_valid_domain() {
-    local domain="$1"
-    [[ "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]] && [[ "$domain" == *.* ]]
-}
-
-# Check if input is valid hostname (including localhost)
-is_valid_hostname() {
-    local host="$1"
-    [[ "$host" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*)?$ ]]
-}
-
-# Determine target type
-get_target_type() {
-    local target="$1"
-    
-    # Sanitize first
-    target=$(sanitize_target "$target")
-    
-    if [[ -z "$target" ]]; then
-        echo "empty"
-    elif is_valid_ip "$target"; then
-        echo "ip"
-    elif is_valid_cidr "$target"; then
-        echo "cidr"
-    elif is_valid_mac "$target"; then
-        echo "mac"
-    elif is_valid_domain "$target"; then
-        echo "domain"
-    elif is_valid_hostname "$target"; then
-        echo "hostname"
-    else
-        echo "unknown"
-    fi
-}
-
-# Validate target for specific tool
-validate_target_for_tool() {
-    local target="$1"
-    local tool="$2"
-    
-    local target_type
-    target_type=$(get_target_type "$target")
-    
-    case "$tool" in
-        netdiscover)
-            if [[ "$target_type" == "mac" ]]; then
-                log_error "netdiscover requires IP range (CIDR), not MAC address"
-                log_info "Use: 192.168.1.0/24 format"
-                return 1
-            elif [[ "$target_type" == "ip" ]]; then
-                log_warning "Single IP provided, converting to /24 subnet"
-                echo "${target%.*}.0/24"
-                return 0
-            elif [[ "$target_type" != "cidr" ]]; then
-                log_error "netdiscover requires CIDR notation (e.g., 192.168.1.0/24)"
-                return 1
-            fi
-            ;;
-        nmap|masscan|rustscan)
-            if [[ "$target_type" == "mac" ]]; then
-                log_error "$tool requires IP/CIDR/domain, not MAC address"
-                return 1
-            fi
-            ;;
-        hping3)
-            if [[ "$target_type" != "ip" && "$target_type" != "hostname" && "$target_type" != "domain" ]]; then
-                log_error "hping3 requires IP address or hostname"
-                return 1
-            fi
-            ;;
-        aireplay-ng|airodump-ng|mdk3|mdk4)
-            # These work with MAC addresses (BSSID) - that's expected
-            ;;
-        secretsdump|impacket*)
-            if [[ "$target_type" == "mac" ]]; then
-                log_error "Impacket tools require IP or hostname, not MAC address"
-                return 1
-            fi
-            ;;
-    esac
-    
-    echo "$target"
-    return 0
-}
 
 # shellcheck disable=SC2016
 HOSTAPD_TEMPLATE='interface=${IFACE}
@@ -609,6 +73,61 @@ server=8.8.8.8
 log-queries
 log-dhcp
 address=/#/192.168.1.1'
+
+#═══════════════════════════════════════════════════════════════════════════════
+# COLOR PALETTE - Blue/Red Team
+#═══════════════════════════════════════════════════════════════════════════════
+
+if [[ -t 1 ]] && [[ "${NO_COLOR:-}" != "1" ]]; then
+    readonly C_RESET=$'\033[0m'
+    readonly C_BOLD=$'\033[1m'
+    readonly C_DIM=$'\033[2m'
+
+    readonly C_RED=$'\033[38;5;196m'
+    readonly C_BLOOD=$'\033[38;5;124m'
+    readonly C_FIRE=$'\033[38;5;202m'
+
+    readonly C_BLUE=$'\033[38;5;39m'
+    readonly C_CYAN=$'\033[38;5;51m'
+    readonly C_STEEL=$'\033[38;5;67m'
+
+    readonly C_GREEN=$'\033[38;5;46m'
+    readonly C_YELLOW=$'\033[38;5;226m'
+    readonly C_PURPLE=$'\033[38;5;135m'
+    readonly C_ORANGE=$'\033[38;5;208m'
+
+    readonly C_BORDER=$'\033[38;5;240m'
+    readonly C_SHADOW=$'\033[38;5;244m'
+    readonly C_GHOST=$'\033[38;5;250m'
+    readonly C_WHITE=$'\033[38;5;255m'
+else
+    readonly C_RESET="" C_BOLD="" C_DIM=""
+    readonly C_RED="" C_BLOOD="" C_FIRE=""
+    readonly C_BLUE="" C_CYAN="" C_STEEL=""
+    readonly C_GREEN="" C_YELLOW="" C_PURPLE="" C_ORANGE=""
+    readonly C_BORDER="" C_SHADOW="" C_GHOST="" C_WHITE=""
+fi
+
+# shellcheck disable=SC2034
+readonly C_SUCCESS="${C_GREEN}"
+# shellcheck disable=SC2034
+readonly C_ERROR="${C_RED}"
+# shellcheck disable=SC2034
+readonly C_WARNING="${C_YELLOW}"
+# shellcheck disable=SC2034
+readonly C_INFO="${C_CYAN}"
+# shellcheck disable=SC2034
+readonly C_PROMPT="${C_BLUE}"
+
+# Legacy aliases to preserve existing styling
+# shellcheck disable=SC2034
+readonly C_VENOM="${C_GREEN}"
+# shellcheck disable=SC2034
+readonly C_SKULL="${C_WHITE}"
+# shellcheck disable=SC2034
+readonly C_GOLD="${C_ORANGE}"
+
+#═══════════════════════════════════════════════════════════════════════════════
 # TOOL ARSENAL - 60+ Capabilities
 #═══════════════════════════════════════════════════════════════════════════════
 
@@ -797,17 +316,71 @@ category_exists() {
 # LOGGING & TELEMETRY
 #═══════════════════════════════════════════════════════════════════════════════
 
+readonly LOG_DIR="${HOME}/.netreaper/logs"
+readonly LOG_FILE="${LOG_DIR}/netreaper_$(date +%Y%m%d).log"
+readonly AUDIT_FILE="${LOG_DIR}/audit_$(date +%Y%m%d).log"
 LOG_LEVEL="${LOG_LEVEL:-${NETREAPER_LOG_LEVEL:-INFO}}"
+VERBOSE="${VERBOSE:-${NETREAPER_VERBOSE:-false}}"
+
+declare -A LOG_PRIORITIES=(
+    [DEBUG]=0
+    [INFO]=1
+    [WARN]=2
+    [ERROR]=3
+    [FATAL]=4
+)
+
+init_logging() {
+    mkdir -p "$LOG_DIR"
+    touch "$LOG_FILE" "$AUDIT_FILE"
+    chmod 600 "$LOG_FILE" "$AUDIT_FILE" 2>/dev/null || true
+
+    log_debug "═══════════════════════════════════════════════════════"
+    log_debug "NETREAPER v${VERSION} started at $(date '+%Y-%m-%d %H:%M:%S')"
+    log_debug "User: $(whoami) | PID: $$ | TTY: $(tty)"
+    log_debug "═══════════════════════════════════════════════════════"
+}
+
+_log() {
+    local level="$1"
+    local color="$2"
+    local symbol="$3"
+    shift 3
+    local message="$*"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    local current_priority="${LOG_PRIORITIES[$LOG_LEVEL]:-1}"
+    local msg_priority="${LOG_PRIORITIES[$level]:-1}"
+
+    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+
+    if ((msg_priority >= current_priority)) && [[ "$QUIET" -ne 1 ]]; then
+        echo -e "    ${color}[${symbol}]${C_RESET} $message"
+    fi
+}
+
+log_debug()   { _log "DEBUG" "$C_SHADOW" "~" "$@"; }
+log_info()    { _log "INFO"  "$C_CYAN"   "*" "$@"; }
+log_success() { _log "INFO"  "$C_GREEN"  "✓" "$@"; }
+log_warning() { _log "WARN"  "$C_YELLOW" "!" "$@"; }
+log_error()   { _log "ERROR" "$C_RED"    "✗" "$@"; }
+log_fatal()   { _log "FATAL" "$C_BLOOD"  "☠" "$@"; exit 1; }
+log_attack()  { _log "ATTACK" "$C_BLOOD" "⚔" "$@"; }
+log_target()  { _log "TARGET" "$C_FIRE"  "◎" "$@"; }
+log_loot()    { _log "LOOT"   "$C_GOLD"  "★" "$@"; }
+
+log_audit() {
+    local action="$1" target="$2" result="$3"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] [AUDIT] action=$action target=$target result=$result user=$(whoami) ip=$(hostname -I | awk '{print $1}')" >> "$AUDIT_FILE"
+}
 
 show_spinner() {
     local pid=$1
     local message="${2:-Processing}"
     local spinchars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-
-    if [[ "$QUIET" == "true" || "$QUIET" == "1" ]]; then
-        wait "$pid" 2>/dev/null
-        return
-    fi
 
     while kill -0 "$pid" 2>/dev/null; do
         for ((i=0; i<${#spinchars}; i++)); do
@@ -824,10 +397,6 @@ show_progress() {
     local filled=$((pct * width / 100))
     local empty=$((width - filled))
 
-    if [[ "$QUIET" == "true" || "$QUIET" == "1" ]]; then
-        return
-    fi
-
     echo -ne "\r    ${C_SHADOW}$message: ${C_RESET}["
     echo -ne "${C_GREEN}"
     printf '█%.0s' $(seq 1 $filled 2>/dev/null)
@@ -835,6 +404,24 @@ show_progress() {
     printf '░%.0s' $(seq 1 $empty 2>/dev/null)
     echo -ne "${C_RESET}] ${pct}%"
     ((current == total)) && echo
+}
+
+declare -g OPERATION_START_TIME
+start_timer() { OPERATION_START_TIME=$(date +%s%N); }
+end_timer() {
+    local end_time=$(date +%s%N)
+    local duration=$(((end_time - OPERATION_START_TIME) / 1000000))
+    if ((duration < 1000)); then
+        echo "${duration}ms"
+    elif ((duration < 60000)); then
+        echo "$((duration / 1000)).$((duration % 1000 / 100))s"
+    else
+        echo "$((duration / 60000))m $((duration % 60000 / 1000))s"
+    fi
+}
+
+log_verbose() {
+    [[ "$VERBOSE" == true ]] && log_debug "$@"
 }
 
 run_cmd() {
@@ -1019,10 +606,7 @@ get_open_ports() {
 
 typewriter() {
     local text="${1:-}" delay="${2:-0.015}"
-    if [[ "$QUIET" == "true" || "$QUIET" == "1" ]]; then
-        echo "$text"
-        return
-    fi
+    [[ "$QUIET" -eq 1 ]] && { echo "$text"; return; }
     for ((i=0; i<${#text}; i++)); do
         printf '%s' "${text:$i:1}"
         sleep "$delay"
@@ -1683,10 +1267,9 @@ prompt_input() {
     local message="$1" validator="${2:-}" default="${3:-}" display_default=""
     [[ -n "$default" ]] && display_default=" ${C_SHADOW}[$default]${C_RESET}"
     while true; do
-        echo -ne "    ${C_PROMPT}$message${display_default}: ${C_RESET}" >&2
+        echo -ne "    ${C_PROMPT}$message${display_default}: ${C_RESET}"
         read -r input
         input="${input:-$default}"
-        input=$(strip_ansi "$input")
         if [[ -z "$input" ]]; then
             log_warning "Input required"
             continue
@@ -1890,9 +1473,9 @@ validate_target() {
         echo
         echo -e "    ${C_FIRE}⚠  EXTERNAL TARGET DETECTED${C_RESET}"
         log_target "$target"
-        if ! confirm_action "Do you have written authorization?" "n"; then
-            return 1
-        fi
+        echo -ne "    ${C_GHOST}Do you have written authorization? [yes/no]: ${C_RESET}"
+        read -r confirm
+        [[ "${confirm,,}" == "yes" ]] || return 1
     fi
     return 0
 }
@@ -1905,9 +1488,9 @@ get_target() {
     echo -e "    ${C_CYAN}╚═══════════════════════════════════════════════════════════════╝${C_RESET}"
     echo
 
-    if [[ -f "${HISTORY_FILE}" ]]; then
+    if [[ -f "${CONFIG_DIR}/history" ]]; then
         echo -e "    ${C_SHADOW}Recent targets:${C_RESET}"
-        tail -5 "${HISTORY_FILE}" | while read -r t; do
+        tail -5 "${CONFIG_DIR}/history" | while read -r t; do
             echo -e "      ${C_GHOST}• $t${C_RESET}"
         done
         echo
@@ -1930,20 +1513,19 @@ get_target() {
     esac
 
     local target
-    target=$(get_target_input "Enter target") || return 1
+    target=$(prompt_input "Enter target" "$validator") || return 1
 
-    TARGET="$(sanitize_target "$target")"
+    TARGET="$target"
     TARGET="$(resolve_target_alias "$TARGET")"
     validate_target "$TARGET" || return 1
     record_history "$TARGET"
 
     local max_hist
     max_hist=$(config_get MAX_HISTORY 50)
-    tail -n "$max_hist" "$HISTORY_FILE" > "${HISTORY_FILE}.tmp" 2>/dev/null || true
-    mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE" 2>/dev/null || true
+    tail -n "$max_hist" "${CONFIG_DIR}/history" > "${CONFIG_DIR}/history.tmp" 2>/dev/null || true
+    mv "${CONFIG_DIR}/history.tmp" "${CONFIG_DIR}/history" 2>/dev/null || true
 
-    local safe_target
-    safe_target=$(sanitize_filename "$TARGET")
+    local safe_target="${TARGET//[^a-zA-Z0-9._-]/_}"
     OUTPUT_FILE="${OUTPUT_DIR}/${safe_target}_$(date +%Y%m%d_%H%M%S)"
     return 0
 }
@@ -1953,8 +1535,9 @@ get_interface() {
     echo -e "    ${C_GHOST}Available interfaces:${C_RESET}"
     ip -o link show | awk -F': ' '{print "      " $2}' | grep -v "^lo$"
     echo
-    IFACE=$(get_input "Enter interface" "$DEFAULT_INTERFACE")
-    IFACE=$(sanitize_target "$IFACE")
+    echo -ne "    ${C_FIRE}◎ INTERFACE [${DEFAULT_INTERFACE}]: ${C_RESET}"
+    read -r IFACE
+    IFACE="${IFACE:-$DEFAULT_INTERFACE}"
     
     [[ -z "$IFACE" ]] && { log_error "No interface specified"; return 1; }
     ip link show "$IFACE" &>/dev/null || { log_error "Interface not found: $IFACE"; return 1; }
@@ -3293,25 +2876,14 @@ run_ping_sweep() {
 run_netdiscover() {
     check_tool "netdiscover" || return 1
     require_root || return 1
-
-    local target_input="${1:-$TARGET}"
-    if [[ -z "$target_input" ]]; then
-        target_input=$(get_target_input "Enter IP range (CIDR, e.g., 192.168.1.0/24)")
-    fi
-
-    local validated_target
-    validated_target=$(validate_target_for_tool "$target_input" "netdiscover") || return 1
-    TARGET="$validated_target"
-
-    operation_header "Network Discovery" "$TARGET"
-    start_timer_ms
-
-    log_command_preview "netdiscover -r $TARGET -P -N"
-    timeout 30 netdiscover -r "$TARGET" -P -N
-
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Discovery complete" "Duration: $duration"
+    operation_header "Netdiscover" "$TARGET"
+    check_target_reachable "$TARGET" || true
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_command_preview "timeout 30 netdiscover -r \"${TARGET}\" -P"
+    log_info "Running netdiscover (30s window)..."
+    timeout 30 netdiscover -r "$TARGET" -P | tee -a "${LOG_DIR}/netdiscover.log"
+    operation_summary "Netdiscover" "$start_ms" "${LOG_DIR}/netdiscover.log"
 }
 
 run_os_detect() {
@@ -3530,12 +3102,14 @@ cmd_monitor_mode() {
         echo -e "    ${C_GHOST}[1]${C_RESET} Enable monitor mode"
         echo -e "    ${C_GHOST}[2]${C_RESET} Disable monitor mode"
         echo
-        choice=$(get_input "Select option" "1")
+        echo -ne "    ${C_FIRE}▶ ${C_RESET}"
+        read -r choice
     fi
     
     case "$choice" in
         1)
-            start_timer_ms
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_attack "Enabling monitor mode on $IFACE"
             log_command_preview "airmon-ng check kill && airmon-ng start \"${IFACE}\""
             if check_tool "airmon-ng" 2>/dev/null; then
@@ -3547,12 +3121,11 @@ cmd_monitor_mode() {
                 iw dev "$IFACE" set type monitor
                 ip link set "$IFACE" up
             fi
-            local duration
-            duration=$(end_timer_ms)
-            operation_summary "success" "Monitor mode enabled" "Duration: $duration"
+            operation_summary "Monitor mode enabled" "$start_ms" "${LOG_DIR}/netreaper.log"
             ;;
         2)
-            start_timer_ms
+            local start_ms
+            start_ms=$(start_timer_ms)
             log_info "Disabling monitor mode on $IFACE"
             if check_tool "airmon-ng" 2>/dev/null; then
                 log_command_preview "airmon-ng stop \"${IFACE}\""
@@ -3564,9 +3137,7 @@ cmd_monitor_mode() {
                 iw dev "$IFACE" set type managed
                 ip link set "$IFACE" up
             fi
-            local duration
-            duration=$(end_timer_ms)
-            operation_summary "success" "Monitor mode disabled" "Duration: $duration"
+            operation_summary "Monitor mode disabled" "$start_ms" "${LOG_DIR}/netreaper.log"
             ;;
     esac
 }
@@ -3576,29 +3147,27 @@ cmd_wifi_scan() {
     check_tool "airodump-ng" || return 1
     get_interface || return 1
     operation_header "WiFi scan" "$IFACE"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_command_preview "airodump-ng \"${IFACE}\""
     log_attack "Scanning WiFi networks on $IFACE"
     echo -e "    ${C_SHADOW}Press Ctrl+C to stop${C_RESET}"
     echo
     airodump-ng "$IFACE"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "WiFi scan" "Duration: $duration"
+    operation_summary "WiFi scan" "$start_ms" "${LOG_DIR}/wifi_scan.log"
 }
 
 cmd_wifite() {
     require_root || return 1
     check_tool "wifite" || return 1
     operation_header "Wifite" "auto"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_command_preview "wifite --kill"
     log_attack "Launching Wifite"
     echo
     wifite --kill
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Wifite" "Duration: $duration"
+    operation_summary "Wifite" "$start_ms" "${LOG_DIR}/wifite.log"
 }
 
 cmd_deauth() {
@@ -3606,27 +3175,17 @@ cmd_deauth() {
     check_tool "aireplay-ng" || return 1
     get_interface || return 1
     
-    local bssid
-    bssid=$(get_input "Target BSSID (AP MAC)" "")
-    bssid=$(sanitize_target "$bssid")
-    if [[ -z "$bssid" ]] || ! is_valid_mac "$bssid"; then
-        log_error "Valid BSSID required"
-        return 1
-    fi
-
-    local client
-    client=$(get_input "Client MAC (or 'all')" "all")
-    client=$(sanitize_target "$client")
-    if [[ "$client" != "all" ]] && ! is_valid_mac "$client"; then
-        log_error "Client MAC must be 'all' or a valid MAC"
-        return 1
-    fi
-
-    local count
-    count=$(get_input "Number of deauths (0=infinite)" "10")
+    echo -ne "    ${C_GHOST}Target BSSID (AP MAC): ${C_RESET}"
+    read -r bssid
+    echo -ne "    ${C_GHOST}Client MAC (or 'all'): ${C_RESET}"
+    read -r client
+    echo -ne "    ${C_GHOST}Number of deauths (0=infinite): ${C_RESET}"
+    read -r count
+    count="${count:-10}"
     
     operation_header "Deauth" "$bssid"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Deauth attack: BSSID=$bssid Client=$client Count=$count"
     echo
     
@@ -3637,68 +3196,56 @@ cmd_deauth() {
         log_command_preview "aireplay-ng --deauth ${count} -a ${bssid} -c ${client} ${IFACE}"
         aireplay-ng --deauth "$count" -a "$bssid" -c "$client" "$IFACE"
     fi
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Deauth attack" "Duration: $duration"
+    operation_summary "Deauth attack" "$start_ms" "${LOG_DIR}/wifi_deauth.log"
 }
 
 cmd_wps_attack() {
     require_root || return 1
     get_interface || return 1
     
-    local bssid
-    bssid=$(get_input "Target BSSID" "")
-    bssid=$(sanitize_target "$bssid")
-    if [[ -z "$bssid" ]] || ! is_valid_mac "$bssid"; then
-        log_error "Valid BSSID required"
-        return 1
-    fi
-
-    local channel
-    channel=$(get_input "Channel" "")
-    channel=$(sanitize_target "$channel")
+    echo -ne "    ${C_GHOST}Target BSSID: ${C_RESET}"
+    read -r bssid
+    echo -ne "    ${C_GHOST}Channel: ${C_RESET}"
+    read -r channel
     
     echo
     echo -e "    ${C_GHOST}[1]${C_RESET} Reaver"
     echo -e "    ${C_GHOST}[2]${C_RESET} Bully"
     echo -e "    ${C_GHOST}[3]${C_RESET} Pixiewps (Pixie Dust)"
     echo
-    local choice
-    choice=$(get_input "Select attack" "1")
+    echo -ne "    ${C_FIRE}▶ ${C_RESET}"
+    read -r choice
     
     case "$choice" in
         1)
             check_tool "reaver" || return 1
-            start_timer_ms
+            local start_ms
+            start_ms=$(start_timer_ms)
             operation_header "Reaver WPS" "$bssid"
             log_attack "Reaver WPS attack on $bssid"
             log_command_preview "reaver -i \"${IFACE}\" -b \"${bssid}\" -c \"${channel}\" -vv"
             reaver -i "$IFACE" -b "$bssid" -c "$channel" -vv
-            local duration
-            duration=$(end_timer_ms)
-            operation_summary "success" "Reaver WPS" "Duration: $duration"
+            operation_summary "Reaver WPS" "$start_ms" "${LOG_DIR}/wps.log"
             ;;
         2)
             check_tool "bully" || return 1
-            start_timer_ms
+            local start_ms
+            start_ms=$(start_timer_ms)
             operation_header "Bully WPS" "$bssid"
             log_attack "Bully WPS attack on $bssid"
             log_command_preview "bully -b \"${bssid}\" -c \"${channel}\" \"${IFACE}\""
             bully -b "$bssid" -c "$channel" "$IFACE"
-            local duration
-            duration=$(end_timer_ms)
-            operation_summary "success" "Bully WPS" "Duration: $duration"
+            operation_summary "Bully WPS" "$start_ms" "${LOG_DIR}/wps.log"
             ;;
         3)
             check_tool "reaver" || return 1
-            start_timer_ms
+            local start_ms
+            start_ms=$(start_timer_ms)
             operation_header "Pixie Dust" "$bssid"
             log_attack "Pixie Dust attack on $bssid"
             log_command_preview "reaver -i \"${IFACE}\" -b \"${bssid}\" -c \"${channel}\" -K 1 -vv"
             reaver -i "$IFACE" -b "$bssid" -c "$channel" -K 1 -vv
-            local duration
-            duration=$(end_timer_ms)
-            operation_summary "success" "Pixie Dust" "Duration: $duration"
+            operation_summary "Pixie Dust" "$start_ms" "${LOG_DIR}/wps.log"
             ;;
     esac
 }
@@ -3708,36 +3255,23 @@ cmd_handshake_capture() {
     check_tool "airodump-ng" || return 1
     get_interface || return 1
     
-    local bssid
-    bssid=$(get_input "Target BSSID" "")
-    bssid=$(sanitize_target "$bssid")
-    if [[ -z "$bssid" ]] || ! is_valid_mac "$bssid"; then
-        log_error "Valid BSSID required"
-        return 1
-    fi
-
-    local channel
-    channel=$(get_input "Channel" "")
-    channel=$(sanitize_target "$channel")
-
-    local outfile
-    outfile=$(get_input "Output filename" "${LOOT_DIR}/handshake_$(date +%Y%m%d_%H%M%S)")
-    outfile="${outfile%.*}"
+    echo -ne "    ${C_GHOST}Target BSSID: ${C_RESET}"
+    read -r bssid
+    echo -ne "    ${C_GHOST}Channel: ${C_RESET}"
+    read -r channel
+    echo -ne "    ${C_GHOST}Output filename: ${C_RESET}"
+    read -r outfile
     outfile="${outfile:-${LOOT_DIR}/handshake_$(date +%Y%m%d_%H%M%S)}"
-    local safe_out
-    safe_out=$(sanitize_filename "$outfile")
-    outfile="${LOOT_DIR}/${safe_out}"
     
     operation_header "Handshake capture" "$bssid"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Capturing handshake from $bssid on channel $channel"
     echo -e "    ${C_SHADOW}Waiting for handshake... (deauth clients to speed up)${C_RESET}"
     echo
     log_command_preview "airodump-ng --bssid \"${bssid}\" -c \"${channel}\" -w \"${outfile}\" \"${IFACE}\""
     airodump-ng --bssid "$bssid" -c "$channel" -w "$outfile" "$IFACE"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Handshake capture" "Output: ${outfile}.cap\nDuration: $duration"
+    operation_summary "Handshake capture" "$start_ms" "$outfile.cap"
 }
 
 cmd_channel_hop() {
@@ -3761,26 +3295,18 @@ cmd_client_scan() {
     check_tool "airodump-ng" || return 1
     get_interface || return 1
     
-    local bssid
-    bssid=$(get_input "Target BSSID" "")
-    bssid=$(sanitize_target "$bssid")
-    if [[ -z "$bssid" ]] || ! is_valid_mac "$bssid"; then
-        log_error "Valid BSSID required"
-        return 1
-    fi
-
-    local channel
-    channel=$(get_input "Channel" "")
-    channel=$(sanitize_target "$channel")
+    echo -ne "    ${C_GHOST}Target BSSID: ${C_RESET}"
+    read -r bssid
+    echo -ne "    ${C_GHOST}Channel: ${C_RESET}"
+    read -r channel
     
     log_info "Scanning clients on $bssid"
     echo
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_command_preview "airodump-ng --bssid \"${bssid}\" -c \"${channel}\" \"${IFACE}\""
     airodump-ng --bssid "$bssid" -c "$channel" "$IFACE"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Client scan" "Duration: $duration"
+    operation_summary "Client scan" "$start_ms" "${LOG_DIR}/wifi_clients.log"
 }
 
 cmd_hidden_ssid() {
@@ -3814,39 +3340,36 @@ cmd_signal_check() {
 
 cmd_aircrack_dict() {
     check_tool "aircrack-ng" || return 1
-    local capfile
-    capfile=$(get_input "Capture file (.cap/.pcapng)" "")
+    echo -ne "    ${C_GHOST}Capture file (.cap/.pcapng): ${C_RESET}"
+    read -r capfile
     [[ -z "$capfile" ]] && { log_error "Capture file required"; return 1; }
-
-    local wordlist
-    wordlist=$(get_input "Wordlist" "/usr/share/wordlists/rockyou.txt")
+    echo -ne "    ${C_GHOST}Wordlist [/usr/share/wordlists/rockyou.txt]: ${C_RESET}"
+    read -r wordlist
+    wordlist="${wordlist:-/usr/share/wordlists/rockyou.txt}"
     operation_header "Aircrack dictionary" "$capfile"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Aircrack-ng dictionary attack on $capfile"
     log_command_preview "aircrack-ng -w \"${wordlist}\" \"${capfile}\""
     aircrack-ng -w "$wordlist" "$capfile" | tee -a "${LOG_DIR}/aircrack.log"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Aircrack dictionary" "Duration: $duration"
+    operation_summary "Aircrack dictionary" "$start_ms" "${LOG_DIR}/aircrack.log"
 }
 
 cmd_aircrack_wordlist() {
     check_tool "aircrack-ng" || return 1
-    local capfile
-    capfile=$(get_input "Capture file (.cap/.pcapng)" "")
+    echo -ne "    ${C_GHOST}Capture file (.cap/.pcapng): ${C_RESET}"
+    read -r capfile
     [[ -z "$capfile" ]] && { log_error "Capture file required"; return 1; }
-
-    local wordlist
-    wordlist=$(get_input "Custom wordlist" "")
+    echo -ne "    ${C_GHOST}Custom wordlist: ${C_RESET}"
+    read -r wordlist
     [[ -z "$wordlist" ]] && { log_error "Wordlist required"; return 1; }
     operation_header "Aircrack custom" "$capfile"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Aircrack-ng custom wordlist on $capfile"
     log_command_preview "aircrack-ng -w \"${wordlist}\" \"${capfile}\""
     aircrack-ng -w "$wordlist" "$capfile" | tee -a "${LOG_DIR}/aircrack.log"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Aircrack custom" "Duration: $duration"
+    operation_summary "Aircrack custom" "$start_ms" "${LOG_DIR}/aircrack.log"
 }
 
 cmd_convert_hashcat() {
@@ -3860,18 +3383,16 @@ cmd_convert_hashcat() {
 
     local capfile="${1:-}"
     if [[ -z "$capfile" ]]; then
-        capfile=$(get_input "Capture file (.cap/.pcapng)" "")
+        echo -ne "    ${C_GHOST}Capture file (.cap/.pcapng): ${C_RESET}"
+        read -r capfile
     fi
-    capfile=$(strip_ansi "$capfile")
     [[ -z "$capfile" ]] && { log_error "Capture file required"; return 1; }
 
     mkdir -p "$LOOT_DIR"
     local base_name
     base_name="$(basename "$capfile")"
     local out_file
-    local safe_base
-    safe_base=$(sanitize_filename "${base_name%.*}")
-    out_file="${LOOT_DIR}/${safe_base}_$(date +%Y%m%d_%H%M%S).hc22000"
+    out_file="${LOOT_DIR}/${base_name%.*}_$(date +%Y%m%d_%H%M%S).hc22000"
 
     if [[ "$converter" == "hcxpcapngtool" ]]; then
         log_info "Converting with hcxpcapngtool"
@@ -3890,94 +3411,94 @@ cmd_convert_hashcat() {
 
 cmd_hashcat_gpu() {
     check_tool "hashcat" || return 1
-    local capfile
-    capfile=$(get_input "Capture/hash file (.cap/.hc22000/.hccapx)" "")
+    echo -ne "    ${C_GHOST}Capture/hash file (.cap/.hc22000/.hccapx): ${C_RESET}"
+    read -r capfile
     [[ -z "$capfile" ]] && { log_error "Capture/hash file required"; return 1; }
     local hashfile="$capfile"
     if [[ "$capfile" =~ \.cap$|\.pcap$|\.pcapng$ ]]; then
         hashfile=$(cmd_convert_hashcat "$capfile" | tail -n 1)
         [[ -z "$hashfile" ]] && { log_error "Conversion failed"; return 1; }
     fi
-    local wordlist
-    wordlist=$(get_input "Wordlist" "/usr/share/wordlists/rockyou.txt")
+    echo -ne "    ${C_GHOST}Wordlist [/usr/share/wordlists/rockyou.txt]: ${C_RESET}"
+    read -r wordlist
+    wordlist="${wordlist:-/usr/share/wordlists/rockyou.txt}"
     operation_header "Hashcat GPU" "$hashfile"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Hashcat GPU attack on $hashfile"
     log_command_preview "hashcat -m 22000 -a 0 \"${hashfile}\" \"${wordlist}\" --status --status-timer=15 --potfile-path \"${LOG_DIR}/hashcat.pot\" --session netreaper"
     hashcat -m 22000 -a 0 "$hashfile" "$wordlist" --status --status-timer=15 --potfile-path "${LOG_DIR}/hashcat.pot" --session netreaper | tee -a "${LOG_DIR}/hashcat.log"
     hashcat --show -m 22000 "$hashfile" --potfile-path "${LOG_DIR}/hashcat.pot" | tee -a "${LOG_DIR}/hashcat.log"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Hashcat GPU" "Duration: $duration"
+    operation_summary "Hashcat GPU" "$start_ms" "${LOG_DIR}/hashcat.log"
 }
 
 cmd_hashcat_rules() {
     check_tool "hashcat" || return 1
-    local capfile
-    capfile=$(get_input "Capture/hash file (.cap/.hc22000/.hccapx)" "")
+    echo -ne "    ${C_GHOST}Capture/hash file (.cap/.hc22000/.hccapx): ${C_RESET}"
+    read -r capfile
     [[ -z "$capfile" ]] && { log_error "Capture/hash file required"; return 1; }
     local hashfile="$capfile"
     if [[ "$capfile" =~ \.cap$|\.pcap$|\.pcapng$ ]]; then
         hashfile=$(cmd_convert_hashcat "$capfile" | tail -n 1)
         [[ -z "$hashfile" ]] && { log_error "Conversion failed"; return 1; }
     fi
-    local wordlist
-    wordlist=$(get_input "Wordlist" "")
+    echo -ne "    ${C_GHOST}Wordlist: ${C_RESET}"
+    read -r wordlist
     [[ -z "$wordlist" ]] && { log_error "Wordlist required"; return 1; }
-    local rules
-    rules=$(get_input "Rules file" "/usr/share/hashcat/rules/best64.rule")
+    echo -ne "    ${C_GHOST}Rules file [/usr/share/hashcat/rules/best64.rule]: ${C_RESET}"
+    read -r rules
+    rules="${rules:-/usr/share/hashcat/rules/best64.rule}"
     operation_header "Hashcat rules" "$hashfile"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Hashcat rules attack on $hashfile using $rules"
     log_command_preview "hashcat -m 22000 -a 0 \"${hashfile}\" \"${wordlist}\" -r \"${rules}\" --status --status-timer=15 --potfile-path \"${LOG_DIR}/hashcat.pot\" --session netreaper"
     hashcat -m 22000 -a 0 "$hashfile" "$wordlist" -r "$rules" --status --status-timer=15 --potfile-path "${LOG_DIR}/hashcat.pot" --session netreaper | tee -a "${LOG_DIR}/hashcat.log"
     hashcat --show -m 22000 "$hashfile" --potfile-path "${LOG_DIR}/hashcat.pot" | tee -a "${LOG_DIR}/hashcat.log"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Hashcat rules" "Duration: $duration"
+    operation_summary "Hashcat rules" "$start_ms" "${LOG_DIR}/hashcat.log"
 }
 
 cmd_john_the_ripper() {
     check_tool "john" || return 1
     check_tool "hccap2john" || return 1
-    local capfile
-    capfile=$(get_input "Capture/hash file (.cap/.hccapx/.hc22000)" "")
+    echo -ne "    ${C_GHOST}Capture/hash file (.cap/.hccapx/.hc22000): ${C_RESET}"
+    read -r capfile
     [[ -z "$capfile" ]] && { log_error "Capture/hash file required"; return 1; }
-    local wordlist
-    wordlist=$(get_input "Wordlist" "/usr/share/wordlists/rockyou.txt")
+    echo -ne "    ${C_GHOST}Wordlist [/usr/share/wordlists/rockyou.txt]: ${C_RESET}"
+    read -r wordlist
+    wordlist="${wordlist:-/usr/share/wordlists/rockyou.txt}"
 
     local john_hash
     john_hash="${LOOT_DIR}/john_$(date +%Y%m%d_%H%M%S).hash"
     hccap2john "$capfile" > "$john_hash"
     operation_header "John the Ripper" "$capfile"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "John the Ripper on $john_hash"
     log_command_preview "john --wordlist=\"${wordlist}\" \"${john_hash}\""
     john --wordlist="$wordlist" "$john_hash" | tee -a "${LOG_DIR}/john.log"
     john --show "$john_hash" | tee -a "${LOG_DIR}/john.log"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "John the Ripper" "Duration: $duration"
+    operation_summary "John the Ripper" "$start_ms" "${LOG_DIR}/john.log"
 }
 
 cmd_cowpatty() {
     check_tool "cowpatty" || return 1
-    local capfile
-    capfile=$(get_input "Capture file (.cap)" "")
+    echo -ne "    ${C_GHOST}Capture file (.cap): ${C_RESET}"
+    read -r capfile
     [[ -z "$capfile" ]] && { log_error "Capture file required"; return 1; }
-    local ssid
-    ssid=$(get_input "SSID" "")
+    echo -ne "    ${C_GHOST}SSID: ${C_RESET}"
+    read -r ssid
     [[ -z "$ssid" ]] && { log_error "SSID required"; return 1; }
-    local wordlist
-    wordlist=$(get_input "Wordlist" "/usr/share/wordlists/rockyou.txt")
+    echo -ne "    ${C_GHOST}Wordlist [/usr/share/wordlists/rockyou.txt]: ${C_RESET}"
+    read -r wordlist
+    wordlist="${wordlist:-/usr/share/wordlists/rockyou.txt}"
     operation_header "Cowpatty" "$ssid"
-    start_timer_ms
+    local start_ms
+    start_ms=$(start_timer_ms)
     log_attack "Cowpatty WPA crack on $ssid"
     log_command_preview "cowpatty -r \"${capfile}\" -s \"${ssid}\" -f \"${wordlist}\" -2"
     cowpatty -r "$capfile" -s "$ssid" -f "$wordlist" -2 | tee -a "${LOG_DIR}/cowpatty.log"
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Cowpatty" "Duration: $duration"
+    operation_summary "Cowpatty" "$start_ms" "${LOG_DIR}/cowpatty.log"
 }
 
 cmd_bettercap_wifi() {
@@ -4349,42 +3870,23 @@ cmd_mimikatz() {
     if command -v impacket-secretsdump &>/dev/null; then
         secrets_cmd="impacket-secretsdump"
     fi
-
-    local target_input="${TARGET:-}"
-    if [[ -z "$target_input" ]]; then
-        target_input=$(get_target_input "Enter target IP/hostname")
-    fi
-    target_input=$(sanitize_target "$target_input")
-
-    local validated_target
-    validated_target=$(validate_target_for_tool "$target_input" "secretsdump") || return 1
-    TARGET="$validated_target"
-
-    local domain
-    domain=$(get_input "Domain" "WORKGROUP")
-    local user
-    user=$(get_input "Username" "Administrator")
-    local secret
-    secret=$(get_password_input "Password/NTLM hash")
-
-    operation_header "Impacket secretsdump" "$TARGET"
-    start_timer_ms
-
-    local safe_target
-    safe_target=$(sanitize_filename "$TARGET")
-    local out_file="${LOOT_DIR}/secrets_${safe_target}_$(date +%Y%m%d_%H%M%S).txt"
-
-    log_command_preview "$secrets_cmd ${domain}/${user}@${TARGET}"
-
-    if $secrets_cmd "${domain}/${user}:${secret}@${TARGET}" 2>&1 | tee "$out_file"; then
-        local duration
-        duration=$(end_timer_ms)
-        log_loot "Dump saved: $out_file"
-        operation_summary "success" "Secrets dumped" "Output: $out_file\nDuration: $duration"
-    else
-        operation_summary "failed" "secretsdump failed"
-        return 1
-    fi
+    get_target || return 1
+    echo -ne "    ${C_GHOST}Domain (blank for WORKGROUP): ${C_RESET}"
+    read -r domain
+    domain="${domain:-WORKGROUP}"
+    echo -ne "    ${C_GHOST}Username: ${C_RESET}"
+    read -r user
+    echo -ne "    ${C_GHOST}Password/NTLM hash: ${C_RESET}"
+    read -r secret
+    local out_file="${LOOT_DIR}/secrets_${TARGET//[^a-zA-Z0-9._-]/_}.txt"
+    operation_header "Secretsdump" "$TARGET"
+    local start_ms
+    start_ms=$(start_timer_ms)
+    log_attack "Impacket secretsdump against $TARGET"
+    log_command_preview "$secrets_cmd ${domain}/${user}:***@${TARGET} -outputfile ${out_file}"
+    $secrets_cmd "${domain}/${user}:${secret}@${TARGET}" -outputfile "$out_file"
+    log_loot "Dump saved: $out_file"
+    operation_summary "Secretsdump" "$start_ms" "$out_file"
 }
 
 cmd_impacket_scripts() {
@@ -4630,69 +4132,40 @@ cmd_iperf3() {
 cmd_hping3() {
     check_tool "hping3" || return 1
     require_root || return 1
-    local target_input="${TARGET:-}"
-    if [[ -z "$target_input" ]]; then
-        target_input=$(get_target_input "Enter target IP")
-    fi
-    target_input=$(sanitize_target "$target_input")
-
-    local validated_target
-    validated_target=$(validate_target_for_tool "$target_input" "hping3") || return 1
-    TARGET="$validated_target"
-
+    get_target || return 1
+    
     echo
     echo -e "    ${C_GHOST}[1]${C_RESET} SYN flood"
     echo -e "    ${C_GHOST}[2]${C_RESET} UDP flood"
     echo -e "    ${C_GHOST}[3]${C_RESET} ICMP flood"
     echo -e "    ${C_GHOST}[4]${C_RESET} Custom"
     echo
-    local choice
-    choice=$(get_input "Select attack type" "1")
-
-    local port count flags desc
-    count=$(get_input "Packet count" "1000")
-
+    echo -ne "    ${C_FIRE}▶ ${C_RESET}"
+    read -r choice
+    
+    echo -ne "    ${C_GHOST}Port (default 80): ${C_RESET}"
+    read -r port
+    port="${port:-80}"
+    
+    echo -ne "    ${C_GHOST}Packet count (default 1000): ${C_RESET}"
+    read -r count
+    count="${count:-1000}"
+    
+    log_attack "hping3 attack on $TARGET:$port"
+    
     case "$choice" in
-        1)
-            port=$(get_input "Port" "80")
-            flags="-S --flood -p ${port}"
-            desc="hping3 SYN"
-            ;;
-        2)
-            port=$(get_input "Port" "80")
-            flags="--udp --flood -p ${port}"
-            desc="hping3 UDP"
-            ;;
-        3)
-            flags="--icmp --flood"
-            desc="hping3 ICMP"
-            ;;
+        1) operation_header "hping3 SYN" "$TARGET"; log_command_preview "hping3 -S --flood -p ${port} -c ${count} ${TARGET}"; hping3 -S --flood -p "$port" -c "$count" "$TARGET" ;;
+        2) operation_header "hping3 UDP" "$TARGET"; log_command_preview "hping3 --udp --flood -p ${port} -c ${count} ${TARGET}"; hping3 --udp --flood -p "$port" -c "$count" "$TARGET" ;;
+        3) operation_header "hping3 ICMP" "$TARGET"; log_command_preview "hping3 --icmp --flood -c ${count} ${TARGET}"; hping3 --icmp --flood -c "$count" "$TARGET" ;;
         4)
-            flags=$(get_input "Custom flags (optional)" "")
-            desc="hping3 custom"
-            ;;
-        *)
-            port=$(get_input "Port" "80")
-            flags="-S --flood -p ${port}"
-            desc="hping3 SYN"
+            echo -ne "    ${C_GHOST}Custom flags: ${C_RESET}"
+            read -r flags
+            IFS=' ' read -r -a flag_array <<< "$flags"
+            operation_header "hping3 custom" "$TARGET"
+            log_command_preview "hping3 ${flag_array[*]} ${TARGET}"
+            hping3 "${flag_array[@]}" "$TARGET"
             ;;
     esac
-
-    operation_header "$desc" "$TARGET"
-    log_warning "This will send $count packets to $TARGET"
-    if ! confirm_action "Continue with attack?" "n"; then
-        log_info "Attack cancelled"
-        return 0
-    fi
-
-    start_timer_ms
-    log_attack "hping3 attack on $TARGET"
-    log_command_preview "hping3 -c $count $flags $TARGET"
-    hping3 -c "$count" $flags "$TARGET"
-
-    local duration
-    duration=$(end_timer_ms)
-    operation_summary "success" "Attack complete - $count packets sent" "Duration: $duration"
 }
 
 cmd_http_load() {
@@ -5743,7 +5216,7 @@ main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -v|--verbose) VERBOSE=true; LOG_LEVEL="DEBUG"; shift ;;
-            -q|--quiet) LOG_LEVEL="ERROR"; QUIET=true; shift ;;
+            -q|--quiet) LOG_LEVEL="ERROR"; QUIET=1; shift ;;
             --no-color) NO_COLOR=1; shift ;;
             --debug) LOG_LEVEL="DEBUG"; VERBOSE=true; shift ;;
             --version) echo "$SCRIPT_NAME v$VERSION ($CODENAME)"; exit 0 ;;

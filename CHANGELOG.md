@@ -2,6 +2,34 @@
 
 All notable changes to NETREAPER will be documented in this file.
 
+## [5.1.0] - 2025-12-06
+
+### Fixed
+- Added all missing core functions (operation_header, operation_summary, start_timer_ms, end_timer_ms, log_command_preview, log_audit)
+- Fixed critical input handling bug - prompts no longer captured in variable values
+- Fixed color/ANSI codes appearing in filenames
+- Fixed target validation for different tool types (MAC vs IP vs CIDR)
+- Fixed netdiscover rejecting MAC addresses with proper error message
+- Fixed hping3 input capture and validation
+- Fixed impacket secretsdump input handling and output paths
+- Added missing log_verbose() function
+- Ensured all directories created on startup
+- Fixed script structure order for proper function availability
+
+### Added
+- Safe input functions: get_target_input(), get_input(), get_password_input()
+- Confirmation functions: confirm_action(), confirm_dangerous()
+- Input sanitization: strip_ansi(), sanitize_filename(), sanitize_target()
+- Target validation: is_valid_ip(), is_valid_cidr(), is_valid_mac(), is_valid_domain()
+- Target type detection: get_target_type(), validate_target_for_tool()
+- Audit logging with log_audit()
+- Verbose logging with log_verbose()
+
+### Changed
+- Reorganized script structure for proper function loading order
+- Improved error messages for invalid target types
+- Enhanced logging to include file output
+
 ## [5.0.0] - Phantom Protocol - 2024-12-05
 
 ### Added

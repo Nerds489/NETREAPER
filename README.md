@@ -13,7 +13,7 @@
 
 ### *"Some tools scan. Some tools attack. I do both."*
 
-[![Version](https://img.shields.io/badge/VERSION-5.0.0_PHANTOM_PROTOCOL-ff0040?style=for-the-badge&logo=ghost&logoColor=white)](https://github.com/Nerds489/NETREAPER)
+[![Version](https://img.shields.io/badge/VERSION-5.1.0_PHANTOM_PROTOCOL-ff0040?style=for-the-badge&logo=ghost&logoColor=white)](https://github.com/Nerds489/NETREAPER)
 [![License](https://img.shields.io/badge/LICENSE-APACHE_2.0-00d4ff?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](LICENSE)
 [![Platform](https://img.shields.io/badge/PLATFORM-LINUX-ffaa00?style=for-the-badge&logo=linux&logoColor=white)](https://www.linux.org/)
 [![Bash](https://img.shields.io/badge/BASH-5.0+-40c057?style=for-the-badge&logo=gnubash&logoColor=white)](https://www.gnu.org/software/bash/)
@@ -242,7 +242,9 @@ netreaper --version
 - [x] v4.1 - README overhaul, style updates
 - [x] v4.3 - OFFTRACKMEDIA licensing, GitHub templates
 - [x] v5.0 - Phantom Protocol UX/logging/wizards overhaul
-- [ ] v5.0 - Plugin architecture, custom modules
+- [x] v5.1 - Critical bug fixes, input sanitization, missing functions
+- [ ] v5.5 - Profile system, favorites, aliases
+- [ ] v6.0 - Plugin architecture, custom modules
 
 ---
 
