@@ -1,192 +1,132 @@
-"""Monitor mode management for wireless interfaces."""
-import asyncio
-import re
-from pathlib import Path
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Nerds489
+"""Monitor-mode lifecycle as a small state machine.
 
-from netreaper.core.exceptions import PermissionError, NetreaperError
+Fixes the classic wireless-tool bugs: the real monitor interface is resolved by
+diffing ``iw dev`` before/after (works for the ``wlan0``->``wlan0mon`` rename AND
+for mt76/rtl8812au drivers that keep the same name), and teardown is idempotent
+and runs on exit, restoring managed mode and NetworkManager if we stopped it.
+All shell-outs go through the ProcessRunner seam.
+"""
+from __future__ import annotations
+
+import asyncio
+import atexit
+import re
+from enum import Enum
+
+from netreaper.core.exceptions import NetreaperError
 from netreaper.core.logging import get_logger
+from netreaper.core.process import ProcessRunner, get_process_runner
 from netreaper.detection.interfaces import NetworkInterface, validate_wireless_interface
+from netreaper.safety.scope import Tier
 
 logger = get_logger(__name__)
 
 
 class MonitorModeError(NetreaperError):
-    """Monitor mode operation failed."""
+    """Monitor-mode operation failed."""
 
-    pass
+
+class MonitorState(str, Enum):
+    UNKNOWN = "unknown"
+    MANAGED = "managed"
+    MONITOR = "monitor"
+
+
+class MonitorController:
+    """Owns the monitor-mode lifecycle for one adapter, with safe teardown."""
+
+    def __init__(self, runner: ProcessRunner | None = None) -> None:
+        self._runner = runner or get_process_runner()
+        self.state = MonitorState.UNKNOWN
+        self.managed_iface: str | None = None
+        self.monitor_iface: str | None = None
+        self._killed_network_manager = False
+
+    async def _iface_names(self) -> set[str]:
+        res = await self._runner.run(["iw", "dev"], tier=Tier.PASSIVE)
+        return set(re.findall(r"^\s*Interface\s+(\S+)", res.stdout, re.MULTILINE))
+
+    async def enable(self, interface: str, *, kill_processes: bool = True) -> str:
+        iface = await validate_wireless_interface(interface, runner=self._runner)
+        if iface.current_mode == "monitor":
+            self.state = MonitorState.MONITOR
+            self.monitor_iface = interface
+            self.managed_iface = interface
+            return interface
+
+        before = await self._iface_names()
+        if kill_processes:
+            await self._runner.run(["airmon-ng", "check", "kill"], tier=Tier.PASSIVE)
+            self._killed_network_manager = True
+        await self._runner.run(["airmon-ng", "start", interface], tier=Tier.PASSIVE)
+        after = await self._iface_names()
+
+        # Resolve the real monitor interface by diff (not by name-guessing).
+        new = after - before
+        if len(new) == 1:
+            self.monitor_iface = next(iter(new))
+        elif interface in after:
+            self.monitor_iface = interface  # same-name monitor (mt76/rtl8812au)
+        else:
+            raise MonitorModeError(
+                f"could not resolve the monitor interface after enabling on {interface} "
+                f"(before={sorted(before)} after={sorted(after)})"
+            )
+        self.managed_iface = interface
+        self.state = MonitorState.MONITOR
+        logger.info("monitor mode enabled: %s -> %s", interface, self.monitor_iface)
+        return self.monitor_iface
+
+    async def disable(self) -> None:
+        """Idempotent: safe to call when not in monitor mode."""
+        if self.state is not MonitorState.MONITOR or not self.monitor_iface:
+            return
+        try:
+            await self._runner.run(["airmon-ng", "stop", self.monitor_iface], tier=Tier.PASSIVE)
+        finally:
+            if self._killed_network_manager:
+                # best-effort: bring NetworkManager back
+                try:
+                    await self._runner.run(
+                        ["systemctl", "restart", "NetworkManager"], tier=Tier.PASSIVE
+                    )
+                except Exception:
+                    logger.warning("could not restart NetworkManager during teardown")
+                self._killed_network_manager = False
+            self.state = MonitorState.MANAGED
+            self.monitor_iface = None
+
+    async def teardown(self) -> None:
+        await self.disable()
+
+
+_controller = MonitorController()
+
+
+def _atexit_teardown() -> None:
+    if _controller.state is MonitorState.MONITOR:
+        try:
+            asyncio.run(_controller.teardown())
+        except Exception:
+            pass
+
+
+atexit.register(_atexit_teardown)
 
 
 async def enable_monitor_mode(interface: str, kill_processes: bool = True) -> str:
-    """
-    Enable monitor mode on a wireless interface.
-
-    Returns the monitor interface name (may differ from input).
-    """
-    # Validate interface
-    iface = validate_wireless_interface(interface)
-
-    if iface.current_mode == "monitor":
-        logger.info(f"Interface {interface} already in monitor mode")
-        return interface
-
-    # Kill interfering processes
-    if kill_processes:
-        await _kill_interfering_processes()
-
-    # Try airmon-ng first
-    try:
-        return await _enable_with_airmon(interface)
-    except Exception as e:
-        logger.warning(f"airmon-ng failed: {e}, trying iw")
-
-    # Fallback to iw
-    try:
-        return await _enable_with_iw(interface)
-    except Exception as e:
-        logger.error(f"iw failed: {e}")
-        raise MonitorModeError(f"Failed to enable monitor mode on {interface}")
+    return await _controller.enable(interface, kill_processes=kill_processes)
 
 
-async def disable_monitor_mode(interface: str) -> str:
-    """
-    Disable monitor mode on a wireless interface.
-
-    Returns the managed interface name.
-    """
-    # Try airmon-ng first
-    try:
-        return await _disable_with_airmon(interface)
-    except Exception:
-        pass
-
-    # Fallback to iw
-    try:
-        return await _disable_with_iw(interface)
-    except Exception as e:
-        raise MonitorModeError(f"Failed to disable monitor mode: {e}")
-
-
-async def _kill_interfering_processes() -> None:
-    """Kill processes that interfere with monitor mode."""
-    process = await asyncio.create_subprocess_exec(
-        "airmon-ng",
-        "check",
-        "kill",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await process.wait()
-    logger.debug("Killed interfering processes")
-
-
-async def _enable_with_airmon(interface: str) -> str:
-    """Enable monitor mode using airmon-ng."""
-    process = await asyncio.create_subprocess_exec(
-        "airmon-ng",
-        "start",
-        interface,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
-
-    if process.returncode != 0:
-        raise MonitorModeError(f"airmon-ng failed: {stderr.decode()}")
-
-    output = stdout.decode()
-
-    # Parse output for new interface name
-    # Patterns: "monitor mode vif enabled for [phy0]wlan0 on [phy0]wlan0mon"
-    match = re.search(r"monitor mode.*enabled.*on.*\](\w+)", output)
-    if match:
-        monitor_iface = match.group(1)
-        logger.info(f"Monitor mode enabled: {interface} -> {monitor_iface}")
-        return monitor_iface
-
-    # Sometimes airmon-ng renames to wlan0mon
-    potential_names = [f"{interface}mon", interface.replace("wlan", "wmon")]
-    for name in potential_names:
-        if Path(f"/sys/class/net/{name}").exists():
-            logger.info(f"Monitor mode enabled: {interface} -> {name}")
-            return name
-
-    raise MonitorModeError("Could not determine monitor interface name")
-
-
-async def _enable_with_iw(interface: str) -> str:
-    """Enable monitor mode using iw."""
-    # Bring interface down
-    await _run_command(["ip", "link", "set", interface, "down"])
-
-    # Set monitor mode
-    await _run_command(["iw", interface, "set", "type", "monitor"])
-
-    # Bring interface up
-    await _run_command(["ip", "link", "set", interface, "up"])
-
-    logger.info(f"Monitor mode enabled on {interface} using iw")
-    return interface
-
-
-async def _disable_with_airmon(interface: str) -> str:
-    """Disable monitor mode using airmon-ng."""
-    process = await asyncio.create_subprocess_exec(
-        "airmon-ng",
-        "stop",
-        interface,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
-
-    if process.returncode != 0:
-        raise MonitorModeError(f"airmon-ng stop failed: {stderr.decode()}")
-
-    # Determine managed interface name
-    if interface.endswith("mon"):
-        managed = interface[:-3]
-    else:
-        managed = interface.replace("wmon", "wlan")
-
-    if Path(f"/sys/class/net/{managed}").exists():
-        logger.info(f"Monitor mode disabled: {interface} -> {managed}")
-        return managed
-
-    return interface
-
-
-async def _disable_with_iw(interface: str) -> str:
-    """Disable monitor mode using iw."""
-    await _run_command(["ip", "link", "set", interface, "down"])
-    await _run_command(["iw", interface, "set", "type", "managed"])
-    await _run_command(["ip", "link", "set", interface, "up"])
-
-    logger.info(f"Monitor mode disabled on {interface}")
-    return interface
-
-
-async def _run_command(cmd: list[str]) -> None:
-    """Run a command and raise on failure."""
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
-
-    if process.returncode != 0:
-        raise MonitorModeError(f"Command failed: {' '.join(cmd)} - {stderr.decode()}")
+async def disable_monitor_mode(interface: str | None = None) -> None:
+    await _controller.disable()
 
 
 async def get_monitor_status(interface: str) -> dict:
-    """Get current monitor mode status of an interface."""
-    iface = NetworkInterface.from_name(interface)
-
-    if iface is None:
-        return {"exists": False}
-
+    iface = await NetworkInterface.from_name(interface)
     return {
-        "exists": True,
         "interface": interface,
         "is_wireless": iface.is_wireless,
         "current_mode": iface.current_mode,
@@ -195,3 +135,13 @@ async def get_monitor_status(interface: str) -> dict:
         "supports_monitor": iface.supports_monitor,
         "supports_injection": iface.supports_injection,
     }
+
+
+__all__ = [
+    "MonitorController",
+    "MonitorModeError",
+    "MonitorState",
+    "disable_monitor_mode",
+    "enable_monitor_mode",
+    "get_monitor_status",
+]
