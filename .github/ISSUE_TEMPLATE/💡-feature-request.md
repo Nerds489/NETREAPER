@@ -1,6 +1,6 @@
 ---
 name: "\U0001F4A1 Feature Request"
-about: Suggest a new feature or enhancement for VOIDWAVE
+about: Suggest a new feature or enhancement for NETREAPER
 title: "[FEATURE]"
 labels: enhancement
 assignees: Nerds489

@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-The following versions of VOIDWAVE are currently supported with security updates.
+The following versions of NETREAPER are currently supported with security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -10,7 +10,7 @@ The following versions of VOIDWAVE are currently supported with security updates
 
 ## Reporting a Vulnerability
 
-We take security vulnerabilities seriously. If you discover a security issue in VOIDWAVE, please report it responsibly.
+We take security vulnerabilities seriously. If you discover a security issue in NETREAPER, please report it responsibly.
 
 ### How to Report
 
@@ -21,7 +21,7 @@ Instead, please report security vulnerabilities by emailing:
 📧 **Nerds489@protonmail.com**
 
 Alternatively, use GitHub's private vulnerability reporting:
-1. Go to the [Security tab](https://github.com/Nerds489/VOIDWAVE/security)
+1. Go to the [Security tab](https://github.com/Nerds489/NETREAPER/security)
 2. Click "Report a vulnerability"
 3. Fill out the form with details
 
@@ -59,13 +59,13 @@ We kindly ask that you:
 
 ## Security Best Practices
 
-When using VOIDWAVE:
+When using NETREAPER:
 
 - Always run the latest supported version
-- Use VOIDWAVE only on networks you own or have explicit authorization to test
+- Use NETREAPER only on networks you own or have explicit authorization to test
 - Keep your system and dependencies updated
 - Review logs regularly for unexpected behavior
 
 ## Legal Notice
 
-VOIDWAVE is intended for authorized security testing only. Unauthorized use against systems you do not own or have permission to test is illegal and unethical. The maintainers assume no liability for misuse.
+NETREAPER is intended for authorized security testing only. Unauthorized use against systems you do not own or have permission to test is illegal and unethical. The maintainers assume no liability for misuse.

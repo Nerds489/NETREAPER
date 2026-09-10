@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Enterprise Attacks: WPA Enterprise (EAP) attacks using hostapd-wpe
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_ENTERPRISE_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_ENTERPRISE_LOADED=1
+[[ -n "${_NETREAPER_ENTERPRISE_LOADED:-}" ]] && return 0
+readonly _NETREAPER_ENTERPRISE_LOADED=1
 
 # Source dependencies
 if ! declare -F log_info &>/dev/null; then
@@ -648,7 +648,7 @@ ent_cleanup() {
 
     # Save credentials to loot
     if [[ -f "$ENT_CREDS_FILE" ]] && [[ -s "$ENT_CREDS_FILE" ]]; then
-        local loot_dir="${WIRELESS_LOOT_ENTERPRISE:-$HOME/.voidwave/loot/wireless/enterprise}"
+        local loot_dir="${WIRELESS_LOOT_ENTERPRISE:-$HOME/.netreaper/loot/wireless/enterprise}"
         mkdir -p "$loot_dir"
         cp "$ENT_CREDS_FILE" "$loot_dir/enterprise_creds_$(date +%Y%m%d_%H%M%S).log"
     fi

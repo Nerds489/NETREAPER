@@ -1,22 +1,23 @@
 # Changelog
 
-All notable changes to VOIDWAVE.
+All notable changes to NETREAPER.
 
 ## [10.2.3] - 2026-09-11
 
 ### Fixed
 - **Restore-to-running.** Recovered `lib/version.sh`, `lib/config.sh`, and `lib/wireless.sh`, which were
-  absent from the tree while still sourced by `bin/voidwave` under `set -euo pipefail` — the CLI aborted at
+  absent from the tree while still sourced by `bin/netreaper` under `set -euo pipefail` — the CLI aborted at
   startup. The tool boots again.
-- **Safety: `confirm_dangerous()`** no longer auto-accepts on `VW_FORCE_DANGEROUS=1` alone; it now also
+- **Safety: `confirm_dangerous()`** no longer auto-accepts on `NR_FORCE_DANGEROUS=1` alone; it now also
   requires unsafe mode (`lib/ui.sh`).
-- **`config reset`** now honours `VW_NON_INTERACTIVE` instead of the dead `NR_NON_INTERACTIVE` (`bin/voidwave`).
+- **`config reset`** now honours `NR_NON_INTERACTIVE` instead of the dead `NR_NON_INTERACTIVE` (`bin/netreaper`).
 
 ### Notes
-- Baseline snapshot for the NETREAPER rebuild. The Bash CLI boots; the Python package (`src/voidwave`) does
-  not yet import and is addressed next. The VOIDWAVE->NETREAPER rebrand and the per-file relicense to
-  GPL-3.0 (the repo LICENSE is already GPL-3.0) follow in the next phase. The `recon.sh`/`scanning.sh`
-  function collision is deferred to consolidation.
+- Baseline snapshot for the rebuild. The Bash CLI boots; the Python package (`src/netreaper`) does not yet
+  import and is addressed next.
+- **Renamed VOIDWAVE -> NETREAPER** across the tree (command `netreaper`, `~/.netreaper`, `NR_*`/`NETREAPER_*`,
+  banners) and **relicensed Apache-2.0 -> GPL-3.0-or-later** (SPDX headers + LICENSE + pyproject).
+- The `recon.sh`/`scanning.sh` function collision is deferred to consolidation.
 
 ## [10.2.2] - 2025-01-03
 
@@ -26,7 +27,7 @@ All notable changes to VOIDWAVE.
 - Added `--user` flag for user-local installation to `~/.local/bin`
 
 ### Fixed
-- `sudo voidwave` now works out of the box with system-wide install
+- `sudo netreaper` now works out of the box with system-wide install
 
 ---
 
@@ -64,7 +65,7 @@ All notable changes to VOIDWAVE.
   - **Search functionality**: Find tools by name
   - **100+ tool definitions** with distro-specific package mappings
 
-- **Python Tool Detection Enhancements** (`src/voidwave/detection/tools.py`):
+- **Python Tool Detection Enhancements** (`src/netreaper/detection/tools.py`):
   - `pip_package` field for pip/pipx fallback installation
   - `binary_names` field for alternative binary name detection
   - Async pip/pipx fallback when system packages unavailable
@@ -88,13 +89,13 @@ All notable changes to VOIDWAVE.
 
 ## [10.0.0] - 2025-12-18
 
-### Major Release: VOIDWAVE Evolution
+### Major Release: NETREAPER Evolution
 
-This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Complete framework overhaul with unified architecture.
+This release marks the v10 architecture overhaul (the project briefly used the name VOIDWAVE for the v10 line; it is NETREAPER again). Complete framework overhaul with unified architecture.
 
 ### Added
 - **New README** - Professional, modern design with ASCII banner and clean structure
-- **Universal Installer** (`bin/voidwave-install`) - Truly distro-agnostic with support for:
+- **Universal Installer** (`bin/netreaper-install`) - Truly distro-agnostic with support for:
   - Debian/Ubuntu/Kali/Parrot (apt)
   - Fedora/RHEL/Rocky/Alma (dnf/yum)
   - Arch/Manjaro/BlackArch/EndeavourOS (pacman + AUR)
@@ -109,14 +110,14 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
 - **Installation Summary** - Clean [OK]/[FAIL]/[SKIP] output with detailed logging
 
 ### Changed
-- Rebranded from NETREAPER to VOIDWAVE
+- Renamed to VOIDWAVE for the v10 line (since reverted to NETREAPER)
 - Version jump from 8.x to 10.0.0 to mark the evolution
 - All documentation updated to reflect 10.0.0
 - Installer now generates manual installation guide for failed tools
 
 ### Heritage
 - NETREAPER v1-9: Original development
-- VOIDWAVE v10+: Rebuilt architecture, expanded toolset, unified interface
+- NETREAPER v10+: Rebuilt architecture, expanded toolset, unified interface
 
 ---
 
@@ -128,13 +129,13 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
   - `get_resource_with_memory()` universal resource acquisition with auto-scan capability
   - Memory types: `network`, `host`, `interface`, `wireless`
   - Auto-scan functions: `_scan_local_networks`, `_scan_local_hosts`, `_scan_wireless_aps`, `_scan_wireless_interfaces`
-  - File-based storage in `~/.voidwave/memory/` with `timestamp|value|metadata` format
+  - File-based storage in `~/.netreaper/memory/` with `timestamp|value|metadata` format
 
-- **Memory CLI Commands** (`bin/voidwave`)
-  - `voidwave memory show [type]` - View session memory (all or specific type)
-  - `voidwave memory clear [type]` - Clear memory entries
-  - `voidwave memory add <type> <value> [metadata]` - Add entry manually
-  - `voidwave memory list` - List all memory entries
+- **Memory CLI Commands** (`bin/netreaper`)
+  - `netreaper memory show [type]` - View session memory (all or specific type)
+  - `netreaper memory clear [type]` - Clear memory entries
+  - `netreaper memory add <type> <value> [metadata]` - Add entry manually
+  - `netreaper memory list` - List all memory entries
 
 ### Changed
 - **All Menus Integrated with Memory System**
@@ -158,8 +159,8 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
 ## [8.1.0] - 2025-12-14
 
 ### Added
-- VOIDWAVE v8 improvements - logging, debugging, docs, CI
-- Comprehensive man page for voidwave
+- NETREAPER v8 improvements - logging, debugging, docs, CI
+- Comprehensive man page for netreaper
 - Improvement roadmap from multi-agent analysis
 
 ### Fixed
@@ -182,10 +183,10 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
 - **install.sh – Callable Command Guarantee**
   - `_dir_in_path()` helper to check if a directory is in PATH
   - `_select_install_dir()` choosing best install directory (`/usr/local/bin` → `/usr/bin` → fallback with PATH fix)
-  - `_create_path_dropin()` to create `/etc/profile.d/voidwave.sh` if needed for PATH augmentation
-  - Installer creates wrapper scripts in install directory pointing to `bin/voidwave` and `bin/voidwave-install`
-  - Post-install verification **hard-fails** if `command -v voidwave` fails
-  - `bin/voidwave-install` only runs if arguments are provided (prevents accidental execution)
+  - `_create_path_dropin()` to create `/etc/profile.d/netreaper.sh` if needed for PATH augmentation
+  - Installer creates wrapper scripts in install directory pointing to `bin/netreaper` and `bin/netreaper-install`
+  - Post-install verification **hard-fails** if `command -v netreaper` fails
+  - `bin/netreaper-install` only runs if arguments are provided (prevents accidental execution)
 
 - **lib/detection.sh – Tool Detection Fixes**
   - New `TOOL_SEARCH_PATHS` constant covering comprehensive search locations:
@@ -211,20 +212,20 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
 - Post-install verification ensures only the modular wrapper is installed
 
 ### Changed
-- `reinstall-voidwave.sh` rewritten with strict CI safety:
+- `reinstall-netreaper.sh` rewritten with strict CI safety:
   - Requires explicit confirmation in interactive mode
-  - Non-interactive mode requires `VW_NON_INTERACTIVE=1` AND `VW_FORCE_REINSTALL=1`
+  - Non-interactive mode requires `NR_NON_INTERACTIVE=1` AND `NR_FORCE_REINSTALL=1`
   - Uses `umask 077` and bash strict mode
-  - Verifies `voidwave --version` matches VERSION file after install
+  - Verifies `netreaper --version` matches VERSION file after install
 
 ### Added
-- Environment variables for CI/automation: `VW_FORCE_REINSTALL`, `VW_KEEP_CONFIG`, `VW_REMOVE_CONFIG`
+- Environment variables for CI/automation: `NR_FORCE_REINSTALL`, `NR_KEEP_CONFIG`, `NR_REMOVE_CONFIG`
 
 ## [6.3.1] - 2025-12-12
 
 ### Added
 - Protection against legacy v5.x monolithic installs (auto-removed during install)
-- Reinstall script (`reinstall-voidwave.sh`) for clean installation
+- Reinstall script (`reinstall-netreaper.sh`) for clean installation
 
 ### Changed
 - Finalized Phase 3 core infrastructure (tools, progress, config)
@@ -232,19 +233,19 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
 ## [6.2.4] - 2025-12-10
 
 ### Added
-- Modular dispatcher architecture (`bin/voidwave` as thin dispatcher)
+- Modular dispatcher architecture (`bin/netreaper` as thin dispatcher)
 - Version handling via `lib/version.sh` (single source of truth)
 - Centralized logging system with log levels (DEBUG, INFO, SUCCESS, WARNING, ERROR, FATAL)
-- File logging to `~/.voidwave/logs/voidwave_YYYYMMDD.log`
-- Audit trail logging to `~/.voidwave/logs/audit_YYYYMMDD.log`
+- File logging to `~/.netreaper/logs/netreaper_YYYYMMDD.log`
+- Audit trail logging to `~/.netreaper/logs/audit_YYYYMMDD.log`
 - Smart sudo/privilege helpers: `is_root()`, `require_root()`, `run_with_sudo()`, `elevate_if_needed()`, `can_get_root()`
 - Target validation system: `is_valid_ip()`, `is_valid_cidr()`, `is_private_ip()`, `is_protected_ip()`, `validate_target()`
 - Public IP warnings and authorization checks with `confirm_dangerous()` integration
 - Protected IP ranges blocking (loopback, multicast, broadcast, link-local, reserved)
 - Confirmation prompts: `confirm()`, `confirm_dangerous()`, `prompt_input()`, `select_option()`
 - Input validators: `validate_not_empty()`, `validate_integer()`, `validate_positive_integer()`, `validate_port_range()`
-- `VW_UNSAFE_MODE` environment variable to bypass safety checks
-- `VW_NON_INTERACTIVE` mode for CI/headless environments
+- `NR_UNSAFE_MODE` environment variable to bypass safety checks
+- `NR_NON_INTERACTIVE` mode for CI/headless environments
 - Dispatcher commands: `--dry-run`, `help`, `config path`
 - Unified error-handling framework: `die()`, `assert()`, `try()`, `error_handler()` with stack traces
 - Exit code constants: `EXIT_CODE_SUCCESS`, `EXIT_CODE_FAILURE`, `EXIT_CODE_INVALID_ARGS`, `EXIT_CODE_PERMISSION`, `EXIT_CODE_NETWORK`, `EXIT_CODE_TARGET_INVALID`, `EXIT_CODE_TOOL_MISSING`
@@ -253,12 +254,12 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
 - Log utilities: `set_log_level()`, `show_logs()`, `rotate_logs()`, `init_logging()`
 
 ### Changed
-- `bin/voidwave` refactored into thin dispatcher sourcing modular libs
+- `bin/netreaper` refactored into thin dispatcher sourcing modular libs
 - Core logic moved into `lib/core.sh`, `lib/ui.sh`, `lib/safety.sh`, `lib/detection.sh`, `lib/utils.sh`
-- All scripts now read version and `VOIDWAVE_ROOT` from `lib/version.sh`
+- All scripts now read version and `NETREAPER_ROOT` from `lib/version.sh`
 - Improved CI behavior with non-interactive logic (auto-accept prompts, skip wizards)
 - `validate_target()` now uses `confirm_dangerous()` for public IP confirmation
-- All confirmation/input functions respect `VW_NON_INTERACTIVE` mode
+- All confirmation/input functions respect `NR_NON_INTERACTIVE` mode
 - Enhanced `error_handler()` with stack trace support and audit logging
 
 ### Fixed
@@ -279,14 +280,14 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
 ## [6.2.1] - 2025-12-09
 
 ### Added
-- Root-level wrapper binaries (`voidwave`, `voidwave-install`) that forward to the executables in `bin/`, preserving historical `./voidwave` workflows.
+- Root-level wrapper binaries (`netreaper`, `netreaper-install`) that forward to the executables in `bin/`, preserving historical `./netreaper` workflows.
 - Dedicated Bash, Zsh, and Fish completion scripts in `completions/` plus documentation explaining how to enable them.
 - Smoke tests under `tests/smoke/` (`test_help.sh`, `test_version.sh`) that mirror the CI entrypoints.
 
 ### Changed
 - Repository layout and quickstart docs now highlight the `bin/` directory, wrapper scripts, and the clean root-level structure.
-- `install.sh` strictly delegates to `bin/voidwave-install`, and the README/HowTo/Quick Reference call out the wrapper usage.
-- Non-interactive detection honors `VW_NON_INTERACTIVE=1` **and** TTY absence, skipping the wizard, legal prompts, and auto-marking `FIRST_RUN_COMPLETE`.
+- `install.sh` strictly delegates to `bin/netreaper-install`, and the README/HowTo/Quick Reference call out the wrapper usage.
+- Non-interactive detection honors `NR_NON_INTERACTIVE=1` **and** TTY absence, skipping the wizard, legal prompts, and auto-marking `FIRST_RUN_COMPLETE`.
 
 ### Fixed
 - CI runs without blocking prompts—no more wizard/legal interaction required for headless environments.
@@ -304,28 +305,28 @@ This release marks the evolution from NETREAPER (v1-9) to VOIDWAVE (v10+). Compl
 - `--dry-run` flag for safe command preview
 - `nr_run()` and `nr_run_eval()` wrapper functions in lib/core.sh
 - "First 60 Seconds" quickstart section in README
-- "Why VOIDWAVE?" comparison table in README
+- "Why NETREAPER?" comparison table in README
 - "Dry-Run Mode" documentation in README
 - "Project History" section in README
 - CI badge in README
 - Release workflow (.github/workflows/release.yml)
 
 ### Changed
-- Moved `voidwave` → `bin/voidwave`
-- Moved `voidwave-install` → `bin/voidwave-install`
-- `install.sh` is now thin wrapper calling `bin/voidwave-install`
+- Moved `netreaper` → `bin/netreaper`
+- Moved `netreaper-install` → `bin/netreaper-install`
+- `install.sh` is now thin wrapper calling `bin/netreaper-install`
 - CI workflow updated for `bin/` structure
 - README completely overhauled with landing page style
 - Installer version synced to main version (6.2.0)
 
 ### Fixed
-- uninstall.sh now removes both voidwave and voidwave-install
+- uninstall.sh now removes both netreaper and netreaper-install
 
 ### Structure
 ```
 bin/
-  voidwave           # Main toolkit
-  voidwave-install   # Tool installer
+  netreaper           # Main toolkit
+  netreaper-install   # Tool installer
 lib/                  # Core libraries
 modules/              # Feature modules
 tests/
@@ -340,7 +341,7 @@ uninstall.sh          # Uninstaller
 ## [6.1.0] - 2024-12-09
 
 ### Changed
-- **License Clarification**: VOIDWAVE is 100% Apache 2.0 with no additional restrictions
+- **License Clarification**: NETREAPER is 100% Apache 2.0 with no additional restrictions
 - Removed EULA directory and all associated acceptance language
 - Version standardization: single source of truth from VERSION file
 - Code cleanup: added shellcheck disable directives for intentionally exported variables
@@ -354,7 +355,7 @@ uninstall.sh          # Uninstaller
 ### Removed
 - `EULA/` directory completely removed
 - All EULA/terms acceptance language from scripts
-- Unused `term_cmd` variable from voidwave-install
+- Unused `term_cmd` variable from netreaper-install
 
 ## [6.0.1] - 2024-12-09
 
@@ -368,7 +369,7 @@ uninstall.sh          # Uninstaller
 - Modular architecture with `lib/` and `modules/` directories
 - Authorization flow on first run
 - Target validation (blocks dangerous operations by default)
-- `VW_UNSAFE_MODE` environment variable for advanced users
+- `NR_UNSAFE_MODE` environment variable for advanced users
 - Bats test suite (47 tests)
 - GitHub Actions CI with ShellCheck
 - `--dry-run` flag for installer
@@ -421,14 +422,14 @@ modules/osint.sh       - OSINT gathering
 - **Session Management**: Pause/resume long-running operations
 - **UI Helpers**: select_multiple, show_progress, select_from_list, select_interface, show_table, mask_string
 - **Tool Status Dashboard**: 30 tools tracked across 8 categories with version detection
-- **Settings Persistence**: API keys, paths, logging config saved to ~/.voidwave/config/
+- **Settings Persistence**: API keys, paths, logging config saved to ~/.netreaper/config/
 - **Stress Testing Safety**: Private IP enforcement, hardcoded limits, authorization confirmations
 
 ### Changed
-- `voidwave` with no arguments now launches interactive menu
+- `netreaper` with no arguments now launches interactive menu
 - Added `-i, --interactive` flag for explicit menu launch
 
 ### Security
-- Stress testing blocked for public IPs unless VW_UNSAFE_MODE=1
+- Stress testing blocked for public IPs unless NR_UNSAFE_MODE=1
 - API keys stored with chmod 600 permissions
 - Authorization confirmations for destructive operations

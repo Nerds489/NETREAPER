@@ -11,6 +11,6 @@ dist/
 .venv/
 venv/
 # local runtime + recovery artifacts (never commit)
-.voidwave/
+.netreaper/
 backups/
 *.log

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Wireless Loot: capture file management, credentials, organized output
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_WIRELESS_LOOT_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_WIRELESS_LOOT_LOADED=1
+[[ -n "${_NETREAPER_WIRELESS_LOOT_LOADED:-}" ]] && return 0
+readonly _NETREAPER_WIRELESS_LOOT_LOADED=1
 
 # Source core if not loaded
 if ! declare -F log_info &>/dev/null; then
@@ -22,7 +22,7 @@ fi
 #═══════════════════════════════════════════════════════════════════════════════
 
 # Base wireless loot directory
-declare -g WIRELESS_LOOT_DIR="${LOOT_DIR:-$HOME/.voidwave/loot}/wireless"
+declare -g WIRELESS_LOOT_DIR="${LOOT_DIR:-$HOME/.netreaper/loot}/wireless"
 
 # Subdirectories
 declare -g WIRELESS_LOOT_HANDSHAKES="${WIRELESS_LOOT_DIR}/handshakes"
@@ -62,7 +62,7 @@ wireless_loot_init() {
     # Create credentials database if not exists
     if [[ ! -f "${WIRELESS_LOOT_CREDENTIALS}/cracked.txt" ]]; then
         cat > "${WIRELESS_LOOT_CREDENTIALS}/cracked.txt" << 'EOF'
-# VOIDWAVE Cracked Credentials Database
+# NETREAPER Cracked Credentials Database
 # Format: ESSID:BSSID:PASSWORD:METHOD:DATE
 # ═══════════════════════════════════════════════════════════════════════════════
 EOF
@@ -456,7 +456,7 @@ wireless_loot_summary() {
 # Export loot to single archive
 # Args: $1 = output path (optional)
 wireless_loot_export() {
-    local output="${1:-$HOME/voidwave_loot_$(date +%Y%m%d_%H%M%S).tar.gz}"
+    local output="${1:-$HOME/netreaper_loot_$(date +%Y%m%d_%H%M%S).tar.gz}"
 
     wireless_loot_init
 

@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Stress module: bandwidth testing, load testing, network impairment
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_STRESS_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_STRESS_LOADED=1
+[[ -n "${_NETREAPER_STRESS_LOADED:-}" ]] && return 0
+readonly _NETREAPER_STRESS_LOADED=1
 
 # Source library files
 source "${BASH_SOURCE%/*}/../lib/core.sh"
@@ -138,7 +135,7 @@ run_hping_attack() {
     fi
 
     # Dry-run support
-    if [[ "${VW_DRY_RUN:-0}" == "1" ]] || [[ "${DRY_RUN:-0}" == "1" ]]; then
+    if [[ "${NR_DRY_RUN:-0}" == "1" ]] || [[ "${DRY_RUN:-0}" == "1" ]]; then
         echo -e "    ${C_YELLOW}[DRY-RUN]${C_RESET} sudo $cmd"
         return 0
     fi
@@ -208,7 +205,7 @@ run_netem() {
     fi
 
     # Dry-run support
-    if [[ "${VW_DRY_RUN:-0}" == "1" ]] || [[ "${DRY_RUN:-0}" == "1" ]]; then
+    if [[ "${NR_DRY_RUN:-0}" == "1" ]] || [[ "${DRY_RUN:-0}" == "1" ]]; then
         echo -e "    ${C_YELLOW}[DRY-RUN]${C_RESET} sudo $cmd"
         echo -e "    ${C_YELLOW}[DRY-RUN]${C_RESET} sleep $duration"
         echo -e "    ${C_YELLOW}[DRY-RUN]${C_RESET} sudo tc qdisc del dev $iface root"
@@ -243,9 +240,9 @@ run_netem() {
 # Show stress module usage
 stress_usage() {
     cat << 'EOF'
-VOIDWAVE Stress Testing Commands
+NETREAPER Stress Testing Commands
 
-Usage: voidwave stress <command> [options]
+Usage: netreaper stress <command> [options]
 
 Commands:
   hping <target> [port] [type] [duration] [rate]
@@ -262,10 +259,10 @@ Commands:
       duration:   Duration in seconds (default: 60)
 
 Examples:
-  voidwave stress hping 192.168.1.1 80 syn 30 1000
-  voidwave stress hping 10.0.0.1 53 udp 10 500
-  voidwave stress netem eth0 delay 100ms 30
-  voidwave stress netem wlan0 loss 10% 60
+  netreaper stress hping 192.168.1.1 80 syn 30 1000
+  netreaper stress hping 10.0.0.1 53 udp 10 500
+  netreaper stress netem eth0 delay 100ms 30
+  netreaper stress netem wlan0 loss 10% 60
 
 WARNING: Stress testing can disrupt services.
          Only test systems you own or have permission to test.

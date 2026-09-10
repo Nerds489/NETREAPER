@@ -1,6 +1,6 @@
-# Contributing to VOIDWAVE
+# Contributing to NETREAPER
 
-Thank you for investing your time in contributing to VOIDWAVE! Any contribution you make helps improve the project :sparkles:
+Thank you for investing your time in contributing to NETREAPER! Any contribution you make helps improve the project :sparkles:
 
 Read our [Code of Conduct](./CODE_OF_CONDUCT.md) to keep our community approachable and respectable.
 
@@ -17,7 +17,7 @@ To get an overview of the project, read the [README](README.md). Here are some r
 
 ## Platform Requirements
 
-> **⚠️ Linux Only**: VOIDWAVE requires Linux for development and usage. Windows is not supported due to dependencies on Linux-specific tools and system calls.
+> **⚠️ Linux Only**: NETREAPER requires Linux for development and usage. Windows is not supported due to dependencies on Linux-specific tools and system calls.
 
 Supported distributions:
 - Debian / Ubuntu
@@ -54,11 +54,11 @@ If you're unsure whether your contribution fits, open an issue to discuss it fir
 
 #### Create a New Issue
 
-If you spot a problem or have a feature request, [search if an issue already exists](https://github.com/Nerds489/VOIDWAVE/issues). If a related issue doesn't exist, you can open a new issue using the appropriate [issue template](https://github.com/Nerds489/VOIDWAVE/issues/new/choose).
+If you spot a problem or have a feature request, [search if an issue already exists](https://github.com/Nerds489/NETREAPER/issues). If a related issue doesn't exist, you can open a new issue using the appropriate [issue template](https://github.com/Nerds489/NETREAPER/issues/new/choose).
 
 #### Solve an Issue
 
-Scan through our [existing issues](https://github.com/Nerds489/VOIDWAVE/issues) to find one that interests you. You can narrow down the search using `labels` as filters. As a general rule, issues are not assigned. If you find an issue to work on, you are welcome to open a PR with a fix.
+Scan through our [existing issues](https://github.com/Nerds489/NETREAPER/issues) to find one that interests you. You can narrow down the search using `labels` as filters. As a general rule, issues are not assigned. If you find an issue to work on, you are welcome to open a PR with a fix.
 
 ### Making Changes
 
@@ -70,8 +70,8 @@ Scan through our [existing issues](https://github.com/Nerds489/VOIDWAVE/issues) 
 
 2. **Clone your fork**
 ```bash
-   git clone https://github.com/YOUR-USERNAME/VOIDWAVE.git
-   cd VOIDWAVE
+   git clone https://github.com/YOUR-USERNAME/NETREAPER.git
+   cd NETREAPER
 ```
 
 3. **Create a working branch**
@@ -131,7 +131,7 @@ When you're finished with the changes, create a pull request (PR).
    git push origin feature/your-feature-name
 ```
 
-2. Open a PR against the `main` branch of VOIDWAVE
+2. Open a PR against the `main` branch of NETREAPER
 
 3. Fill in the PR template:
    - Describe what your changes do
@@ -144,7 +144,7 @@ When you're finished with the changes, create a pull request (PR).
 
 ### Your PR is Merged!
 
-Congratulations :tada: The VOIDWAVE team thanks you :sparkles:
+Congratulations :tada: The NETREAPER team thanks you :sparkles:
 
 Once merged, your contributions will be part of the next release.
 
@@ -160,22 +160,22 @@ Once merged, your contributions will be part of the next release.
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/Nerds489/VOIDWAVE.git
-cd VOIDWAVE
+git clone https://github.com/Nerds489/NETREAPER.git
+cd NETREAPER
 
 # Run installation script (requires root)
 sudo ./install.sh
 
 # Verify installation
-voidwave --version
+netreaper --version
 ```
 
 ## Getting Help
 
-- Open an [issue](https://github.com/Nerds489/VOIDWAVE/issues) for bugs or feature requests
-- Start a [discussion](https://github.com/Nerds489/VOIDWAVE/discussions) for questions or ideas
+- Open an [issue](https://github.com/Nerds489/NETREAPER/issues) for bugs or feature requests
+- Start a [discussion](https://github.com/Nerds489/NETREAPER/discussions) for questions or ideas
 - Check existing issues and discussions before creating new ones
 
 ## License
 
-By contributing to VOIDWAVE, you agree that your contributions will be licensed under the same license as the project.
+By contributing to NETREAPER, you agree that your contributions will be licensed under the same license as the project.

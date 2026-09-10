@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE Smart Wireless Menu
+# NETREAPER Smart Wireless Menu
 # ═══════════════════════════════════════════════════════════════════════════════
 # Upgraded menu with:
 # - Help system (? or H)
@@ -10,8 +10,8 @@
 # - Context-aware operation
 # ═══════════════════════════════════════════════════════════════════════════════
 
-[[ -n "${_VOIDWAVE_SMART_WIRELESS_LOADED:-}" ]] && return 0
-declare -r _VOIDWAVE_SMART_WIRELESS_LOADED=1
+[[ -n "${_NETREAPER_SMART_WIRELESS_LOADED:-}" ]] && return 0
+declare -r _NETREAPER_SMART_WIRELESS_LOADED=1
 
 # Source intelligence modules (same directory)
 source "${BASH_SOURCE%/*}/help.sh" 2>/dev/null || true
@@ -26,7 +26,7 @@ show_wireless_menu_smart() {
     # Root check
     if [[ $EUID -ne 0 ]]; then
         echo -e "    ${C_RED}Wireless attacks require root privileges${C_RESET}"
-        echo "    Run: sudo voidwave"
+        echo "    Run: sudo netreaper"
         return 1
     fi
 
@@ -54,12 +54,12 @@ show_wireless_menu_smart() {
 _show_banner() {
     echo -e "${C_PURPLE}"
     cat << 'BANNER'
-    ██╗   ██╗ ██████╗ ██╗██████╗     ██╗    ██╗ █████╗ ██╗   ██╗███████╗
-    ██║   ██║██╔═══██╗██║██╔══██╗    ██║    ██║██╔══██╗██║   ██║██╔════╝
-    ██║   ██║██║   ██║██║██║  ██║    ██║ █╗ ██║███████║██║   ██║█████╗
-    ╚██╗ ██╔╝██║   ██║██║██║  ██║    ██║███╗██║██╔══██║╚██╗ ██╔╝██╔══╝
-     ╚████╔╝ ╚██████╔╝██║██████╔╝    ╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗
-      ╚═══╝   ╚═════╝ ╚═╝╚═════╝      ╚══╝╚══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝
+    ███╗   ██╗███████╗████████╗██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗ 
+    ████╗  ██║██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗
+    ██╔██╗ ██║█████╗     ██║   ██████╔╝█████╗  ███████║██████╔╝█████╗  ██████╔╝
+    ██║╚██╗██║██╔══╝     ██║   ██╔══██╗██╔══╝  ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗
+    ██║ ╚████║███████╗   ██║   ██║  ██║███████╗██║  ██║██║     ███████╗██║  ██║
+    ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
 BANNER
     echo -e "${C_RESET}"
     echo -e "    ${C_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
@@ -472,7 +472,7 @@ _do_pmkid() {
     echo -e "    ${C_WHITE}Target:${C_RESET} $TARGET_ESSID ($TARGET_BSSID)"
     echo ""
     
-    local outfile="${VOIDWAVE_OUTPUT:-$HOME/.voidwave/output}/pmkid_${TARGET_BSSID//:/}_$(date +%Y%m%d_%H%M%S).pcapng"
+    local outfile="${NETREAPER_OUTPUT:-$HOME/.netreaper/output}/pmkid_${TARGET_BSSID//:/}_$(date +%Y%m%d_%H%M%S).pcapng"
     mkdir -p "$(dirname "$outfile")"
     
     echo -e "    ${C_CYAN}⟳ Capturing PMKID (30s timeout)...${C_RESET}"
@@ -517,7 +517,7 @@ _do_handshake() {
     [[ -n "$TARGET_CLIENT" ]] && echo -e "    ${C_WHITE}Client:${C_RESET} $TARGET_CLIENT"
     echo ""
     
-    local outfile="${VOIDWAVE_OUTPUT:-$HOME/.voidwave/output}/handshake_${TARGET_BSSID//:/}_$(date +%Y%m%d_%H%M%S)"
+    local outfile="${NETREAPER_OUTPUT:-$HOME/.netreaper/output}/handshake_${TARGET_BSSID//:/}_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$(dirname "$outfile")"
     
     echo -e "    ${C_CYAN}⟳ Starting capture...${C_RESET}"
