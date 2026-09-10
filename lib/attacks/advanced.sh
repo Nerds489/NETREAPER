@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Advanced Features: Hidden SSID reveal, WPA3 downgrade, client isolation bypass
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_ADVANCED_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_ADVANCED_LOADED=1
+[[ -n "${_NETREAPER_ADVANCED_LOADED:-}" ]] && return 0
+readonly _NETREAPER_ADVANCED_LOADED=1
 
 # Source dependencies
 if ! declare -F log_info &>/dev/null; then

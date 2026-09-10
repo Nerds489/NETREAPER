@@ -3,34 +3,34 @@
 # VOID WAVE - The Complete Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Main Menu System: New unified menu with all attack modules
 # ═══════════════════════════════════════════════════════════════════════════════
 
-[[ -n "${_VOIDWAVE_MENU_LOADED:-}" ]] && return 0
-declare -r _VOIDWAVE_MENU_LOADED=1
+[[ -n "${_NETREAPER_MENU_LOADED:-}" ]] && return 0
+declare -r _NETREAPER_MENU_LOADED=1
 
 # Source dependencies
 source "${BASH_SOURCE[0]%/*}/version.sh"
-source "${VOIDWAVE_ROOT}/lib/core.sh"
-source "${VOIDWAVE_ROOT}/lib/ui.sh"
+source "${NETREAPER_ROOT}/lib/core.sh"
+source "${NETREAPER_ROOT}/lib/ui.sh"
 
 # Source all submenu modules
-_MENU_DIR="${VOIDWAVE_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}/lib/menus"
+_MENU_DIR="${NETREAPER_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}/lib/menus"
 
 for _menu_file in "$_MENU_DIR"/*.sh; do
     [[ -f "$_menu_file" ]] && source "$_menu_file"
 done
 
 # Source wireless loader for new attack functions
-[[ -f "${VOIDWAVE_ROOT}/lib/wireless_loader.sh" ]] && source "${VOIDWAVE_ROOT}/lib/wireless_loader.sh"
+[[ -f "${NETREAPER_ROOT}/lib/wireless_loader.sh" ]] && source "${NETREAPER_ROOT}/lib/wireless_loader.sh"
 
 # Source intelligence modules for help and preflight
-[[ -f "${VOIDWAVE_ROOT}/lib/intelligence/help.sh" ]] && source "${VOIDWAVE_ROOT}/lib/intelligence/help.sh"
-[[ -f "${VOIDWAVE_ROOT}/lib/intelligence/preflight.sh" ]] && source "${VOIDWAVE_ROOT}/lib/intelligence/preflight.sh"
-[[ -f "${VOIDWAVE_ROOT}/lib/intelligence/targeting.sh" ]] && source "${VOIDWAVE_ROOT}/lib/intelligence/targeting.sh"
+[[ -f "${NETREAPER_ROOT}/lib/intelligence/help.sh" ]] && source "${NETREAPER_ROOT}/lib/intelligence/help.sh"
+[[ -f "${NETREAPER_ROOT}/lib/intelligence/preflight.sh" ]] && source "${NETREAPER_ROOT}/lib/intelligence/preflight.sh"
+[[ -f "${NETREAPER_ROOT}/lib/intelligence/targeting.sh" ]] && source "${NETREAPER_ROOT}/lib/intelligence/targeting.sh"
 
 # Track state for cleanup
 declare -g _MENU_ACTIVE=0
@@ -41,17 +41,17 @@ declare -g _MONITOR_IFACE=""
 # NEW STYLED BANNER
 # ═══════════════════════════════════════════════════════════════════════════════
 
-show_voidwave_banner() {
+show_netreaper_banner() {
     local ver="${1:-$VERSION}"
 
     echo -e "${C_PURPLE:-\033[0;35m}"
     cat << 'BANNER'
-    ██╗   ██╗ ██████╗ ██╗██████╗     ██╗    ██╗ █████╗ ██╗   ██╗███████╗
-    ██║   ██║██╔═══██╗██║██╔══██╗    ██║    ██║██╔══██╗██║   ██║██╔════╝
-    ██║   ██║██║   ██║██║██║  ██║    ██║ █╗ ██║███████║██║   ██║█████╗
-    ╚██╗ ██╔╝██║   ██║██║██║  ██║    ██║███╗██║██╔══██║╚██╗ ██╔╝██╔══╝
-     ╚████╔╝ ╚██████╔╝██║██████╔╝    ╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗
-      ╚═══╝   ╚═════╝ ╚═╝╚═════╝      ╚══╝╚══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝
+    ███╗   ██╗███████╗████████╗██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗ 
+    ████╗  ██║██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗
+    ██╔██╗ ██║█████╗     ██║   ██████╔╝█████╗  ███████║██████╔╝█████╗  ██████╔╝
+    ██║╚██╗██║██╔══╝     ██║   ██╔══██╗██╔══╝  ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗
+    ██║ ╚████║███████╗   ██║   ██║  ██║███████╗██║  ██║██║     ███████╗██║  ██║
+    ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
 BANNER
     echo -e "${C_RESET:-\033[0m}"
     echo -e "    ${C_CYAN:-}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET:-}"
@@ -152,7 +152,7 @@ cleanup_on_exit() {
 show_main_menu() {
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
         show_status_line
 
         print_menu_header "MAIN MENU"
@@ -220,7 +220,7 @@ show_main_menu() {
 show_recon_menu_new() {
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
 
         print_menu_header "RECONNAISSANCE"
 
@@ -355,7 +355,7 @@ show_recon_menu_new() {
 show_scan_menu_new() {
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
 
         print_menu_header "SCANNING & ENUMERATION"
 
@@ -426,7 +426,7 @@ show_scan_menu_new() {
 show_osint_menu_new() {
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
 
         print_menu_header "OSINT - Open Source Intelligence"
 
@@ -506,13 +506,13 @@ show_wireless_menu_new() {
     # Root check
     if [[ $EUID -ne 0 ]]; then
         echo -e "    ${C_RED:-}Wireless attacks require root privileges${C_RESET:-}"
-        echo "    Run: sudo voidwave"
+        echo "    Run: sudo netreaper"
         return 1
     fi
 
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
         show_status_line
 
         print_menu_header "WIRELESS ATTACKS"
@@ -1265,7 +1265,7 @@ show_pillage_menu() {
 
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
 
         print_menu_header "PILLAGE MODE - Automated Attacks"
 
@@ -1360,7 +1360,7 @@ _set_filters() {
 show_exploit_menu_new() {
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
 
         print_menu_header "EXPLOITATION"
 
@@ -1437,7 +1437,7 @@ show_exploit_menu_new() {
 show_creds_menu_new() {
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
 
         print_menu_header "CREDENTIAL ATTACKS"
 
@@ -1586,7 +1586,7 @@ _handle_creds_choice() {
 show_traffic_menu_new() {
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
 
         print_menu_header "TRAFFIC ANALYSIS"
 
@@ -1694,7 +1694,7 @@ show_traffic_menu_new() {
 show_stress_menu_new() {
     while true; do
         clear_screen 2>/dev/null || clear
-        show_voidwave_banner "${VERSION:-}"
+        show_netreaper_banner "${VERSION:-}"
 
         print_menu_header "STRESS TESTING"
 
@@ -1804,7 +1804,7 @@ show_stress_menu_new() {
 
 show_tool_status_simple() {
     clear_screen 2>/dev/null || clear
-    show_voidwave_banner "${VERSION:-}"
+    show_netreaper_banner "${VERSION:-}"
 
     print_menu_header "TOOL STATUS"
 
@@ -1837,7 +1837,7 @@ menu_loop() {
     if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
         # Print to both stdout and stderr to ensure visibility
         printf '%s\n' "Error: Interactive menu requires a terminal."
-        printf '%s\n' "Run 'voidwave --help' for CLI options."
+        printf '%s\n' "Run 'netreaper --help' for CLI options."
         # Return success to avoid triggering error handler
         return 0
     fi
@@ -1851,7 +1851,7 @@ menu_loop() {
 }
 
 run_interactive() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && {
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && {
         echo "Error: Interactive menu requires TTY."
         return 1
     }
@@ -1880,5 +1880,5 @@ validate_menus() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 export -f cleanup_on_exit show_main_menu menu_loop run_interactive validate_menus
-export -f show_voidwave_banner show_status_line
+export -f show_netreaper_banner show_status_line
 export -f print_menu_header print_menu_section print_menu_item print_menu_footer prompt_choice

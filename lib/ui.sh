@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # UI library: banners, menus, prompts, progress indicators, display functions
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_UI_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_UI_LOADED=1
+[[ -n "${_NETREAPER_UI_LOADED:-}" ]] && return 0
+readonly _NETREAPER_UI_LOADED=1
 
 # Source core library
 source "${BASH_SOURCE%/*}/core.sh"
@@ -277,7 +274,7 @@ clear_screen() {
 
 pause() {
     # Skip pause in non-interactive mode
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         return 0
     fi
     echo
@@ -293,17 +290,12 @@ show_banner() {
     clear_screen
     echo -e "${C_PURPLE}"
     cat << 'BANNER'
-
-    ╔═══════════════════════════════════════════════════════════════════════════╗
-    ║                                                                           ║
-    ║  ██╗   ██╗ ██████╗ ██╗██████╗     ██╗    ██╗ █████╗ ██╗   ██╗███████╗     ║
-    ║  ██║   ██║██╔═══██╗██║██╔══██╗    ██║    ██║██╔══██╗██║   ██║██╔════╝     ║
-    ║  ██║   ██║██║   ██║██║██║  ██║    ██║ █╗ ██║███████║██║   ██║█████╗       ║
-    ║  ╚██╗ ██╔╝██║   ██║██║██║  ██║    ██║███╗██║██╔══██║╚██╗ ██╔╝██╔══╝       ║
-    ║   ╚████╔╝ ╚██████╔╝██║██████╔╝    ╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗     ║
-    ║    ╚═══╝   ╚═════╝ ╚═╝╚═════╝      ╚══╝╚══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝     ║
-    ║                                                                           ║
-    ╚═══════════════════════════════════════════════════════════════════════════╝
+    ███╗   ██╗███████╗████████╗██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗ 
+    ████╗  ██║██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗
+    ██╔██╗ ██║█████╗     ██║   ██████╔╝█████╗  ███████║██████╔╝█████╗  ██████╔╝
+    ██║╚██╗██║██╔══╝     ██║   ██╔══██╗██╔══╝  ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗
+    ██║ ╚████║███████╗   ██║   ██║  ██║███████╗██║  ██║██║     ███████╗██║  ██║
+    ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
 BANNER
     echo -e "${C_RESET}"
     echo
@@ -316,7 +308,7 @@ BANNER
 
 show_mini_banner() {
     echo -e "${C_BLOOD}    ╔═══════════════════════════════════════════════════════════════╗${C_RESET}"
-    echo -e "${C_BLOOD}    ║${C_RESET}  ${C_SKULL}VOIDWAVE${C_RESET} ${C_SHADOW}v${VERSION}${C_RESET}                                              ${C_BLOOD}║${C_RESET}"
+    echo -e "${C_BLOOD}    ║${C_RESET}  ${C_SKULL}NETREAPER${C_RESET} ${C_SHADOW}v${VERSION}${C_RESET}                                              ${C_BLOOD}║${C_RESET}"
     echo -e "${C_BLOOD}    ╚═══════════════════════════════════════════════════════════════╝${C_RESET}"
 }
 
@@ -371,7 +363,7 @@ get_target_input() {
     local target=""
 
     # Non-interactive mode: return default or empty
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         echo "$default"
         return 0
     fi
@@ -397,7 +389,7 @@ get_input() {
     local input=""
 
     # Non-interactive mode: return default or empty
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         echo "$default"
         return 0
     fi
@@ -422,7 +414,7 @@ get_password_input() {
     local password=""
 
     # Non-interactive mode: return empty
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         echo ""
         return 0
     fi
@@ -447,7 +439,7 @@ prompt_input() {
     [[ -n "$default" ]] && display_default=" ${C_SHADOW}[$default]${C_RESET}"
 
     # Non-interactive mode: return default or empty
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         log_debug "Non-interactive: returning default for prompt '$message'"
         echo "$default"
         return 0
@@ -505,7 +497,7 @@ confirm() {
     fi
 
     # Non-interactive mode: use default
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         log_debug "Non-interactive: using default '$default' for confirm '$message'"
         [[ "${default,,}" == "y" ]]
         return $?
@@ -528,7 +520,7 @@ confirm_action() {
     local response=""
 
     # Non-interactive mode: use default
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         log_debug "Non-interactive: using default '$default' for confirm_action '$prompt'"
         [[ "${default,,}" == "y" ]]
         return $?
@@ -549,7 +541,7 @@ confirm_action() {
 # Helper to check if unsafe mode is enabled (backward compatible)
 # Duplicated here to avoid circular dependency with safety.sh
 _ui_is_unsafe_mode_enabled() {
-    local val="${VW_UNSAFE_MODE:-0}"
+    local val="${NR_UNSAFE_MODE:-0}"
     case "${val,,}" in
         1|true|yes|y) return 0 ;;
         *) return 1 ;;
@@ -562,17 +554,17 @@ _ui_is_unsafe_mode_enabled() {
 #
 # Non-interactive behavior:
 #   - Default: blocked (returns 1)
-#   - If VW_UNSAFE_MODE enabled: auto-accepts (returns 0)
-#   - If VW_FORCE_DANGEROUS=1 AND unsafe mode enabled: auto-accepts (returns 0)
+#   - If NR_UNSAFE_MODE enabled: auto-accepts (returns 0)
+#   - If NR_FORCE_DANGEROUS=1 AND unsafe mode enabled: auto-accepts (returns 0)
 confirm_dangerous() {
     local message="${1:-This is a dangerous operation}"
     local confirm_word="${2:-YES}"
     local response=""
 
     # Non-interactive mode handling
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         # Check for explicit override flags
-        if _ui_is_unsafe_mode_enabled && [[ "${VW_FORCE_DANGEROUS:-0}" == "1" ]]; then
+        if _ui_is_unsafe_mode_enabled && [[ "${NR_FORCE_DANGEROUS:-0}" == "1" ]]; then
             log_warning "Dangerous operation auto-accepted in non-interactive unsafe mode: $message"
             log_audit "CONFIRM_DANGEROUS" "$message" "auto_accepted_non_interactive_unsafe"
             return 0
@@ -612,7 +604,7 @@ confirm_dangerous() {
 # Returns: selected option via stdout, 0 on success, 1 on invalid selection
 #
 # Non-interactive behavior:
-#   - Requires VW_NON_INTERACTIVE_DEFAULT_INDEX to be set
+#   - Requires NR_NON_INTERACTIVE_DEFAULT_INDEX to be set
 #   - Value must be a valid index (0-based) into the options array
 #   - Returns error if not set, non-numeric, or out of range
 select_option() {
@@ -623,12 +615,12 @@ select_option() {
     local num_options=${#options[@]}
 
     # Non-interactive mode handling
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
-        local default_index="${VW_NON_INTERACTIVE_DEFAULT_INDEX:-}"
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+        local default_index="${NR_NON_INTERACTIVE_DEFAULT_INDEX:-}"
 
         # Check if index is set
         if [[ -z "$default_index" ]]; then
-            log_error "Non-interactive selection for '$prompt' requires VW_NON_INTERACTIVE_DEFAULT_INDEX to be set"
+            log_error "Non-interactive selection for '$prompt' requires NR_NON_INTERACTIVE_DEFAULT_INDEX to be set"
             return 1
         fi
 

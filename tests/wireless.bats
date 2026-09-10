@@ -1,20 +1,20 @@
 #!/usr/bin/env bats
-# VOIDWAVE Wireless Tests
+# NETREAPER Wireless Tests
 # Tests for lib/wireless.sh functions and wifi CLI commands
 # NOTE: Tests are designed to work without real WiFi hardware
 
 setup() {
-    VOIDWAVE_ROOT="$BATS_TEST_DIRNAME/.."
-    VOIDWAVE="$VOIDWAVE_ROOT/bin/voidwave"
-    export VOIDWAVE_ROOT
-    export VW_NON_INTERACTIVE=1
+    NETREAPER_ROOT="$BATS_TEST_DIRNAME/.."
+    NETREAPER="$NETREAPER_ROOT/bin/netreaper"
+    export NETREAPER_ROOT
+    export NR_NON_INTERACTIVE=1
 
     # Source libraries for direct function testing
     # Disable error trap for testing (allows testing functions that return 1)
     set +e
     trap - ERR
-    source "$VOIDWAVE_ROOT/lib/core.sh"
-    source "$VOIDWAVE_ROOT/lib/wireless.sh"
+    source "$NETREAPER_ROOT/lib/core.sh"
+    source "$NETREAPER_ROOT/lib/wireless.sh"
     # Re-disable after sourcing (core.sh sets traps)
     set +e
     trap - ERR
@@ -101,11 +101,11 @@ setup() {
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
-# CLI: voidwave wifi tests
+# CLI: netreaper wifi tests
 #═══════════════════════════════════════════════════════════════════════════════
 
-@test "voidwave wifi (no args) exits 0 and shows usage" {
-    run "$VOIDWAVE" wifi
+@test "netreaper wifi (no args) exits 0 and shows usage" {
+    run "$NETREAPER" wifi
     [ "$status" -eq 0 ]
     [[ "$output" == *"WiFi Commands"* ]]
     [[ "$output" == *"list"* ]]
@@ -113,48 +113,48 @@ setup() {
     [[ "$output" == *"monitor"* ]]
 }
 
-@test "voidwave wifi list does not crash" {
-    run "$VOIDWAVE" wifi list
+@test "netreaper wifi list does not crash" {
+    run "$NETREAPER" wifi list
     # Exit 0 if interfaces found, 1 if none - both acceptable
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }
 
-@test "voidwave wifi status without interface fails" {
-    run "$VOIDWAVE" wifi status
+@test "netreaper wifi status without interface fails" {
+    run "$NETREAPER" wifi status
     [ "$status" -eq 1 ]
     [[ "$output" == *"Missing interface"* ]]
 }
 
-@test "voidwave wifi status with empty string fails" {
-    run "$VOIDWAVE" wifi status ""
+@test "netreaper wifi status with empty string fails" {
+    run "$NETREAPER" wifi status ""
     [ "$status" -eq 1 ]
 }
 
-@test "voidwave wifi status with nonexistent interface fails cleanly" {
-    run "$VOIDWAVE" wifi status "nonexistent_iface_xyz123"
+@test "netreaper wifi status with nonexistent interface fails cleanly" {
+    run "$NETREAPER" wifi status "nonexistent_iface_xyz123"
     [ "$status" -eq 1 ]
 }
 
-@test "voidwave wifi monitor without on/off shows usage" {
-    run "$VOIDWAVE" wifi monitor
+@test "netreaper wifi monitor without on/off shows usage" {
+    run "$NETREAPER" wifi monitor
     [ "$status" -eq 1 ]
     [[ "$output" == *"Usage"* ]]
 }
 
-@test "voidwave wifi monitor on without interface fails" {
-    run "$VOIDWAVE" wifi monitor on
+@test "netreaper wifi monitor on without interface fails" {
+    run "$NETREAPER" wifi monitor on
     [ "$status" -eq 1 ]
     [[ "$output" == *"Missing interface"* ]]
 }
 
-@test "voidwave wifi monitor off without interface fails" {
-    run "$VOIDWAVE" wifi monitor off
+@test "netreaper wifi monitor off without interface fails" {
+    run "$NETREAPER" wifi monitor off
     [ "$status" -eq 1 ]
     [[ "$output" == *"Missing interface"* ]]
 }
 
-@test "voidwave wifi unknown subcommand fails" {
-    run "$VOIDWAVE" wifi foobar
+@test "netreaper wifi unknown subcommand fails" {
+    run "$NETREAPER" wifi foobar
     [ "$status" -eq 1 ]
     [[ "$output" == *"Unknown wifi subcommand"* ]]
 }
@@ -164,6 +164,6 @@ setup() {
 #═══════════════════════════════════════════════════════════════════════════════
 
 @test "lib/wireless.sh passes bash -n syntax check" {
-    run bash -n "$VOIDWAVE_ROOT/lib/wireless.sh"
+    run bash -n "$NETREAPER_ROOT/lib/wireless.sh"
     [ "$status" -eq 0 ]
 }

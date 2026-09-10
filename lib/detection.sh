@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Detection library: system, distro, package manager, tools, network interfaces
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_DETECTION_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_DETECTION_LOADED=1
+[[ -n "${_NETREAPER_DETECTION_LOADED:-}" ]] && return 0
+readonly _NETREAPER_DETECTION_LOADED=1
 
 # Source core library
 source "${BASH_SOURCE%/*}/core.sh"
@@ -458,13 +455,13 @@ suggest_alternatives() {
     echo "  2. Use Distrobox (recommended - isolated container):"
     echo "     ${C_CYAN}distrobox create --name pentest --image kalilinux/kali-rolling${C_RESET}"
     echo "     ${C_CYAN}distrobox enter pentest${C_RESET}"
-    echo "     ${C_GRAY}# Then install VOIDWAVE inside the container${C_RESET}"
+    echo "     ${C_GRAY}# Then install NETREAPER inside the container${C_RESET}"
     echo
 
     if command -v toolbox &>/dev/null; then
         echo "  3. Use Toolbox:"
-        echo "     ${C_CYAN}toolbox create voidwave${C_RESET}"
-        echo "     ${C_CYAN}toolbox enter voidwave${C_RESET}"
+        echo "     ${C_CYAN}toolbox create netreaper${C_RESET}"
+        echo "     ${C_CYAN}toolbox enter netreaper${C_RESET}"
         echo
     fi
 
@@ -979,7 +976,7 @@ auto_install_tool() {
     log_warning "$tool is not installed"
 
     # Non-interactive mode: skip auto-install
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         log_debug "Non-interactive mode: skipping auto-install for $tool"
         return 1
     fi
@@ -1085,7 +1082,7 @@ show_tool_status() {
     local interactive=1
 
     # Check if interactive mode
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 1 ]] && interactive=0
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 1 ]] && interactive=0
 
     # Count total tools first (for progress bar)
     for category in "${!TOOL_CATEGORIES[@]}"; do
@@ -1156,7 +1153,7 @@ show_tool_status() {
 # Sets: _VERIFY_INSTALLED, _VERIFY_MISSING (space-separated tool names)
 verify_tool_availability() {
     local interactive=1
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 1 ]] && interactive=0
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 1 ]] && interactive=0
 
     # Create secure temp files (avoid predictable /tmp/.nr_* patterns)
     local tmp_installed tmp_missing

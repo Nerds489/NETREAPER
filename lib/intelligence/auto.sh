@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE Intelligent Auto-Detection System
+# NETREAPER Intelligent Auto-Detection System
 # ═══════════════════════════════════════════════════════════════════════════════
 # Automatic detection and selection of:
 # - Wireless interfaces (with capability checking)
@@ -10,8 +10,8 @@
 # - Network info (IP, gateway, subnet)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-[[ -n "${_VOIDWAVE_AUTO_LOADED:-}" ]] && return 0
-declare -r _VOIDWAVE_AUTO_LOADED=1
+[[ -n "${_NETREAPER_AUTO_LOADED:-}" ]] && return 0
+declare -r _NETREAPER_AUTO_LOADED=1
 
 # Source dependencies
 source "${BASH_SOURCE%/*}/targeting.sh" 2>/dev/null || true

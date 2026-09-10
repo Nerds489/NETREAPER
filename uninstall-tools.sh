@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Uninstall all VOIDWAVE tools for testing the installer
+# Uninstall all NETREAPER tools for testing the installer
 
 set -uo pipefail
 
@@ -10,7 +10,7 @@ RESET=$(tput sgr0)
 
 echo ""
 echo "${YELLOW}═══════════════════════════════════════════════════════════════${RESET}"
-echo "${YELLOW}  VOIDWAVE Tool Uninstaller - FOR TESTING ONLY${RESET}"
+echo "${YELLOW}  NETREAPER Tool Uninstaller - FOR TESTING ONLY${RESET}"
 echo "${YELLOW}═══════════════════════════════════════════════════════════════${RESET}"
 echo ""
 

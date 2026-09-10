@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Utility library: timestamps, backups, file generation, validation, tool execution
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_UTILS_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_UTILS_LOADED=1
+[[ -n "${_NETREAPER_UTILS_LOADED:-}" ]] && return 0
+readonly _NETREAPER_UTILS_LOADED=1
 
 # Source core library
 source "${BASH_SOURCE%/*}/core.sh"
@@ -469,7 +466,7 @@ safe_rm() {
     fi
 
     # Respect dry-run mode
-    if [[ "${VW_DRY_RUN:-0}" -eq 1 ]]; then
+    if [[ "${NR_DRY_RUN:-0}" -eq 1 ]]; then
         echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} rm -rf $path" >&2
         return 0
     fi
@@ -514,7 +511,7 @@ safe_mkdir() {
     fi
 
     # Respect dry-run mode
-    if [[ "${VW_DRY_RUN:-0}" -eq 1 ]]; then
+    if [[ "${NR_DRY_RUN:-0}" -eq 1 ]]; then
         echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} mkdir -p -m $mode $path" >&2
         return 0
     fi
@@ -625,7 +622,7 @@ safe_copy() {
     fi
 
     # Respect dry-run mode
-    if [[ "${VW_DRY_RUN:-0}" -eq 1 ]]; then
+    if [[ "${NR_DRY_RUN:-0}" -eq 1 ]]; then
         if [[ ${#cp_args[@]} -gt 0 ]]; then
             echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} cp ${cp_args[*]} $source $dest" >&2
         else
@@ -706,7 +703,7 @@ safe_move() {
     fi
 
     # Respect dry-run mode
-    if [[ "${VW_DRY_RUN:-0}" -eq 1 ]]; then
+    if [[ "${NR_DRY_RUN:-0}" -eq 1 ]]; then
         echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} mv $source $dest" >&2
         return 0
     fi
@@ -833,7 +830,7 @@ ensure_rockyou() {
     log_warning "rockyou.txt not found"
 
     # Non-interactive must never prompt/install
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]]; then
         return 1
     fi
 

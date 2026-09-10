@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Session Management Library: pause, resume, and track long-running operations
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_SESSIONS_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_SESSIONS_LOADED=1
+[[ -n "${_NETREAPER_SESSIONS_LOADED:-}" ]] && return 0
+readonly _NETREAPER_SESSIONS_LOADED=1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SESSION GLOBALS
@@ -35,8 +32,8 @@ declare -g SESSION_FILE=""
 declare -gA SESSION_DATA=()
 
 # Session directory (respect explicit override, then use SESSION_DIR from core.sh)
-if [[ -z "${VOIDWAVE_SESSION_DIR:-}" ]]; then
-    VOIDWAVE_SESSION_DIR="${SESSION_DIR:-${VOIDWAVE_HOME:-$HOME/.voidwave}/sessions}"
+if [[ -z "${NETREAPER_SESSION_DIR:-}" ]]; then
+    NETREAPER_SESSION_DIR="${SESSION_DIR:-${NETREAPER_HOME:-$HOME/.netreaper}/sessions}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -52,7 +49,7 @@ session_start() {
     printf -v timestamp '%(%Y%m%d_%H%M%S)T' -1
 
     SESSION_ID="${name}_${timestamp}_$$"
-    SESSION_FILE="${VOIDWAVE_SESSION_DIR}/${SESSION_ID}.session"
+    SESSION_FILE="${NETREAPER_SESSION_DIR}/${SESSION_ID}.session"
 
     # Ensure directory exists
     mkdir -p "$(dirname "$SESSION_FILE")" 2>/dev/null || true
@@ -86,7 +83,7 @@ session_save() {
     # Write atomically via temp file
     local tmp_file="${SESSION_FILE}.tmp"
     {
-        echo "# VOIDWAVE Session File"
+        echo "# NETREAPER Session File"
         echo "# Do not edit manually"
         for key in "${!SESSION_DATA[@]}"; do
             # Escape values with printf %q to handle special characters
@@ -142,7 +139,7 @@ session_resume() {
     # Validate session ID to prevent path traversal
     _validate_session_id "$id" || return 1
 
-    SESSION_FILE="${VOIDWAVE_SESSION_DIR}/${id}.session"
+    SESSION_FILE="${NETREAPER_SESSION_DIR}/${id}.session"
 
     [[ ! -f "$SESSION_FILE" ]] && {
         echo "Error: Session not found: $id"
@@ -225,7 +222,7 @@ session_fail() {
 # Usage: session_list [--active|--completed|--failed]
 session_list() {
     local filter="${1:-}"
-    local session_dir="${VOIDWAVE_SESSION_DIR}"
+    local session_dir="${NETREAPER_SESSION_DIR}"
 
     [[ ! -d "$session_dir" ]] && {
         echo "No sessions found"
@@ -294,7 +291,7 @@ session_info() {
     # Validate session ID to prevent path traversal
     _validate_session_id "$id" || return 1
 
-    local session_file="${VOIDWAVE_SESSION_DIR}/${id}.session"
+    local session_file="${NETREAPER_SESSION_DIR}/${id}.session"
 
     [[ ! -f "$session_file" ]] && {
         echo "Error: Session not found: $id"
@@ -324,7 +321,7 @@ session_delete() {
     # Validate session ID to prevent path traversal
     _validate_session_id "$id" || return 1
 
-    local session_file="${VOIDWAVE_SESSION_DIR}/${id}.session"
+    local session_file="${NETREAPER_SESSION_DIR}/${id}.session"
 
     [[ ! -f "$session_file" ]] && {
         echo "Error: Session not found: $id"
@@ -341,7 +338,7 @@ session_delete() {
 # Usage: session_cleanup 30
 session_cleanup() {
     local days="${1:-30}"
-    local session_dir="${VOIDWAVE_SESSION_DIR}"
+    local session_dir="${NETREAPER_SESSION_DIR}"
     local count=0
 
     [[ ! -d "$session_dir" ]] && {
@@ -381,7 +378,7 @@ session_is_active() {
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-export SESSION_ID SESSION_FILE VOIDWAVE_SESSION_DIR
+export SESSION_ID SESSION_FILE NETREAPER_SESSION_DIR
 export -f session_start session_save session_set session_get
 export -f session_resume session_end session_fail
 export -f session_list session_info session_delete session_cleanup

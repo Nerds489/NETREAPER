@@ -1,38 +1,35 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Session Memory Library: track recent scans, resources, and provide smart prompts
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_MEMORY_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_MEMORY_LOADED=1
+[[ -n "${_NETREAPER_MEMORY_LOADED:-}" ]] && return 0
+readonly _NETREAPER_MEMORY_LOADED=1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MEMORY CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Memory storage directory
-MEMORY_DIR="${VOIDWAVE_HOME:-$HOME/.voidwave}/memory"
+MEMORY_DIR="${NETREAPER_HOME:-$HOME/.netreaper}/memory"
 MEMORY_MAX_ENTRIES="${MEMORY_MAX_ENTRIES:-20}"  # Max items to remember per type
 MEMORY_SESSION_ONLY="${MEMORY_SESSION_ONLY:-0}" # 1=clear on new session, 0=persist
 
@@ -226,7 +223,7 @@ get_resource_with_memory() {
     ensure_memory_dir
 
     # Non-interactive mode
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         # Return most recent or require manual
         local recent
         recent=$(memory_get_values "$type" 1 | head -1)
