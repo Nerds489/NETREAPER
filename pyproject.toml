@@ -1,6 +1,6 @@
 [project]
+dynamic = ["version"]
 name = "netreaper"
-version = "2.0.0"
 description = "Offensive Security Framework with Modern TUI"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
@@ -61,22 +61,19 @@ docs = [
 netreaper = "netreaper.cli:app"
 
 [project.entry-points."netreaper.tools"]
-# Built-in tools registered here
+# Built-in tool adapters (only those that exist; more land as tools are migrated)
 nmap = "netreaper.tools.nmap:NmapTool"
 masscan = "netreaper.tools.masscan:MasscanTool"
-hashcat = "netreaper.tools.hashcat:HashcatTool"
 john = "netreaper.tools.john:JohnTool"
 hydra = "netreaper.tools.hydra:HydraTool"
-
-[project.entry-points."netreaper.attacks"]
-# Built-in attacks registered here
-wps = "netreaper.attacks.wps:WPSAttack"
-handshake = "netreaper.attacks.handshake:HandshakeAttack"
-pmkid = "netreaper.attacks.pmkid:PMKIDAttack"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "VERSION"
+pattern = "(?P<version>.+)"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/netreaper"]
@@ -100,7 +97,7 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]  # Allow assert in tests
+"tests/*" = ["S101", "E501", "E402"]  # tests: allow assert, long lines, local imports
 
 [tool.mypy]
 python_version = "3.11"
