@@ -1,18 +1,24 @@
 """Base class for external tool wrappers."""
 import asyncio
 import os
-import signal
 import shutil
+import signal
 import time
 from abc import abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, ClassVar
+from typing import Any, ClassVar
 
-from netreaper.core.exceptions import SubprocessError, ToolNotFoundError
+from netreaper.core.exceptions import (
+    SubprocessError,
+    TargetValidationError,
+    ToolNotFoundError,
+)
 from netreaper.core.logging import get_logger
+from netreaper.core.process import get_process_runner
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import PluginMetadata, PluginResult, ToolPlugin
+from netreaper.safety.scope import Tier
 
 logger = get_logger(__name__)
 
@@ -37,6 +43,9 @@ class BaseToolWrapper(ToolPlugin):
     # Subclasses must define
     TOOL_BINARY: ClassVar[str]  # e.g., "nmap"
     METADATA: ClassVar[PluginMetadata]
+    # Blast-radius tier for the scope gate; wireless/DoS adapters raise this.
+    DEFAULT_TIER: ClassVar[Tier] = Tier.ACTIVE_SCAN
+    DESTRUCTIVE: ClassVar[bool] = False
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -71,126 +80,64 @@ class BaseToolWrapper(ToolPlugin):
         ...
 
     async def execute(self, target: str, options: dict[str, Any]) -> PluginResult:
-        """Execute the tool and return results."""
+        """Execute the tool through the gated ProcessRunner and return results.
+
+        Every spawn passes the scope gate first (deny-by-default). Security
+        denials propagate; other failures are returned as a failed result.
+        """
         if not self._initialized:
             await self.initialize()
 
         command = self.build_command(target, options)
-        full_command = [str(self._tool_path)] + command
+        full_command = [self.TOOL_BINARY, *command]
 
         self._execution = ToolExecution(
             tool_name=self.TOOL_BINARY,
             command=full_command,
             target=target,
         )
-
-        # Emit start event
         event_bus.emit(
             Events.TOOL_STARTED,
-            {
-                "tool": self.TOOL_BINARY,
-                "target": target,
-                "command": " ".join(full_command),
-            },
+            {"tool": self.TOOL_BINARY, "target": target, "command": " ".join(full_command)},
         )
-
         self._execution.started_at = time.time()
 
         try:
-            output = await self._run_subprocess(full_command, options)
-            self._execution.ended_at = time.time()
+            result = await get_process_runner().run(
+                full_command,
+                targets=[target] if target else [],
+                tier=self.DEFAULT_TIER,
+                destructive=self.DESTRUCTIVE,
+                timeout=options.get("timeout", self.config.timeout),
+                dry_run=options.get("dry_run", False),
+            )
+        except TargetValidationError:
+            # never swallow a scope-gate denial
+            raise
+        except (SubprocessError, ToolNotFoundError) as e:
+            logger.error("Tool execution failed: %s", e)
+            return PluginResult(success=False, data={}, errors=[str(e)])
 
-            # Parse output
-            parsed = self.parse_output(output)
+        self._execution.ended_at = time.time()
+        self._execution.exit_code = result.returncode
+        output = result.stdout + (result.stderr or "")
 
-            # Emit completion event
+        if output:
             event_bus.emit(
-                Events.TOOL_COMPLETED,
-                {
-                    "tool": self.TOOL_BINARY,
-                    "target": target,
-                    "exit_code": self._execution.exit_code,
-                    "duration": self._execution.ended_at - self._execution.started_at,
-                },
+                Events.TOOL_OUTPUT,
+                {"tool": self.TOOL_BINARY, "line": output, "level": self._classify_line(output)},
             )
-
-            return PluginResult(
-                success=self._execution.exit_code == 0,
-                data=parsed,
-            )
-
-        except asyncio.CancelledError:
-            self._execution.cancelled = True
-            await self.cancel()
-            return PluginResult(
-                success=False,
-                data={},
-                errors=["Execution cancelled"],
-            )
-        except Exception as e:
-            logger.error(f"Tool execution failed: {e}")
-            return PluginResult(
-                success=False,
-                data={},
-                errors=[str(e)],
-            )
-
-    async def _run_subprocess(
-        self, command: list[str], options: dict[str, Any]
-    ) -> str:
-        """Run the tool as a subprocess with output streaming."""
-        timeout = options.get("timeout", self.config.timeout)
-
-        self._current_process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            start_new_session=True,  # Enable process group termination
+        parsed = self.parse_output(output)
+        event_bus.emit(
+            Events.TOOL_COMPLETED,
+            {
+                "tool": self.TOOL_BINARY,
+                "target": target,
+                "exit_code": self._execution.exit_code,
+                "duration": self._execution.ended_at - self._execution.started_at,
+            },
         )
-
-        output_lines = []
-
-        try:
-            async for line in self._stream_output():
-                output_lines.append(line)
-
-                # Emit output event for TUI
-                event_bus.emit(
-                    Events.TOOL_OUTPUT,
-                    {
-                        "tool": self.TOOL_BINARY,
-                        "line": line,
-                        "level": self._classify_line(line),
-                    },
-                )
-
-            # Wait for process completion
-            await asyncio.wait_for(
-                self._current_process.wait(),
-                timeout=timeout,
-            )
-
-            self._execution.exit_code = self._current_process.returncode
-
-        except asyncio.TimeoutError:
-            await self.cancel()
-            raise SubprocessError(
-                f"Tool timed out after {timeout}s",
-                returncode=-1,
-            )
-
-        return "\n".join(output_lines)
-
-    async def _stream_output(self) -> AsyncIterator[str]:
-        """Stream output lines from subprocess."""
-        if self._current_process is None or self._current_process.stdout is None:
-            return
-
-        while True:
-            line = await self._current_process.stdout.readline()
-            if not line:
-                break
-            yield line.decode().rstrip()
+        return PluginResult(success=result.returncode == 0, data=parsed)
 
     def _classify_line(self, line: str) -> str:
         """Classify output line for display styling."""
