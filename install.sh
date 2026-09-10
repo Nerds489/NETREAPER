@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE Installer
+# NETREAPER Installer
 # ═══════════════════════════════════════════════════════════════════════════════
-# Installs the VOIDWAVE bash CLI to your system.
+# Installs the NETREAPER bash CLI to your system.
 #
 # Usage:
 #   sudo ./install.sh         # Install system-wide to /usr/local/bin (recommended)
@@ -49,9 +49,9 @@ fi
 # INSTALL
 #═══════════════════════════════════════════════════════════════════════════════
 
-install_voidwave() {
+install_netreaper() {
     echo ""
-    echo -e "${BOLD}VOIDWAVE ${VERSION} Installer${RESET}"
+    echo -e "${BOLD}NETREAPER ${VERSION} Installer${RESET}"
     echo ""
 
     # Create bin directory
@@ -59,29 +59,29 @@ install_voidwave() {
 
     # Remove old pipx installation if exists
     if command -v pipx &>/dev/null; then
-        if pipx list 2>/dev/null | grep -q voidwave; then
+        if pipx list 2>/dev/null | grep -q netreaper; then
             log "Removing old Python TUI installation..."
-            pipx uninstall voidwave 2>/dev/null || true
+            pipx uninstall netreaper 2>/dev/null || true
         fi
     fi
 
     # Remove existing symlinks from both locations
     for dir in "/usr/local/bin" "$HOME/.local/bin"; do
-        if [[ -e "$dir/voidwave" ]]; then
-            rm -f "$dir/voidwave" 2>/dev/null || true
+        if [[ -e "$dir/netreaper" ]]; then
+            rm -f "$dir/netreaper" 2>/dev/null || true
         fi
     done
 
     # Set permissions
-    chmod +x "$SCRIPT_DIR/voidwave"
-    chmod +x "$SCRIPT_DIR/bin/voidwave"
+    chmod +x "$SCRIPT_DIR/netreaper"
+    chmod +x "$SCRIPT_DIR/bin/netreaper"
 
     # Create symlink
-    ln -sf "$SCRIPT_DIR/voidwave" "$BIN_DIR/voidwave"
+    ln -sf "$SCRIPT_DIR/netreaper" "$BIN_DIR/netreaper"
 
     # Verify
-    if [[ -L "$BIN_DIR/voidwave" ]]; then
-        success "Installed to $BIN_DIR/voidwave"
+    if [[ -L "$BIN_DIR/netreaper" ]]; then
+        success "Installed to $BIN_DIR/netreaper"
     else
         error "Failed to create symlink"
         exit 1
@@ -97,16 +97,16 @@ install_voidwave() {
     fi
 
     echo ""
-    success "VOIDWAVE ${VERSION} installed"
+    success "NETREAPER ${VERSION} installed"
     echo ""
     if [[ "$USER_MODE" == true ]]; then
-        echo "  Run: voidwave"
-        warn "Note: 'sudo voidwave' won't work with user install"
+        echo "  Run: netreaper"
+        warn "Note: 'sudo netreaper' won't work with user install"
         echo "  For sudo support, reinstall with: sudo ./install.sh"
     else
-        echo "  Run: sudo voidwave"
+        echo "  Run: sudo netreaper"
     fi
-    echo "  Help: voidwave --help"
+    echo "  Help: netreaper --help"
     echo ""
 }
 
@@ -114,31 +114,31 @@ install_voidwave() {
 # UNINSTALL
 #═══════════════════════════════════════════════════════════════════════════════
 
-uninstall_voidwave() {
+uninstall_netreaper() {
     echo ""
-    echo -e "${BOLD}VOIDWAVE Uninstaller${RESET}"
+    echo -e "${BOLD}NETREAPER Uninstaller${RESET}"
     echo ""
 
     # Remove symlinks from both locations
     for dir in "/usr/local/bin" "$HOME/.local/bin"; do
-        if [[ -e "$dir/voidwave" ]]; then
-            rm -f "$dir/voidwave" 2>/dev/null || sudo rm -f "$dir/voidwave" 2>/dev/null || true
-            success "Removed $dir/voidwave"
+        if [[ -e "$dir/netreaper" ]]; then
+            rm -f "$dir/netreaper" 2>/dev/null || sudo rm -f "$dir/netreaper" 2>/dev/null || true
+            success "Removed $dir/netreaper"
         fi
     done
 
     # Remove pipx if installed
     if command -v pipx &>/dev/null; then
-        pipx uninstall voidwave 2>/dev/null && success "Removed pipx installation" || true
+        pipx uninstall netreaper 2>/dev/null && success "Removed pipx installation" || true
     fi
 
     # Ask about config
-    if [[ -d "$HOME/.voidwave" ]]; then
+    if [[ -d "$HOME/.netreaper" ]]; then
         echo ""
-        read -r -p "Remove config directory ~/.voidwave? [y/N]: " ans
+        read -r -p "Remove config directory ~/.netreaper? [y/N]: " ans
         if [[ "${ans,,}" == y* ]]; then
-            rm -rf "$HOME/.voidwave"
-            success "Removed ~/.voidwave"
+            rm -rf "$HOME/.netreaper"
+            success "Removed ~/.netreaper"
         fi
     fi
 
@@ -177,14 +177,14 @@ done
 
 case "$ACTION" in
     uninstall)
-        uninstall_voidwave
+        uninstall_netreaper
         ;;
     tools)
-        install_voidwave
+        install_netreaper
         install_tools
         ;;
     help)
-        echo "VOIDWAVE Installer"
+        echo "NETREAPER Installer"
         echo ""
         echo "Usage:"
         echo "  sudo ./install.sh         Install system-wide (recommended)"
@@ -192,11 +192,11 @@ case "$ACTION" in
         echo ""
         echo "Options:"
         echo "  --user          Install to ~/.local/bin instead of /usr/local/bin"
-        echo "  --uninstall, -u Remove VOIDWAVE"
+        echo "  --uninstall, -u Remove NETREAPER"
         echo "  --tools, -t     Install + security tools"
         echo "  --help, -h      Show this help"
         ;;
     *)
-        install_voidwave
+        install_netreaper
         ;;
 esac

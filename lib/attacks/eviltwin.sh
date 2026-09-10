@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Evil Twin: Rogue AP attacks with captive portal credential harvesting
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_EVILTWIN_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_EVILTWIN_LOADED=1
+[[ -n "${_NETREAPER_EVILTWIN_LOADED:-}" ]] && return 0
+readonly _NETREAPER_EVILTWIN_LOADED=1
 
 # Source dependencies
 if ! declare -F log_info &>/dev/null; then
@@ -794,7 +794,7 @@ et_cleanup() {
 
     # Save credentials to loot before cleanup
     if [[ -f "$ET_CREDS_FILE" ]] && [[ -s "$ET_CREDS_FILE" ]]; then
-        local loot_dir="${WIRELESS_LOOT_PORTALS:-$HOME/.voidwave/loot/wireless/portals}"
+        local loot_dir="${WIRELESS_LOOT_PORTALS:-$HOME/.netreaper/loot/wireless/portals}"
         mkdir -p "$loot_dir"
         cp "$ET_CREDS_FILE" "$loot_dir/credentials_$(date +%Y%m%d_%H%M%S).txt"
     fi

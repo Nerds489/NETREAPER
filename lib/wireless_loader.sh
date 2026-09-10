@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Wireless Module Loader: Loads all wireless attack modules
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_WIRELESS_LOADER_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_WIRELESS_LOADER_LOADED=1
+[[ -n "${_NETREAPER_WIRELESS_LOADER_LOADED:-}" ]] && return 0
+readonly _NETREAPER_WIRELESS_LOADER_LOADED=1
 
 # Get script directory
 _WIRELESS_LIB_DIR="${BASH_SOURCE%/*}"
@@ -156,7 +156,7 @@ wireless_show_modules() {
     for module in "${_wireless_core_modules[@]}"; do
         local name="${module##*/}"
         name="${name%.sh}"
-        local var="_VOIDWAVE_${name^^}_LOADED"
+        local var="_NETREAPER_${name^^}_LOADED"
         var="${var//-/_}"
 
         if [[ -n "${!var:-}" ]]; then
@@ -171,7 +171,7 @@ wireless_show_modules() {
     for module in "${_wireless_attack_modules[@]}"; do
         local name="${module##*/}"
         name="${name%.sh}"
-        local var="_VOIDWAVE_${name^^}_LOADED"
+        local var="_NETREAPER_${name^^}_LOADED"
 
         if [[ -n "${!var:-}" ]]; then
             echo -e "      ${C_GREEN}✓${C_RESET} $name"
@@ -185,7 +185,7 @@ wireless_show_modules() {
     for module in "${_wireless_extra_modules[@]}"; do
         local name="${module##*/}"
         name="${name%.sh}"
-        local var="_VOIDWAVE_${name^^}_LOADED"
+        local var="_NETREAPER_${name^^}_LOADED"
         var="${var//-/_}"
 
         if [[ -n "${!var:-}" ]]; then

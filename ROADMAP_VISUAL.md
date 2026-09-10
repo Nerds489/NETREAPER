@@ -1,8 +1,8 @@
-# VOIDWAVE Improvement Roadmap - Visual Timeline
+# NETREAPER Improvement Roadmap - Visual Timeline
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    VOIDWAVE IMPROVEMENT ROADMAP                             │
+│                    NETREAPER IMPROVEMENT ROADMAP                             │
 │                         6-Month Strategic Plan                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -224,7 +224,7 @@ Status Legend:
 
 Contact:
   📧 Engineering Lead: engineering@offtrackm.com
-  💬 Slack: #voidwave-improvements
+  💬 Slack: #netreaper-improvements
 
 
 ═══════════════════════════════════════════════════════════════════════════════

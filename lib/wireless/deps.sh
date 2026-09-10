@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Wireless Dependencies: tool detection, installation, and availability checks
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_WIRELESS_DEPS_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_WIRELESS_DEPS_LOADED=1
+[[ -n "${_NETREAPER_WIRELESS_DEPS_LOADED:-}" ]] && return 0
+readonly _NETREAPER_WIRELESS_DEPS_LOADED=1
 
 # Source core if not loaded
 if ! declare -F log_info &>/dev/null; then
@@ -386,7 +386,7 @@ deps_generate_install_script() {
     fi
 
     echo "#!/bin/bash"
-    echo "# VOIDWAVE Wireless Dependencies Installer"
+    echo "# NETREAPER Wireless Dependencies Installer"
     echo "# Generated: $(date)"
     echo ""
     echo "set -e"

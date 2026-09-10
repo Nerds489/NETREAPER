@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE Uninstaller
+# NETREAPER Uninstaller
 # ═══════════════════════════════════════════════════════════════════════════════
-# Removes VOIDWAVE and associated files.
+# Removes NETREAPER and associated files.
 #
 # Usage:
 #   ./uninstall.sh              # Interactive uninstall
@@ -38,7 +38,7 @@ OPT_KEEP_CONFIG=0
 
 show_help() {
     cat << 'EOF'
-VOIDWAVE Uninstaller
+NETREAPER Uninstaller
 
 Usage: ./uninstall.sh [OPTIONS]
 
@@ -64,44 +64,44 @@ done
 #═══════════════════════════════════════════════════════════════════════════════
 
 echo ""
-echo "${BOLD}VOIDWAVE Uninstaller${RESET}"
+echo "${BOLD}NETREAPER Uninstaller${RESET}"
 echo ""
 
 # Remove symlinks from both locations
 for dir in "/usr/local/bin" "$HOME/.local/bin"; do
-    if [[ -e "$dir/voidwave" ]]; then
+    if [[ -e "$dir/netreaper" ]]; then
         if [[ -w "$dir" ]]; then
-            rm -f "$dir/voidwave"
+            rm -f "$dir/netreaper"
         else
-            sudo rm -f "$dir/voidwave" 2>/dev/null || warn "Could not remove $dir/voidwave (need sudo)"
+            sudo rm -f "$dir/netreaper" 2>/dev/null || warn "Could not remove $dir/netreaper (need sudo)"
         fi
-        success "Removed $dir/voidwave"
+        success "Removed $dir/netreaper"
     fi
 done
 
 # Remove old pipx installation if exists
 if command -v pipx &>/dev/null; then
-    if pipx list 2>/dev/null | grep -q voidwave; then
+    if pipx list 2>/dev/null | grep -q netreaper; then
         log "Removing pipx installation..."
-        pipx uninstall voidwave 2>/dev/null && success "Removed pipx installation" || true
+        pipx uninstall netreaper 2>/dev/null && success "Removed pipx installation" || true
     fi
 fi
 
 # Handle config directory
-if [[ -d "$HOME/.voidwave" ]]; then
+if [[ -d "$HOME/.netreaper" ]]; then
     if [[ $OPT_ALL -eq 1 ]]; then
-        rm -rf "$HOME/.voidwave"
-        success "Removed ~/.voidwave"
+        rm -rf "$HOME/.netreaper"
+        success "Removed ~/.netreaper"
     elif [[ $OPT_KEEP_CONFIG -eq 1 ]]; then
-        log "Keeping ~/.voidwave config"
+        log "Keeping ~/.netreaper config"
     else
         echo ""
-        read -r -p "Remove config directory ~/.voidwave? [y/N]: " ans
+        read -r -p "Remove config directory ~/.netreaper? [y/N]: " ans
         if [[ "${ans,,}" == y* ]]; then
-            rm -rf "$HOME/.voidwave"
-            success "Removed ~/.voidwave"
+            rm -rf "$HOME/.netreaper"
+            success "Removed ~/.netreaper"
         else
-            log "Kept ~/.voidwave"
+            log "Kept ~/.netreaper"
         fi
     fi
 fi

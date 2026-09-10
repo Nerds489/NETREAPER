@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
-# VOIDWAVE Stress Tests
+# NETREAPER Stress Tests
 # Tests for modules/stress.sh functions
 # NOTE: Tests use stubs to avoid real network operations
 
 setup() {
-    VOIDWAVE_ROOT="$BATS_TEST_DIRNAME/.."
-    VOIDWAVE="$VOIDWAVE_ROOT/bin/voidwave"
-    export VOIDWAVE_ROOT
-    export VW_NON_INTERACTIVE=1
+    NETREAPER_ROOT="$BATS_TEST_DIRNAME/.."
+    NETREAPER="$NETREAPER_ROOT/bin/netreaper"
+    export NETREAPER_ROOT
+    export NR_NON_INTERACTIVE=1
 
     # Create temp directory for stubs
     TEST_TMPDIR=$(mktemp -d)
@@ -46,12 +46,12 @@ STUBEOF
     # Source libraries
     set +e
     trap - ERR
-    source "$VOIDWAVE_ROOT/lib/core.sh"
-    source "$VOIDWAVE_ROOT/lib/ui.sh"
-    source "$VOIDWAVE_ROOT/lib/safety.sh"
-    source "$VOIDWAVE_ROOT/lib/detection.sh"
-    source "$VOIDWAVE_ROOT/lib/utils.sh"
-    source "$VOIDWAVE_ROOT/modules/stress.sh"
+    source "$NETREAPER_ROOT/lib/core.sh"
+    source "$NETREAPER_ROOT/lib/ui.sh"
+    source "$NETREAPER_ROOT/lib/safety.sh"
+    source "$NETREAPER_ROOT/lib/detection.sh"
+    source "$NETREAPER_ROOT/lib/utils.sh"
+    source "$NETREAPER_ROOT/modules/stress.sh"
     set +e
     trap - ERR
 }
@@ -73,7 +73,7 @@ teardown() {
 }
 
 @test "stress_prescan fails on invalid target (non-interactive denies)" {
-    export VW_NON_INTERACTIVE=1
+    export NR_NON_INTERACTIVE=1
     # Invalid target like a protected IP should fail
     run stress_prescan "127.0.0.1"
     # In non-interactive mode, confirm_dangerous will deny
@@ -81,7 +81,7 @@ teardown() {
 }
 
 @test "stress_prescan shows legal warning" {
-    export VW_NON_INTERACTIVE=1
+    export NR_NON_INTERACTIVE=1
     run stress_prescan "192.168.1.100"
     # Even though it fails (non-interactive denial), output should contain warning
     [[ "$output" == *"STRESS TESTING"* ]] || [[ "$output" == *"WARNING"* ]] || [[ "$output" == *"PERMISSION"* ]]
@@ -106,9 +106,9 @@ teardown() {
 }
 
 @test "run_hping_attack dry-run prints command and exits 0" {
-    export VW_DRY_RUN=1
-    export VW_NON_INTERACTIVE=0
-    export VW_UNSAFE_MODE=1
+    export NR_DRY_RUN=1
+    export NR_NON_INTERACTIVE=0
+    export NR_UNSAFE_MODE=1
 
     # Create a mock confirm_dangerous that always succeeds
     confirm_dangerous() { return 0; }
@@ -125,8 +125,8 @@ teardown() {
 }
 
 @test "run_hping_attack rejects unknown attack type" {
-    export VW_DRY_RUN=1
-    export VW_UNSAFE_MODE=1
+    export NR_DRY_RUN=1
+    export NR_UNSAFE_MODE=1
 
     # Mock confirm_dangerous and validate_target
     confirm_dangerous() { return 0; }
@@ -163,7 +163,7 @@ teardown() {
 }
 
 @test "run_netem dry-run prints command and exits 0" {
-    export VW_DRY_RUN=1
+    export NR_DRY_RUN=1
 
     # Mock confirm_dangerous to always succeed
     confirm_dangerous() { return 0; }
@@ -177,7 +177,7 @@ teardown() {
 }
 
 @test "run_netem rejects unknown impairment type" {
-    export VW_DRY_RUN=1
+    export NR_DRY_RUN=1
 
     # Mock confirm_dangerous
     confirm_dangerous() { return 0; }
@@ -193,8 +193,8 @@ teardown() {
 #===============================================================================
 
 @test "stress_prescan enforces confirm_dangerous (non-interactive denial)" {
-    export VW_NON_INTERACTIVE=1
-    unset VW_UNSAFE_MODE
+    export NR_NON_INTERACTIVE=1
+    unset NR_UNSAFE_MODE
 
     # Mock validate_target to succeed
     validate_target() { return 0; }
@@ -206,8 +206,8 @@ teardown() {
 }
 
 @test "run_netem enforces confirm_dangerous (non-interactive denial)" {
-    export VW_NON_INTERACTIVE=1
-    unset VW_UNSAFE_MODE
+    export NR_NON_INTERACTIVE=1
+    unset NR_UNSAFE_MODE
 
     run run_netem "lo" delay 100ms 5
     # Should fail because confirm_dangerous denies in non-interactive mode
@@ -218,28 +218,28 @@ teardown() {
 # CLI tests
 #===============================================================================
 
-@test "voidwave stress (no args) shows usage" {
-    run "$VOIDWAVE" stress
+@test "netreaper stress (no args) shows usage" {
+    run "$NETREAPER" stress
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]]
     [[ "$output" == *"hping"* ]]
     [[ "$output" == *"netem"* ]]
 }
 
-@test "voidwave stress hping without target fails" {
-    run "$VOIDWAVE" stress hping
+@test "netreaper stress hping without target fails" {
+    run "$NETREAPER" stress hping
     [ "$status" -eq 1 ]
     [[ "$output" == *"Missing target"* ]]
 }
 
-@test "voidwave stress netem without interface fails" {
-    run "$VOIDWAVE" stress netem
+@test "netreaper stress netem without interface fails" {
+    run "$NETREAPER" stress netem
     [ "$status" -eq 1 ]
     [[ "$output" == *"Missing interface"* ]]
 }
 
-@test "voidwave stress unknown subcommand fails" {
-    run "$VOIDWAVE" stress foobar
+@test "netreaper stress unknown subcommand fails" {
+    run "$NETREAPER" stress foobar
     [ "$status" -eq 1 ]
     [[ "$output" == *"Unknown stress subcommand"* ]]
 }
@@ -249,6 +249,6 @@ teardown() {
 #===============================================================================
 
 @test "modules/stress.sh passes bash -n syntax check" {
-    run bash -n "$VOIDWAVE_ROOT/modules/stress.sh"
+    run bash -n "$NETREAPER_ROOT/modules/stress.sh"
     [ "$status" -eq 0 ]
 }

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Wireless library: interface detection, monitor mode management, validation
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_WIRELESS_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_WIRELESS_LOADED=1
+[[ -n "${_NETREAPER_WIRELESS_LOADED:-}" ]] && return 0
+readonly _NETREAPER_WIRELESS_LOADED=1
 
 # Source core library for logging, colors, and sudo helpers
 source "${BASH_SOURCE%/*}/core.sh"
@@ -24,7 +24,7 @@ source "${BASH_SOURCE%/*}/core.sh"
 # Safety: if someone sources lib/wireless.sh directly without detection.sh
 if ! declare -F is_wireless_interface >/dev/null 2>&1; then
     # shellcheck disable=SC1091
-    source "${VOIDWAVE_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}/lib/detection.sh" 2>/dev/null || true
+    source "${NETREAPER_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}/lib/detection.sh" 2>/dev/null || true
 fi
 
 #═══════════════════════════════════════════════════════════════════════════════

@@ -1,37 +1,34 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Traffic Menu: packet capture, MITM attacks, PCAP analysis
 # ═══════════════════════════════════════════════════════════════════════════════
 
-[[ -n "${_VOIDWAVE_TRAFFIC_MENU_LOADED:-}" ]] && return 0
-declare -r _VOIDWAVE_TRAFFIC_MENU_LOADED=1
+[[ -n "${_NETREAPER_TRAFFIC_MENU_LOADED:-}" ]] && return 0
+declare -r _NETREAPER_TRAFFIC_MENU_LOADED=1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SMART TRAFFIC MENU
 # ═══════════════════════════════════════════════════════════════════════════════
 
 show_traffic_menu_smart() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 1
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 1
 
     while true; do
         clear_screen 2>/dev/null || clear
@@ -106,7 +103,7 @@ show_traffic_menu_smart() {
 
 # Legacy function for backwards compatibility
 show_traffic_menu() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 1
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 1
 
     while true; do
         clear_screen 2>/dev/null || clear
@@ -185,7 +182,7 @@ _traffic_tcpdump() {
     read -rp "    Duration seconds (0=until Ctrl+C) [60]: " duration
     duration="${duration:-60}"
 
-    local outdir="${VOIDWAVE_OUTPUT_DIR:-$HOME/.voidwave/output}/captures"
+    local outdir="${NETREAPER_OUTPUT_DIR:-$HOME/.netreaper/output}/captures"
     mkdir -p "$outdir"
     local outfile="$outdir/tcpdump_$(date +%Y%m%d_%H%M%S).pcap"
 
@@ -316,7 +313,7 @@ _traffic_dnsspoof() {
     iface=$(select_interface) || { wait_for_keypress; return; }
 
     # Create hosts file
-    local tmpdir="${VOIDWAVE_OUTPUT_DIR:-$HOME/.voidwave/output}/tmp"
+    local tmpdir="${NETREAPER_OUTPUT_DIR:-$HOME/.netreaper/output}/tmp"
     mkdir -p "$tmpdir"
     hostsfile="$tmpdir/dnsspoof_hosts.txt"
 

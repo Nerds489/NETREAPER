@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Wireless Configuration: extends core config with wireless-specific settings
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_WIRELESS_CONFIG_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_WIRELESS_CONFIG_LOADED=1
+[[ -n "${_NETREAPER_WIRELESS_CONFIG_LOADED:-}" ]] && return 0
+readonly _NETREAPER_WIRELESS_CONFIG_LOADED=1
 
 # Source core config if not loaded
 if ! declare -F config_get &>/dev/null; then

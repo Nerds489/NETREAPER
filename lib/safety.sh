@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Safety library: authorization checks, target validation, privilege verification
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_SAFETY_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_SAFETY_LOADED=1
+[[ -n "${_NETREAPER_SAFETY_LOADED:-}" ]] && return 0
+readonly _NETREAPER_SAFETY_LOADED=1
 
 # Source core library
 source "${BASH_SOURCE%/*}/core.sh"
@@ -115,7 +112,7 @@ check_root() {
 # Accepts: "1", "true", "TRUE", "yes", "YES", "y", "Y"
 # Returns: 0 if enabled, 1 if disabled
 is_unsafe_mode_enabled() {
-    local val="${VW_UNSAFE_MODE:-0}"
+    local val="${NR_UNSAFE_MODE:-0}"
     case "${val,,}" in
         1|true|yes|y) return 0 ;;
         *) return 1 ;;
@@ -146,13 +143,13 @@ require_unsafe_mode() {
     local operation="${1:-dangerous operation}"
 
     if ! is_unsafe_mode_enabled; then
-        log_error "This $operation requires VW_UNSAFE_MODE=1"
-        log_info "Set environment variable: export VW_UNSAFE_MODE=1"
+        log_error "This $operation requires NR_UNSAFE_MODE=1"
+        log_info "Set environment variable: export NR_UNSAFE_MODE=1"
         log_warning "This bypasses safety checks - use with extreme caution"
         return 1
     fi
 
-    log_warning "VW_UNSAFE_MODE is enabled - safety checks bypassed"
+    log_warning "NR_UNSAFE_MODE is enabled - safety checks bypassed"
     log_audit "UNSAFE_MODE" "$operation" "allowed"
     return 0
 }
@@ -162,14 +159,14 @@ require_unsafe_mode() {
 #═══════════════════════════════════════════════════════════════════════════════
 
 # Authorization file location
-readonly AUTHORIZATION_FILE="${VOIDWAVE_HOME}/.authorized"
+readonly AUTHORIZATION_FILE="${NETREAPER_HOME}/.authorized"
 
 # Check if user has acknowledged authorization requirement
 # Returns: 0 if authorized, 1 if not (and prompts for confirmation)
 #
 # Non-interactive auto-authorization requires BOTH:
-#   - VW_AUTO_AUTHORIZE_NON_INTERACTIVE=1 (explicit opt-in)
-#   - VW_UNSAFE_MODE enabled (unsafe mode must be on)
+#   - NR_AUTO_AUTHORIZE_NON_INTERACTIVE=1 (explicit opt-in)
+#   - NR_UNSAFE_MODE enabled (unsafe mode must be on)
 check_authorization() {
     # Already authorized
     if [[ -f "$AUTHORIZATION_FILE" ]]; then
@@ -177,34 +174,34 @@ check_authorization() {
     fi
 
     # Non-interactive mode handling
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]; then
         # Check for explicit opt-in for auto-authorization
-        if [[ "${VW_AUTO_AUTHORIZE_NON_INTERACTIVE:-0}" == "1" ]] && is_unsafe_mode_enabled; then
-            mkdir -p "$VOIDWAVE_HOME" 2>/dev/null
+        if [[ "${NR_AUTO_AUTHORIZE_NON_INTERACTIVE:-0}" == "1" ]] && is_unsafe_mode_enabled; then
+            mkdir -p "$NETREAPER_HOME" 2>/dev/null
             echo "$(date -Iseconds) | $(whoami)@$(hostname) | Auto-authorized (non-interactive, unsafe mode)" > "$AUTHORIZATION_FILE"
             chmod 600 "$AUTHORIZATION_FILE" 2>/dev/null
-            log_debug "Auto-authorized in non-interactive mode (VW_AUTO_AUTHORIZE_NON_INTERACTIVE=1, unsafe mode enabled)"
-            log_audit "AUTO_AUTH_NON_INTERACTIVE" "authorized via VW_AUTO_AUTHORIZE_NON_INTERACTIVE" "success"
+            log_debug "Auto-authorized in non-interactive mode (NR_AUTO_AUTHORIZE_NON_INTERACTIVE=1, unsafe mode enabled)"
+            log_audit "AUTO_AUTH_NON_INTERACTIVE" "authorized via NR_AUTO_AUTHORIZE_NON_INTERACTIVE" "success"
             return 0
         fi
 
         # Non-interactive without explicit opt-in: fail safe
         log_error "Authorization required but running in non-interactive mode"
         log_info "To auto-authorize in non-interactive mode, set:"
-        log_info "  VW_AUTO_AUTHORIZE_NON_INTERACTIVE=1 VW_UNSAFE_MODE=1"
+        log_info "  NR_AUTO_AUTHORIZE_NON_INTERACTIVE=1 NR_UNSAFE_MODE=1"
         log_audit "AUTO_AUTH_NON_INTERACTIVE" "blocked - no explicit opt-in" "failed"
         return 1
     fi
 
     # Ensure directory exists
-    mkdir -p "$VOIDWAVE_HOME" 2>/dev/null
+    mkdir -p "$NETREAPER_HOME" 2>/dev/null
 
     echo
     echo -e "    ${C_RED}╔══════════════════════════════════════════════════════════════════════╗${C_RESET}"
     echo -e "    ${C_RED}║${C_RESET}                   ${C_YELLOW}⚠  AUTHORIZATION REQUIRED  ⚠${C_RESET}                     ${C_RED}║${C_RESET}"
     echo -e "    ${C_RED}╠══════════════════════════════════════════════════════════════════════╣${C_RESET}"
     echo -e "    ${C_RED}║${C_RESET}                                                                      ${C_RED}║${C_RESET}"
-    echo -e "    ${C_RED}║${C_RESET}  ${C_WHITE}VOIDWAVE is an offensive security toolkit.${C_RESET}                        ${C_RED}║${C_RESET}"
+    echo -e "    ${C_RED}║${C_RESET}  ${C_WHITE}NETREAPER is an offensive security toolkit.${C_RESET}                        ${C_RED}║${C_RESET}"
     echo -e "    ${C_RED}║${C_RESET}  ${C_WHITE}Unauthorized use against systems you don't own or${C_RESET}                  ${C_RED}║${C_RESET}"
     echo -e "    ${C_RED}║${C_RESET}  ${C_WHITE}have explicit written permission to test is ILLEGAL.${C_RESET}               ${C_RED}║${C_RESET}"
     echo -e "    ${C_RED}║${C_RESET}                                                                      ${C_RED}║${C_RESET}"
