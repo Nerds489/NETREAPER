@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Configuration library: persistent settings management
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_CONFIG_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_CONFIG_LOADED=1
+[[ -n "${_NETREAPER_CONFIG_LOADED:-}" ]] && return 0
+readonly _NETREAPER_CONFIG_LOADED=1
 
 #═══════════════════════════════════════════════════════════════════════════════
 # ENSURE CORE.SH IS LOADED
@@ -40,19 +37,19 @@ if ! declare -F log_info &>/dev/null; then
 fi
 
 # Logging wrapper functions (use core.sh functions if available, else fallback)
-_config_log_info()    { [[ "${VW_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0; declare -F log_info    &>/dev/null && log_info    "$@" || echo "[*] $*" >&2; }
-_config_log_error()   { [[ "${VW_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0; declare -F log_error   &>/dev/null && log_error   "$@" || echo "[!] $*" >&2; }
-_config_log_success() { [[ "${VW_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0; declare -F log_success &>/dev/null && log_success "$@" || echo "[+] $*" >&2; }
-_config_log_debug()   { [[ "${VW_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0; declare -F log_debug   &>/dev/null && log_debug   "$@" || :; }
+_config_log_info()    { [[ "${NR_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0; declare -F log_info    &>/dev/null && log_info    "$@" || echo "[*] $*" >&2; }
+_config_log_error()   { [[ "${NR_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0; declare -F log_error   &>/dev/null && log_error   "$@" || echo "[!] $*" >&2; }
+_config_log_success() { [[ "${NR_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0; declare -F log_success &>/dev/null && log_success "$@" || echo "[+] $*" >&2; }
+_config_log_debug()   { [[ "${NR_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0; declare -F log_debug   &>/dev/null && log_debug   "$@" || :; }
 
 #═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION PATHS
 #═══════════════════════════════════════════════════════════════════════════════
 
 # Use existing paths if defined, otherwise set defaults
-declare -g VOIDWAVE_HOME="${VOIDWAVE_HOME:-$HOME/.voidwave}"
-declare -g VOIDWAVE_CONFIG_DIR="${VOIDWAVE_CONFIG_DIR:-$VOIDWAVE_HOME/config}"
-declare -g VOIDWAVE_CONFIG_FILE="${VOIDWAVE_CONFIG_FILE:-$VOIDWAVE_CONFIG_DIR/config.conf}"
+declare -g NETREAPER_HOME="${NETREAPER_HOME:-$HOME/.netreaper}"
+declare -g NETREAPER_CONFIG_DIR="${NETREAPER_CONFIG_DIR:-$NETREAPER_HOME/config}"
+declare -g NETREAPER_CONFIG_FILE="${NETREAPER_CONFIG_FILE:-$NETREAPER_CONFIG_DIR/config.conf}"
 
 #═══════════════════════════════════════════════════════════════════════════════
 # DEFAULT CONFIGURATION
@@ -153,19 +150,19 @@ create_default_config() {
     local tmp_file=""
     local key=""
 
-    _config_log_debug "Creating default configuration file: $VOIDWAVE_CONFIG_FILE"
+    _config_log_debug "Creating default configuration file: $NETREAPER_CONFIG_FILE"
 
     # Create temp file with PID for uniqueness
-    tmp_file="${VOIDWAVE_CONFIG_FILE}.tmp.$$"
+    tmp_file="${NETREAPER_CONFIG_FILE}.tmp.$$"
 
     # Write configuration to temp file
     {
         echo "# ═══════════════════════════════════════════════════════════════════════════════"
-        echo "# VOIDWAVE Configuration"
+        echo "# NETREAPER Configuration"
         echo "# ═══════════════════════════════════════════════════════════════════════════════"
         echo "#"
-        echo "# This file contains persistent settings for VOIDWAVE."
-        echo "# Edit manually or use: voidwave config set <key> <value>"
+        echo "# This file contains persistent settings for NETREAPER."
+        echo "# Edit manually or use: netreaper config set <key> <value>"
         echo "#"
         echo "# Format: key=value (whitespace around = is trimmed)"
         echo "# Lines starting with # are comments"
@@ -176,7 +173,7 @@ create_default_config() {
         echo "# Valid levels: DEBUG, INFO, WARNING, ERROR"
         echo "log_level=${DEFAULT_CONFIG[log_level]}"
         echo ""
-        echo "# Enable logging to file (~/.voidwave/logs/)"
+        echo "# Enable logging to file (~/.netreaper/logs/)"
         echo "file_logging=${DEFAULT_CONFIG[file_logging]}"
         echo ""
         echo "# Scanning"
@@ -191,7 +188,7 @@ create_default_config() {
         echo "warn_public_ip=${DEFAULT_CONFIG[warn_public_ip]}"
         echo ""
         echo "# Disable safety checks (NOT RECOMMENDED)"
-        echo "# Can also be set via VW_UNSAFE_MODE=1 environment variable"
+        echo "# Can also be set via NR_UNSAFE_MODE=1 environment variable"
         echo "unsafe_mode=${DEFAULT_CONFIG[unsafe_mode]}"
         echo ""
         echo "# Paths"
@@ -208,8 +205,8 @@ create_default_config() {
     chmod 600 "$tmp_file" 2>/dev/null || true
 
     # Atomic move
-    if mv "$tmp_file" "$VOIDWAVE_CONFIG_FILE"; then
-        _config_log_success "Created configuration file: $VOIDWAVE_CONFIG_FILE"
+    if mv "$tmp_file" "$NETREAPER_CONFIG_FILE"; then
+        _config_log_success "Created configuration file: $NETREAPER_CONFIG_FILE"
         return 0
     else
         _config_log_error "Failed to create configuration file"
@@ -236,12 +233,12 @@ load_config() {
     _CONFIG_EXTRA_KEYS=()
 
     # If config file doesn't exist, we're done (using defaults)
-    if [[ ! -f "$VOIDWAVE_CONFIG_FILE" ]]; then
+    if [[ ! -f "$NETREAPER_CONFIG_FILE" ]]; then
         _config_log_debug "Config file not found, using defaults"
         return 0
     fi
 
-    _config_log_debug "Loading configuration from: $VOIDWAVE_CONFIG_FILE"
+    _config_log_debug "Loading configuration from: $NETREAPER_CONFIG_FILE"
 
     # Parse config file line by line
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -275,7 +272,7 @@ load_config() {
                 _config_log_debug "Found extra config key: $key"
             fi
         fi
-    done < "$VOIDWAVE_CONFIG_FILE"
+    done < "$NETREAPER_CONFIG_FILE"
 
     _config_log_debug "Configuration loaded: ${#CONFIG[@]} keys"
     return 0
@@ -288,16 +285,16 @@ _config_write_file() {
     local key=""
     local written_keys=()
 
-    tmp_file="${VOIDWAVE_CONFIG_FILE}.tmp.$$"
+    tmp_file="${NETREAPER_CONFIG_FILE}.tmp.$$"
 
     # Build the config file content
     {
         echo "# ═══════════════════════════════════════════════════════════════════════════════"
-        echo "# VOIDWAVE Configuration"
+        echo "# NETREAPER Configuration"
         echo "# ═══════════════════════════════════════════════════════════════════════════════"
         echo "#"
-        echo "# This file contains persistent settings for VOIDWAVE."
-        echo "# Edit manually or use: voidwave config set <key> <value>"
+        echo "# This file contains persistent settings for NETREAPER."
+        echo "# Edit manually or use: netreaper config set <key> <value>"
         echo "#"
         echo "# ═══════════════════════════════════════════════════════════════════════════════"
         echo ""
@@ -335,7 +332,7 @@ _config_write_file() {
     chmod 600 "$tmp_file" 2>/dev/null || true
 
     # Atomic move
-    if mv "$tmp_file" "$VOIDWAVE_CONFIG_FILE"; then
+    if mv "$tmp_file" "$NETREAPER_CONFIG_FILE"; then
         return 0
     else
         _config_log_error "Failed to write configuration file"
@@ -353,19 +350,19 @@ _config_write_file() {
 init_config() {
     # Ensure config directory exists
     if declare -f ensure_dir &>/dev/null; then
-        ensure_dir "$VOIDWAVE_CONFIG_DIR"
+        ensure_dir "$NETREAPER_CONFIG_DIR"
     else
-        if [[ ! -d "$VOIDWAVE_CONFIG_DIR" ]]; then
-            if ! mkdir -p "$VOIDWAVE_CONFIG_DIR" 2>/dev/null; then
-                _config_log_error "Failed to create config directory: $VOIDWAVE_CONFIG_DIR"
+        if [[ ! -d "$NETREAPER_CONFIG_DIR" ]]; then
+            if ! mkdir -p "$NETREAPER_CONFIG_DIR" 2>/dev/null; then
+                _config_log_error "Failed to create config directory: $NETREAPER_CONFIG_DIR"
                 return 1
             fi
-            chmod 700 "$VOIDWAVE_CONFIG_DIR" 2>/dev/null || true
+            chmod 700 "$NETREAPER_CONFIG_DIR" 2>/dev/null || true
         fi
     fi
 
     # Create default config if file doesn't exist
-    if [[ ! -f "$VOIDWAVE_CONFIG_FILE" ]]; then
+    if [[ ! -f "$NETREAPER_CONFIG_FILE" ]]; then
         create_default_config || return 1
     fi
 
@@ -436,7 +433,7 @@ config_edit() {
     local editor=""
 
     # Check for non-interactive mode
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]]; then
         _config_log_error "config_edit: not available in non-interactive mode"
         return 1
     fi
@@ -458,14 +455,14 @@ config_edit() {
     fi
 
     # Ensure config file exists
-    if [[ ! -f "$VOIDWAVE_CONFIG_FILE" ]]; then
+    if [[ ! -f "$NETREAPER_CONFIG_FILE" ]]; then
         create_default_config || return 1
     fi
 
     _config_log_info "Opening configuration in $editor..."
 
     # Open editor
-    if "$editor" "$VOIDWAVE_CONFIG_FILE"; then
+    if "$editor" "$NETREAPER_CONFIG_FILE"; then
         # Reload configuration
         load_config
         _config_log_success "Configuration reloaded"
@@ -495,7 +492,7 @@ config_show() {
     fi
 
     echo ""
-    echo "  Config file: $VOIDWAVE_CONFIG_FILE"
+    echo "  Config file: $NETREAPER_CONFIG_FILE"
     echo ""
 
     # Collect all keys and sort them
@@ -539,8 +536,8 @@ config_reset() {
     _config_log_info "Resetting configuration to defaults..."
 
     # Remove existing config file
-    if [[ -f "$VOIDWAVE_CONFIG_FILE" ]]; then
-        rm -f "$VOIDWAVE_CONFIG_FILE"
+    if [[ -f "$NETREAPER_CONFIG_FILE" ]]; then
+        rm -f "$NETREAPER_CONFIG_FILE"
     fi
 
     # Clear in-memory config
@@ -558,7 +555,7 @@ config_reset() {
 # Get configuration file path
 # Returns: path to config file
 config_path() {
-    echo "$VOIDWAVE_CONFIG_FILE"
+    echo "$NETREAPER_CONFIG_FILE"
 }
 
 # List all configuration keys
@@ -634,7 +631,7 @@ validate_config_value() {
 # Validate entire config
 # Returns: 0 if valid, 1 if any errors
 config_validate() {
-    local config_file="${VOIDWAVE_CONFIG_FILE}"
+    local config_file="${NETREAPER_CONFIG_FILE}"
     local errors=0
     local key value
 
@@ -680,4 +677,4 @@ export -f config_is_true config_resolve_bool
 export -f validate_config_value config_validate
 
 # Export path variables
-export VOIDWAVE_HOME VOIDWAVE_CONFIG_DIR VOIDWAVE_CONFIG_FILE
+export NETREAPER_HOME NETREAPER_CONFIG_DIR NETREAPER_CONFIG_FILE

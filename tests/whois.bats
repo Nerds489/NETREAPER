@@ -1,20 +1,20 @@
 #!/usr/bin/env bats
-# VOIDWAVE WHOIS Tests
+# NETREAPER WHOIS Tests
 # Tests for modules/osint.sh run_whois() function
 # NOTE: Tests use stub whois to avoid network dependency
 
 setup() {
-    VOIDWAVE_ROOT="$BATS_TEST_DIRNAME/.."
-    export VOIDWAVE_ROOT
-    export VW_NON_INTERACTIVE=1
+    NETREAPER_ROOT="$BATS_TEST_DIRNAME/.."
+    export NETREAPER_ROOT
+    export NR_NON_INTERACTIVE=1
 
     # Create temp directory for stub and cache
     TEST_TMPDIR=$(mktemp -d)
     export TEST_TMPDIR
 
     # Set cache directory to temp
-    export VOIDWAVE_STATE_DIR="$TEST_TMPDIR/state"
-    mkdir -p "$VOIDWAVE_STATE_DIR/cache/whois"
+    export NETREAPER_STATE_DIR="$TEST_TMPDIR/state"
+    mkdir -p "$NETREAPER_STATE_DIR/cache/whois"
 
     # Create stub bin directory
     STUB_BIN="$TEST_TMPDIR/bin"
@@ -73,11 +73,11 @@ STUBEOF
     # Source libraries
     set +e
     trap - ERR
-    source "$VOIDWAVE_ROOT/lib/core.sh"
-    source "$VOIDWAVE_ROOT/lib/ui.sh"
-    source "$VOIDWAVE_ROOT/lib/utils.sh"
-    source "$VOIDWAVE_ROOT/lib/detection.sh"
-    source "$VOIDWAVE_ROOT/modules/osint.sh"
+    source "$NETREAPER_ROOT/lib/core.sh"
+    source "$NETREAPER_ROOT/lib/ui.sh"
+    source "$NETREAPER_ROOT/lib/utils.sh"
+    source "$NETREAPER_ROOT/lib/detection.sh"
+    source "$NETREAPER_ROOT/modules/osint.sh"
     set +e
     trap - ERR
 }
@@ -165,7 +165,7 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Check cache file exists
-    local cache_file="$VOIDWAVE_STATE_DIR/cache/whois/cachetest.com.txt"
+    local cache_file="$NETREAPER_STATE_DIR/cache/whois/cachetest.com.txt"
     [ -f "$cache_file" ]
 }
 
@@ -209,7 +209,7 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Cache file should exist with sanitized name (/ replaced with _)
-    local cache_file="$VOIDWAVE_STATE_DIR/cache/whois/test_domain.com.txt"
+    local cache_file="$NETREAPER_STATE_DIR/cache/whois/test_domain.com.txt"
     [ -f "$cache_file" ]
 }
 
@@ -218,7 +218,7 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Cache file should exist with sanitized name (space replaced with _)
-    local cache_file="$VOIDWAVE_STATE_DIR/cache/whois/test_domain.com.txt"
+    local cache_file="$NETREAPER_STATE_DIR/cache/whois/test_domain.com.txt"
     [ -f "$cache_file" ]
 }
 
@@ -227,7 +227,7 @@ teardown() {
 #===============================================================================
 
 @test "run_whois in non-interactive mode does not prompt for raw output" {
-    export VW_NON_INTERACTIVE=1
+    export NR_NON_INTERACTIVE=1
 
     run run_whois "noninteractive.com"
     [ "$status" -eq 0 ]
@@ -243,6 +243,6 @@ teardown() {
 #===============================================================================
 
 @test "modules/osint.sh passes bash -n syntax check" {
-    run bash -n "$VOIDWAVE_ROOT/modules/osint.sh"
+    run bash -n "$NETREAPER_ROOT/modules/osint.sh"
     [ "$status" -eq 0 ]
 }

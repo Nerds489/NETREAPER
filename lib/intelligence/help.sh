@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE Help System
+# NETREAPER Help System
 # ═══════════════════════════════════════════════════════════════════════════════
 # Provides detailed descriptions for all menu options
 # Access via: ? or H from any menu, or ?<num> for specific option
 # ═══════════════════════════════════════════════════════════════════════════════
 
-[[ -n "${_VOIDWAVE_HELP_LOADED:-}" ]] && return 0
-declare -r _VOIDWAVE_HELP_LOADED=1
+[[ -n "${_NETREAPER_HELP_LOADED:-}" ]] && return 0
+declare -r _NETREAPER_HELP_LOADED=1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # WIRELESS MENU DESCRIPTIONS
@@ -1047,7 +1047,7 @@ declare -gA STRESS_HELP=(
 declare -gA SETTINGS_HELP=(
     [1]="VIEW CURRENT SETTINGS
 
-    Display all VOIDWAVE configuration.
+    Display all NETREAPER configuration.
 
     SHOWS:
     • Version information
@@ -1089,7 +1089,7 @@ declare -gA SETTINGS_HELP=(
     • Output directory (captures, payloads)
     • Log directory
 
-    DEFAULT: ~/.voidwave/"
+    DEFAULT: ~/.netreaper/"
 
     [5]="EXPORT CONFIGURATION
 

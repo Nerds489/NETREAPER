@@ -1,37 +1,34 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Scanning Menu: port scanning, service detection, OS fingerprinting
 # ═══════════════════════════════════════════════════════════════════════════════
 
-[[ -n "${_VOIDWAVE_SCAN_MENU_LOADED:-}" ]] && return 0
-declare -r _VOIDWAVE_SCAN_MENU_LOADED=1
+[[ -n "${_NETREAPER_SCAN_MENU_LOADED:-}" ]] && return 0
+declare -r _NETREAPER_SCAN_MENU_LOADED=1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SMART SCAN MENU
 # ═══════════════════════════════════════════════════════════════════════════════
 
 show_scan_menu_smart() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 1
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 1
 
     while true; do
         clear_screen 2>/dev/null || clear
@@ -120,7 +117,7 @@ show_scan_menu_smart() {
 
 # Legacy function for backwards compatibility
 show_scan_menu() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 1
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 1
 
     while true; do
         clear_screen 2>/dev/null || clear
@@ -202,7 +199,7 @@ _run_nmap() {
         return 1
     fi
 
-    local outdir="${VOIDWAVE_OUTPUT_DIR:-$HOME/.voidwave/output}"
+    local outdir="${NETREAPER_OUTPUT_DIR:-$HOME/.netreaper/output}"
     local outfile="$outdir/scan_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$outdir"
 

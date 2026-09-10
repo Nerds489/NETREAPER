@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Core library: version, colors, logging, error handling, directory setup
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_CORE_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_CORE_LOADED=1
+[[ -n "${_NETREAPER_CORE_LOADED:-}" ]] && return 0
+readonly _NETREAPER_CORE_LOADED=1
 
 #═══════════════════════════════════════════════════════════════════════════════
 # EXIT CODE CONSTANTS
@@ -46,7 +43,7 @@ declare -r EXIT_CODE_TOOL_MISSING=6
 set -o pipefail
 
 # Global flag to prevent recursive error handling
-_VOIDWAVE_IN_ERROR_HANDLER=0
+_NETREAPER_IN_ERROR_HANDLER=0
 
 # Enhanced error handler with stack trace
 # Args: $1 = exit code, $2 = line number
@@ -57,8 +54,8 @@ error_handler() {
     local bash_source="${BASH_SOURCE[1]:-unknown}"
 
     # Prevent recursive error handling
-    [[ $_VOIDWAVE_IN_ERROR_HANDLER -eq 1 ]] && return $exit_code
-    _VOIDWAVE_IN_ERROR_HANDLER=1
+    [[ $_NETREAPER_IN_ERROR_HANDLER -eq 1 ]] && return $exit_code
+    _NETREAPER_IN_ERROR_HANDLER=1
 
     # Build stack trace
     local stack_trace=""
@@ -82,12 +79,12 @@ error_handler() {
         log_audit "ERROR" "$func_name at $bash_source:$line_no" "exit_code=$exit_code"
     fi
 
-    _VOIDWAVE_IN_ERROR_HANDLER=0
+    _NETREAPER_IN_ERROR_HANDLER=0
     return $exit_code
 }
 
 # Legacy error handler (wrapper for backwards compatibility)
-_voidwave_error_handler() {
+_netreaper_error_handler() {
     error_handler "$?" "${1:-unknown}"
 }
 
@@ -122,7 +119,7 @@ unregister_cleanup() {
 }
 
 # Master cleanup - runs all registered cleanup functions
-_voidwave_cleanup() {
+_netreaper_cleanup() {
     local func
     # Run cleanups in reverse order (LIFO - last registered runs first)
     for ((i=${#_CLEANUP_REGISTRY[@]}-1; i>=0; i--)); do
@@ -135,7 +132,7 @@ _voidwave_cleanup() {
 
 # Set traps (modules should use register_cleanup instead of direct trap)
 trap 'error_handler $? $LINENO' ERR
-trap '_voidwave_cleanup' EXIT
+trap '_netreaper_cleanup' EXIT
 
 #═══════════════════════════════════════════════════════════════════════════════
 # VERSION INFORMATION
@@ -146,7 +143,7 @@ trap '_voidwave_cleanup' EXIT
 # shellcheck source=version.sh
 source "$(dirname "${BASH_SOURCE[0]}")/version.sh"
 readonly CODENAME="Phantom Protocol"
-readonly SCRIPT_NAME="voidwave"
+readonly SCRIPT_NAME="netreaper"
 
 #═══════════════════════════════════════════════════════════════════════════════
 # COLOR DEFINITIONS
@@ -211,17 +208,17 @@ readonly C_GOLD="${C_ORANGE}"
 # DIRECTORY & FILE SETUP
 #═══════════════════════════════════════════════════════════════════════════════
 
-VOIDWAVE_HOME="${HOME}/.voidwave"
-CONFIG_DIR="${VOIDWAVE_HOME}/config"
-CONFIG_FILE="${CONFIG_DIR}/voidwave.conf"
-LOG_DIR="${VOIDWAVE_HOME}/logs"
-OUTPUT_DIR="${VOIDWAVE_HOME}/output"
-LOOT_DIR="${VOIDWAVE_HOME}/loot"
-SESSION_DIR="${VOIDWAVE_HOME}/sessions"
-HISTORY_FILE="${VOIDWAVE_HOME}/target_history"
+NETREAPER_HOME="${HOME}/.netreaper"
+CONFIG_DIR="${NETREAPER_HOME}/config"
+CONFIG_FILE="${CONFIG_DIR}/netreaper.conf"
+LOG_DIR="${NETREAPER_HOME}/logs"
+OUTPUT_DIR="${NETREAPER_HOME}/output"
+LOOT_DIR="${NETREAPER_HOME}/loot"
+SESSION_DIR="${NETREAPER_HOME}/sessions"
+HISTORY_FILE="${NETREAPER_HOME}/target_history"
 
 # Alias for logging system compatibility
-VOIDWAVE_LOG_DIR="$LOG_DIR"
+NETREAPER_LOG_DIR="$LOG_DIR"
 
 # Runtime flags
 VERBOSE="${VERBOSE:-false}"
@@ -238,7 +235,7 @@ LEGAL_FILE="${CONFIG_DIR}/.legal_accepted"
 FAVORITES_FILE="${CONFIG_DIR}/favorites"
 ALIASES_FILE="${CONFIG_DIR}/aliases"
 PROFILES_DIR="${CONFIG_DIR}/profiles"
-TMP_DIR="/tmp/voidwave"
+TMP_DIR="/tmp/netreaper"
 CURRENT_SESSION=""
 SESSION_NAME=""
 
@@ -272,10 +269,10 @@ ensure_directories() {
 
     # Create all directories
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$LOOT_DIR" "$SESSION_DIR" "$PROFILES_DIR" "$TMP_DIR" 2>/dev/null
-    chmod 700 "$VOIDWAVE_HOME" 2>/dev/null
+    chmod 700 "$NETREAPER_HOME" 2>/dev/null
 
     # Migrate legacy flat-file locations into new structure
-    for legacy_file in "$VOIDWAVE_HOME/favorites" "$VOIDWAVE_HOME/aliases"; do
+    for legacy_file in "$NETREAPER_HOME/favorites" "$NETREAPER_HOME/aliases"; do
         local dest_path
         dest_path="$CONFIG_DIR/$(basename "$legacy_file")"
         if [[ -f "$legacy_file" && ! -f "$dest_path" ]]; then
@@ -283,8 +280,8 @@ ensure_directories() {
         fi
     done
 
-    if [[ -f "$VOIDWAVE_HOME/history" && ! -f "$HISTORY_FILE" ]]; then
-        mv "$VOIDWAVE_HOME/history" "$HISTORY_FILE" 2>/dev/null || cp "$VOIDWAVE_HOME/history" "$HISTORY_FILE" 2>/dev/null
+    if [[ -f "$NETREAPER_HOME/history" && ! -f "$HISTORY_FILE" ]]; then
+        mv "$NETREAPER_HOME/history" "$HISTORY_FILE" 2>/dev/null || cp "$NETREAPER_HOME/history" "$HISTORY_FILE" 2>/dev/null
     fi
 }
 
@@ -300,21 +297,21 @@ declare -r LOG_LEVEL_ERROR=4
 declare -r LOG_LEVEL_FATAL=5
 
 # Current log level (default: INFO)
-CURRENT_LOG_LEVEL="${VOIDWAVE_LOG_LEVEL:-$LOG_LEVEL_INFO}"
+CURRENT_LOG_LEVEL="${NETREAPER_LOG_LEVEL:-$LOG_LEVEL_INFO}"
 
 # Log file paths (daily rotation)
-VOIDWAVE_LOG_FILE="${VOIDWAVE_LOG_DIR}/voidwave_$(date +%Y%m%d).log"
-VOIDWAVE_AUDIT_FILE="${VOIDWAVE_LOG_DIR}/audit_$(date +%Y%m%d).log"
+NETREAPER_LOG_FILE="${NETREAPER_LOG_DIR}/netreaper_$(date +%Y%m%d).log"
+NETREAPER_AUDIT_FILE="${NETREAPER_LOG_DIR}/audit_$(date +%Y%m%d).log"
 
 # Legacy aliases for backwards compatibility
-LOG_FILE="$VOIDWAVE_LOG_FILE"
-AUDIT_LOG="$VOIDWAVE_AUDIT_FILE"
+LOG_FILE="$NETREAPER_LOG_FILE"
+AUDIT_LOG="$NETREAPER_AUDIT_FILE"
 
 # Enable/disable file logging (default: enabled)
-FILE_LOGGING="${VOIDWAVE_FILE_LOGGING:-1}"
+FILE_LOGGING="${NETREAPER_FILE_LOGGING:-1}"
 
 # Log format: "text" (default) or "json" for structured logging
-VOIDWAVE_LOG_FORMAT="${VOIDWAVE_LOG_FORMAT:-text}"
+NETREAPER_LOG_FORMAT="${NETREAPER_LOG_FORMAT:-text}"
 
 #═══════════════════════════════════════════════════════════════════════════════
 # CORE LOG FUNCTION
@@ -332,9 +329,9 @@ _log() {
     printf -v timestamp '%(%Y-%m-%d %H:%M:%S)T' -1
     printf -v timestamp_iso '%(%Y-%m-%dT%H:%M:%S)T' -1
 
-    # Suppress all console/stderr output when VW_SUPPRESS_OUTPUT is set
+    # Suppress all console/stderr output when NR_SUPPRESS_OUTPUT is set
     # File logging is also suppressed for simplicity in CI/test contexts
-    [[ "${VW_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0
+    [[ "${NR_SUPPRESS_OUTPUT:-0}" == "1" ]] && return 0
 
     # Check log level threshold
     [[ $level_num -lt $CURRENT_LOG_LEVEL ]] && return 0
@@ -344,8 +341,8 @@ _log() {
         # Still log to file, just don't print to console
         :
     else
-        # Console output - format depends on VOIDWAVE_LOG_FORMAT
-        if [[ "$VOIDWAVE_LOG_FORMAT" == "json" ]]; then
+        # Console output - format depends on NETREAPER_LOG_FORMAT
+        if [[ "$NETREAPER_LOG_FORMAT" == "json" ]]; then
             # JSON format for structured logging (escape special chars in message)
             local escaped_msg="${message//\\/\\\\}"
             escaped_msg="${escaped_msg//\"/\\\"}"
@@ -358,9 +355,9 @@ _log() {
     fi
 
     # File logging (always text format for readability)
-    if [[ "$FILE_LOGGING" == "1" && -n "$VOIDWAVE_LOG_FILE" ]]; then
-        ensure_dir "$(dirname "$VOIDWAVE_LOG_FILE")"
-        echo "[$timestamp] [$level] $message" >> "$VOIDWAVE_LOG_FILE" 2>/dev/null || true
+    if [[ "$FILE_LOGGING" == "1" && -n "$NETREAPER_LOG_FILE" ]]; then
+        ensure_dir "$(dirname "$NETREAPER_LOG_FILE")"
+        echo "[$timestamp] [$level] $message" >> "$NETREAPER_LOG_FILE" 2>/dev/null || true
     fi
 }
 
@@ -410,8 +407,8 @@ log_audit() {
     printf -v timestamp '%(%Y-%m-%d %H:%M:%S)T' -1
     local user="${USER:-unknown}"
 
-    ensure_dir "$(dirname "$VOIDWAVE_AUDIT_FILE")"
-    echo "[$timestamp] USER=$user ACTION=$action TARGET=\"$target\" RESULT=\"$result\" PID=$$" >> "$VOIDWAVE_AUDIT_FILE" 2>/dev/null || true
+    ensure_dir "$(dirname "$NETREAPER_AUDIT_FILE")"
+    echo "[$timestamp] USER=$user ACTION=$action TARGET=\"$target\" RESULT=\"$result\" PID=$$" >> "$NETREAPER_AUDIT_FILE" 2>/dev/null || true
     log_debug "AUDIT: $action - $target - $result"
 }
 
@@ -423,12 +420,12 @@ log_command_preview() {
     fi
 
     # File logging
-    if [[ "$FILE_LOGGING" == "1" && -n "$VOIDWAVE_LOG_FILE" ]]; then
-        ensure_dir "$(dirname "$VOIDWAVE_LOG_FILE")"
+    if [[ "$FILE_LOGGING" == "1" && -n "$NETREAPER_LOG_FILE" ]]; then
+        ensure_dir "$(dirname "$NETREAPER_LOG_FILE")"
         local timestamp
         # Use printf builtin for timestamp (faster than date subshell)
         printf -v timestamp '%(%Y-%m-%d %H:%M:%S)T' -1
-        echo "[$timestamp] [EXEC] $cmd" >> "$VOIDWAVE_LOG_FILE" 2>/dev/null || true
+        echo "[$timestamp] [EXEC] $cmd" >> "$NETREAPER_LOG_FILE" 2>/dev/null || true
     fi
 
     log_audit "EXECUTE" "${cmd:0:200}" "started"
@@ -462,28 +459,28 @@ set_log_level() {
 
 show_logs() {
     local lines="${1:-50}"
-    if [[ -f "$VOIDWAVE_LOG_FILE" ]]; then
-        tail -n "$lines" "$VOIDWAVE_LOG_FILE"
+    if [[ -f "$NETREAPER_LOG_FILE" ]]; then
+        tail -n "$lines" "$NETREAPER_LOG_FILE"
     else
-        log_warning "No log file found at $VOIDWAVE_LOG_FILE"
+        log_warning "No log file found at $NETREAPER_LOG_FILE"
     fi
 }
 
 rotate_logs() {
     local max_days="${1:-30}"
-    if [[ -d "$VOIDWAVE_LOG_DIR" ]]; then
-        find "$VOIDWAVE_LOG_DIR" -name "*.log" -mtime "+$max_days" -delete 2>/dev/null
+    if [[ -d "$NETREAPER_LOG_DIR" ]]; then
+        find "$NETREAPER_LOG_DIR" -name "*.log" -mtime "+$max_days" -delete 2>/dev/null
         log_success "Rotated logs older than $max_days days"
     else
-        log_warning "Log directory not found: $VOIDWAVE_LOG_DIR"
+        log_warning "Log directory not found: $NETREAPER_LOG_DIR"
     fi
 }
 
 init_logging() {
-    ensure_dir "$VOIDWAVE_LOG_DIR"
-    touch "$VOIDWAVE_LOG_FILE" "$VOIDWAVE_AUDIT_FILE" 2>/dev/null
-    chmod 600 "$VOIDWAVE_LOG_FILE" "$VOIDWAVE_AUDIT_FILE" 2>/dev/null || true
-    log_debug "VOIDWAVE v${VERSION} (${CODENAME}) started at $(date '+%Y-%m-%d %H:%M:%S')"
+    ensure_dir "$NETREAPER_LOG_DIR"
+    touch "$NETREAPER_LOG_FILE" "$NETREAPER_AUDIT_FILE" 2>/dev/null
+    chmod 600 "$NETREAPER_LOG_FILE" "$NETREAPER_AUDIT_FILE" 2>/dev/null || true
+    log_debug "NETREAPER v${VERSION} (${CODENAME}) started at $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 # Semantic logging aliases (for attack/target/loot operations)
@@ -495,11 +492,11 @@ log_loot()    { log_success "$@"; }
 log_to_file() {
     local message="$1"
     local timestamp
-    [[ -z "${VOIDWAVE_LOG_FILE:-}" ]] && return 0
-    [[ ! -d "${VOIDWAVE_LOG_FILE%/*}" ]] && return 0
+    [[ -z "${NETREAPER_LOG_FILE:-}" ]] && return 0
+    [[ ! -d "${NETREAPER_LOG_FILE%/*}" ]] && return 0
     # Use printf builtin for timestamp (faster than date subshell)
     printf -v timestamp '%(%Y-%m-%d %H:%M:%S)T' -1
-    echo "[$timestamp] $message" >> "$VOIDWAVE_LOG_FILE" 2>/dev/null || true
+    echo "[$timestamp] $message" >> "$NETREAPER_LOG_FILE" 2>/dev/null || true
 }
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -549,7 +546,7 @@ elevate_if_needed() {
     log_warning "$operation requires root privileges"
 
     # Non-interactive mode - cannot safely prompt
-    if [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]]; then
+    if [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]]; then
         log_error "Cannot elevate in non-interactive mode"
         return 1
     fi
@@ -614,9 +611,9 @@ enforce_root_for() {
 #═══════════════════════════════════════════════════════════════════════════════
 
 # Safe command execution wrapper
-# Respects VW_DRY_RUN flag - prints command instead of executing
+# Respects NR_DRY_RUN flag - prints command instead of executing
 nr_run() {
-    if [[ "${VW_DRY_RUN:-0}" -eq 1 ]]; then
+    if [[ "${NR_DRY_RUN:-0}" -eq 1 ]]; then
         echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} $*" >&2
         return 0
     fi
@@ -625,7 +622,7 @@ nr_run() {
 
 # For commands that need shell evaluation
 nr_run_eval() {
-    if [[ "${VW_DRY_RUN:-0}" -eq 1 ]]; then
+    if [[ "${NR_DRY_RUN:-0}" -eq 1 ]]; then
         echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} $*" >&2
         return 0
     fi
@@ -634,7 +631,7 @@ nr_run_eval() {
 
 # Run with sudo, respecting dry-run mode
 nr_run_sudo() {
-    if [[ "${VW_DRY_RUN:-0}" -eq 1 ]]; then
+    if [[ "${NR_DRY_RUN:-0}" -eq 1 ]]; then
         echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} sudo $*" >&2
         return 0
     fi
@@ -690,7 +687,7 @@ assert() {
 try() {
     local cmd_str="$*"
     local stderr_file
-    stderr_file=$(mktemp 2>/dev/null || echo "/tmp/voidwave_try_$$")
+    stderr_file=$(mktemp 2>/dev/null || echo "/tmp/netreaper_try_$$")
     local exit_code
 
     log_debug "TRY: $cmd_str"
@@ -791,7 +788,7 @@ export -f operation_needs_root enforce_root_for
 export -f nr_run nr_run_eval nr_run_sudo
 
 # Error handlers and cleanup registry
-export -f error_handler _voidwave_error_handler _voidwave_cleanup
+export -f error_handler _netreaper_error_handler _netreaper_cleanup
 export -f register_cleanup unregister_cleanup
 
 # Unified error handling framework
@@ -799,8 +796,8 @@ export -f die assert try require_tool check_tool get_tool_path
 
 # Export variables
 export VERSION CODENAME SCRIPT_NAME
-export VOIDWAVE_ROOT VOIDWAVE_HOME CONFIG_DIR CONFIG_FILE LOG_DIR OUTPUT_DIR LOOT_DIR SESSION_DIR
-export VOIDWAVE_LOG_DIR VOIDWAVE_LOG_FILE VOIDWAVE_AUDIT_FILE
+export NETREAPER_ROOT NETREAPER_HOME CONFIG_DIR CONFIG_FILE LOG_DIR OUTPUT_DIR LOOT_DIR SESSION_DIR
+export NETREAPER_LOG_DIR NETREAPER_LOG_FILE NETREAPER_AUDIT_FILE
 export LOG_FILE AUDIT_LOG HISTORY_FILE
 export BASE_LOG_DIR BASE_OUTPUT_DIR BASE_LOOT_DIR SESSIONS_DIR SESSION_FILE
 export LEGAL_FILE FAVORITES_FILE ALIASES_FILE PROFILES_DIR TMP_DIR

@@ -1,20 +1,19 @@
 <div align="center">
 
 ```
- ▄█    █▄   ▄██████▄   ▄█  ████████▄   ▄█     █▄     ▄████████  ▄█    █▄     ▄████████
-███    ███ ███    ███ ███  ███   ▀███ ███     ███   ███    ███ ███    ███   ███    ███
-███    ███ ███    ███ ███▌ ███    ███ ███     ███   ███    ███ ███    ███   ███    █▀
-███    ███ ███    ███ ███▌ ███    ███ ███     ███   ███    ███ ███    ███  ▄███▄▄▄
-███    ███ ███    ███ ███▌ ███    ███ ███     ███ ▀███████████ ███    ███ ▀▀███▀▀▀
-███    ███ ███    ███ ███  ███    ███ ███     ███   ███    ███ ███    ███   ███    █▄
-███    ███ ███    ███ ███  ███   ▄███ ███ ▄█▄ ███   ███    ███ ███    ███   ███    ███
- ▀██████▀   ▀██████▀  █▀   ████████▀   ▀███▀███▀    ███    █▀   ▀██████▀    ██████████
+    ███╗   ██╗███████╗████████╗██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗ 
+    ████╗  ██║██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗
+    ██╔██╗ ██║█████╗     ██║   ██████╔╝█████╗  ███████║██████╔╝█████╗  ██████╔╝
+    ██║╚██╗██║██╔══╝     ██║   ██╔══██╗██╔══╝  ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗
+    ██║ ╚████║███████╗   ██║   ██║  ██║███████╗██║  ██║██║     ███████╗██║  ██║
+    ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
 
-                    ░▒▓█ THE AIRWAVES BELONG TO THOSE WHO LISTEN █▓▒░
+                 Some tools scan. Some tools attack. I do both.
+
 ```
 
-[![Version](https://img.shields.io/badge/version-10.2.3-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/VOIDWAVE/releases)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge)](LICENSE)
+[![Version](https://img.shields.io/badge/version-10.2.3-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
+[![License](https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge)](LICENSE)
 [![Bash](https://img.shields.io/badge/bash-5.0+-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)](https://www.gnu.org/software/bash/)
 [![Platform](https://img.shields.io/badge/platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://kernel.org)
 
@@ -26,9 +25,9 @@
 
 ---
 
-## What is VOIDWAVE?
+## What is NETREAPER?
 
-VOIDWAVE is an offensive security framework that **does the thinking for you**. No more manually enabling monitor mode, finding interfaces, scanning for targets, or hunting for clients. Just run the attack — VOIDWAVE handles the rest.
+NETREAPER is an offensive security framework that **does the thinking for you**. No more manually enabling monitor mode, finding interfaces, scanning for targets, or hunting for clients. Just run the attack — NETREAPER handles the rest.
 
 ```bash
 # Old way
@@ -38,8 +37,8 @@ airodump-ng wlan0mon          # wait, watch, copy BSSID...
 airodump-ng -c 6 --bssid AA:BB:CC:DD:EE:FF wlan0mon  # find clients...
 aireplay-ng --deauth 0 -a AA:BB:CC:DD:EE:FF -c 11:22:33:44:55:66 wlan0mon
 
-# VOIDWAVE way
-voidwave wifi deauth          # done
+# NETREAPER way
+netreaper wifi deauth          # done
 ```
 
 ---
@@ -47,10 +46,10 @@ voidwave wifi deauth          # done
 ## Installation
 
 ```bash
-git clone https://github.com/Nerds489/VOIDWAVE.git
-cd VOIDWAVE
+git clone https://github.com/Nerds489/NETREAPER.git
+cd NETREAPER
 
-# Install VOIDWAVE (system-wide, works with sudo)
+# Install NETREAPER (system-wide, works with sudo)
 sudo ./install.sh
 
 # Or install to ~/.local/bin (user only)
@@ -66,28 +65,28 @@ sudo ./install-tools.sh install-all
 
 ```bash
 # Launch interactive menu
-sudo voidwave
+sudo netreaper
 
 # Or use direct commands with auto-everything
-sudo voidwave wifi deauth     # auto: interface, monitor, AP, client
-sudo voidwave wifi capture    # auto: interface, monitor, AP selection
-sudo voidwave scan            # auto: discovers local network
+sudo netreaper wifi deauth     # auto: interface, monitor, AP, client
+sudo netreaper wifi capture    # auto: interface, monitor, AP selection
+sudo netreaper scan            # auto: discovers local network
 ```
 
 ---
 
 ## Automation
 
-VOIDWAVE automatically handles requirements. No arguments needed — it figures it out:
+NETREAPER automatically handles requirements. No arguments needed — it figures it out:
 
-| What You Run | What VOIDWAVE Does |
+| What You Run | What NETREAPER Does |
 |:-------------|:-------------------|
-| `voidwave scan` | Detects local network, runs nmap scan |
-| `voidwave wifi status` | Finds wireless interface, shows mode |
-| `voidwave wifi monitor on` | Selects interface, enables monitor mode |
-| `voidwave wifi scan` | Selects interface, enables monitor, scans APs |
-| `voidwave wifi deauth` | All above + selects AP + finds clients + attacks |
-| `voidwave wifi capture` | All above + captures handshakes to file |
+| `netreaper scan` | Detects local network, runs nmap scan |
+| `netreaper wifi status` | Finds wireless interface, shows mode |
+| `netreaper wifi monitor on` | Selects interface, enables monitor mode |
+| `netreaper wifi scan` | Selects interface, enables monitor, scans APs |
+| `netreaper wifi deauth` | All above + selects AP + finds clients + attacks |
+| `netreaper wifi capture` | All above + captures handshakes to file |
 
 ### How It Works
 
@@ -110,41 +109,41 @@ VOIDWAVE automatically handles requirements. No arguments needed — it figures 
 ### Network Scanning
 
 ```bash
-voidwave scan                     # auto-detect network, scan it
-voidwave scan 192.168.1.0/24      # scan specific target
-voidwave scan -t 10.0.0.1         # scan single host
+netreaper scan                     # auto-detect network, scan it
+netreaper scan 192.168.1.0/24      # scan specific target
+netreaper scan -t 10.0.0.1         # scan single host
 ```
 
 ### WiFi Operations
 
 ```bash
-voidwave wifi list                # list wireless interfaces
-voidwave wifi status              # show interface mode (auto-select)
-voidwave wifi monitor on          # enable monitor mode (auto-select)
-voidwave wifi monitor off         # disable monitor mode
-voidwave wifi scan                # scan for access points
-voidwave wifi deauth              # deauth attack (fully automated)
-voidwave wifi capture             # capture handshakes
+netreaper wifi list                # list wireless interfaces
+netreaper wifi status              # show interface mode (auto-select)
+netreaper wifi monitor on          # enable monitor mode (auto-select)
+netreaper wifi monitor off         # disable monitor mode
+netreaper wifi scan                # scan for access points
+netreaper wifi deauth              # deauth attack (fully automated)
+netreaper wifi capture             # capture handshakes
 ```
 
 ### System
 
 ```bash
-voidwave status                   # show system info and tool status
-voidwave config show              # show configuration
-voidwave config set log_level DEBUG
-voidwave wizard first             # first-time setup
+netreaper status                   # show system info and tool status
+netreaper config show              # show configuration
+netreaper config set log_level DEBUG
+netreaper wizard first             # first-time setup
 ```
 
 ### Flags
 
 ```bash
-voidwave --help                   # show all commands
-voidwave --version                # show version
-voidwave --dry-run <cmd>          # preview without executing
-voidwave --quiet <cmd>            # suppress output
-voidwave --verbose <cmd>          # debug output
-voidwave --target <IP> scan       # specify target
+netreaper --help                   # show all commands
+netreaper --version                # show version
+netreaper --dry-run <cmd>          # preview without executing
+netreaper --quiet <cmd>            # suppress output
+netreaper --verbose <cmd>          # debug output
+netreaper --target <IP> scan       # specify target
 ```
 
 ---
@@ -154,7 +153,7 @@ voidwave --target <IP> scan       # specify target
 Launch without arguments for the full menu system:
 
 ```bash
-sudo voidwave
+sudo netreaper
 ```
 
 ```
@@ -261,10 +260,10 @@ Installation methods: `apt` `dnf` `pacman` `zypper` `apk` `pipx` `pip` `go` `car
 ## Configuration
 
 ```bash
-voidwave config show              # all settings
-voidwave config get log_level     # get value
-voidwave config set key value     # set value
-voidwave config reset             # restore defaults
+netreaper config show              # all settings
+netreaper config get log_level     # get value
+netreaper config set key value     # set value
+netreaper config reset             # restore defaults
 ```
 
 | Setting | Default | Description |
@@ -290,9 +289,9 @@ voidwave config reset             # restore defaults
 ## Project Structure
 
 ```
-VOIDWAVE/
-├── bin/voidwave          # CLI entry point
-├── voidwave              # Launcher wrapper
+NETREAPER/
+├── bin/netreaper          # CLI entry point
+├── netreaper              # Launcher wrapper
 ├── lib/                  # Bash libraries
 │   ├── automation.sh     # Auto-* functions
 │   ├── core.sh           # Core utilities
@@ -303,7 +302,7 @@ VOIDWAVE/
 │   ├── menus/            # Interactive menus
 │   ├── attacks/          # Attack modules
 │   └── intelligence/     # Smart targeting
-├── install.sh            # VOIDWAVE installer
+├── install.sh            # NETREAPER installer
 └── install-tools.sh      # Tool installer (124 tools)
 ```
 
@@ -325,7 +324,7 @@ VOIDWAVE/
 
 <div align="center">
 
-**VOIDWAVE** v10.2.3 • Apache-2.0
+**NETREAPER** v10.2.3 • GPL-3.0-or-later
 
 *The airwaves belong to those who listen*
 

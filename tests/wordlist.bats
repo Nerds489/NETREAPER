@@ -1,19 +1,19 @@
 #!/usr/bin/env bats
-# VOIDWAVE Wordlist Tests
+# NETREAPER Wordlist Tests
 # Tests for lib/utils.sh wordlist management functions
 # NOTE: Tests are designed to work without actual wordlists installed
 
 setup() {
-    VOIDWAVE_ROOT="$BATS_TEST_DIRNAME/.."
-    export VOIDWAVE_ROOT
-    export VW_NON_INTERACTIVE=1
+    NETREAPER_ROOT="$BATS_TEST_DIRNAME/.."
+    export NETREAPER_ROOT
+    export NR_NON_INTERACTIVE=1
 
     # Source libraries for direct function testing
     # Disable error trap for testing
     set +e
     trap - ERR
-    source "$VOIDWAVE_ROOT/lib/core.sh"
-    source "$VOIDWAVE_ROOT/lib/utils.sh"
+    source "$NETREAPER_ROOT/lib/core.sh"
+    source "$NETREAPER_ROOT/lib/utils.sh"
     # Re-disable after sourcing
     set +e
     trap - ERR
@@ -141,8 +141,8 @@ teardown() {
 # ensure_rockyou() tests
 #===============================================================================
 
-@test "ensure_rockyou in VW_NON_INTERACTIVE=1 does not prompt" {
-    export VW_NON_INTERACTIVE=1
+@test "ensure_rockyou in NR_NON_INTERACTIVE=1 does not prompt" {
+    export NR_NON_INTERACTIVE=1
 
     # Skip if rockyou actually exists (can't test the failure path)
     if [[ -f "/usr/share/wordlists/rockyou.txt" ]]; then
@@ -183,7 +183,7 @@ teardown() {
 #===============================================================================
 
 @test "require_wordlist with no args in non-interactive mode" {
-    export VW_NON_INTERACTIVE=1
+    export NR_NON_INTERACTIVE=1
 
     # Skip if rockyou exists
     if [[ -f "/usr/share/wordlists/rockyou.txt" ]]; then
@@ -195,6 +195,6 @@ teardown() {
 }
 
 @test "lib/utils.sh passes bash -n syntax check" {
-    run bash -n "$VOIDWAVE_ROOT/lib/utils.sh"
+    run bash -n "$NETREAPER_ROOT/lib/utils.sh"
     [ "$status" -eq 0 ]
 }

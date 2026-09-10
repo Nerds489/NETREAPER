@@ -1,12 +1,12 @@
 #!/usr/bin/env bats
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Test Suite: Configuration System
+# NETREAPER - Test Suite: Configuration System
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tests for persistent configuration management
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Get the project root directory
-VOIDWAVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+NETREAPER_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 
 # Setup - use temporary HOME to avoid modifying real config
 setup() {
@@ -14,17 +14,17 @@ setup() {
     export TEST_HOME="$BATS_TEST_TMPDIR/home"
     mkdir -p "$TEST_HOME"
 
-    # Override HOME and VOIDWAVE paths to use temp directory
+    # Override HOME and NETREAPER paths to use temp directory
     export HOME="$TEST_HOME"
-    export VOIDWAVE_HOME="$TEST_HOME/.voidwave"
-    export VOIDWAVE_CONFIG_DIR="$VOIDWAVE_HOME/config"
-    export VOIDWAVE_CONFIG_FILE="$VOIDWAVE_CONFIG_DIR/config.conf"
+    export NETREAPER_HOME="$TEST_HOME/.netreaper"
+    export NETREAPER_CONFIG_DIR="$NETREAPER_HOME/config"
+    export NETREAPER_CONFIG_FILE="$NETREAPER_CONFIG_DIR/config.conf"
 
     # Suppress extraneous output during tests
-    export VW_SUPPRESS_OUTPUT=1
+    export NR_SUPPRESS_OUTPUT=1
 
-    # Path to voidwave CLI
-    VOIDWAVE="$BATS_TEST_DIRNAME/../bin/voidwave"
+    # Path to netreaper CLI
+    NETREAPER="$BATS_TEST_DIRNAME/../bin/netreaper"
 }
 
 # Teardown - cleanup temp files
@@ -36,25 +36,25 @@ teardown() {
 # Config show tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave config show returns 0" {
-    run "$VOIDWAVE" config show
+@test "netreaper config show returns 0" {
+    run "$NETREAPER" config show
     [ "$status" -eq 0 ]
 }
 
-@test "voidwave config show displays configuration header" {
-    run "$VOIDWAVE" config show
+@test "netreaper config show displays configuration header" {
+    run "$NETREAPER" config show
     [ "$status" -eq 0 ]
     [[ "$output" == *"Configuration"* ]]
 }
 
-@test "voidwave config show displays config file path" {
-    run "$VOIDWAVE" config show
+@test "netreaper config show displays config file path" {
+    run "$NETREAPER" config show
     [ "$status" -eq 0 ]
-    [[ "$output" == *".voidwave"* ]]
+    [[ "$output" == *".netreaper"* ]]
 }
 
-@test "voidwave config (no subcommand) shows config" {
-    run "$VOIDWAVE" config
+@test "netreaper config (no subcommand) shows config" {
+    run "$NETREAPER" config
     [ "$status" -eq 0 ]
     [[ "$output" == *"Configuration"* ]]
 }
@@ -63,31 +63,31 @@ teardown() {
 # Config get tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave config get log_level returns non-empty value" {
-    run "$VOIDWAVE" config get log_level
+@test "netreaper config get log_level returns non-empty value" {
+    run "$NETREAPER" config get log_level
     [ "$status" -eq 0 ]
     [ -n "$output" ]
 }
 
-@test "voidwave config get log_level returns INFO by default" {
-    run "$VOIDWAVE" config get log_level
+@test "netreaper config get log_level returns INFO by default" {
+    run "$NETREAPER" config get log_level
     [ "$status" -eq 0 ]
     [ "$output" = "INFO" ]
 }
 
-@test "voidwave config get file_logging returns true by default" {
-    run "$VOIDWAVE" config get file_logging
+@test "netreaper config get file_logging returns true by default" {
+    run "$NETREAPER" config get file_logging
     [ "$status" -eq 0 ]
     [ "$output" = "true" ]
 }
 
-@test "voidwave config get without key fails" {
-    run "$VOIDWAVE" config get
+@test "netreaper config get without key fails" {
+    run "$NETREAPER" config get
     [ "$status" -ne 0 ]
 }
 
-@test "voidwave config get nonexistent_key fails" {
-    run "$VOIDWAVE" config get nonexistent_key_xyz123
+@test "netreaper config get nonexistent_key fails" {
+    run "$NETREAPER" config get nonexistent_key_xyz123
     [ "$status" -ne 0 ]
 }
 
@@ -95,35 +95,35 @@ teardown() {
 # Config set tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave config set test_key test_value persists" {
+@test "netreaper config set test_key test_value persists" {
     # Set a test key
-    run "$VOIDWAVE" config set test_key test_value
+    run "$NETREAPER" config set test_key test_value
     [ "$status" -eq 0 ]
 
     # Get should return the value
-    run "$VOIDWAVE" config get test_key
+    run "$NETREAPER" config get test_key
     [ "$status" -eq 0 ]
     [ "$output" = "test_value" ]
 }
 
-@test "voidwave config set updates existing key" {
+@test "netreaper config set updates existing key" {
     # Set initial value
-    run "$VOIDWAVE" config set log_level DEBUG
+    run "$NETREAPER" config set log_level DEBUG
     [ "$status" -eq 0 ]
 
     # Verify it was set
-    run "$VOIDWAVE" config get log_level
+    run "$NETREAPER" config get log_level
     [ "$status" -eq 0 ]
     [ "$output" = "DEBUG" ]
 }
 
-@test "voidwave config set without key fails" {
-    run "$VOIDWAVE" config set
+@test "netreaper config set without key fails" {
+    run "$NETREAPER" config set
     [ "$status" -ne 0 ]
 }
 
-@test "voidwave config set without value fails" {
-    run "$VOIDWAVE" config set somekey
+@test "netreaper config set without value fails" {
+    run "$NETREAPER" config set somekey
     [ "$status" -ne 0 ]
 }
 
@@ -131,25 +131,25 @@ teardown() {
 # Config path tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave config path returns correct path" {
-    run "$VOIDWAVE" config path
+@test "netreaper config path returns correct path" {
+    run "$NETREAPER" config path
     [ "$status" -eq 0 ]
-    [[ "$output" == *".voidwave/config/config.conf"* ]]
+    [[ "$output" == *".netreaper/config/config.conf"* ]]
 }
 
 #───────────────────────────────────────────────────────────────────────────────
 # Config edit tests (non-interactive behavior)
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave config edit fails in non-interactive mode" {
-    export VW_NON_INTERACTIVE=1
-    run "$VOIDWAVE" config edit
+@test "netreaper config edit fails in non-interactive mode" {
+    export NR_NON_INTERACTIVE=1
+    run "$NETREAPER" config edit
     [ "$status" -ne 0 ]
 }
 
-@test "voidwave config edit fails without TTY" {
+@test "netreaper config edit fails without TTY" {
     # Run without TTY by piping input
-    run bash -c "echo '' | $VOIDWAVE config edit"
+    run bash -c "echo '' | $NETREAPER config edit"
     [ "$status" -ne 0 ]
 }
 
@@ -157,19 +157,19 @@ teardown() {
 # Config reset tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave config reset restores defaults in non-interactive mode" {
+@test "netreaper config reset restores defaults in non-interactive mode" {
     # First, change a value
-    run "$VOIDWAVE" config set log_level DEBUG
+    run "$NETREAPER" config set log_level DEBUG
     [ "$status" -eq 0 ]
 
     # Reset in non-interactive mode (skips confirmation)
-    export VW_NON_INTERACTIVE=1
-    run "$VOIDWAVE" config reset
+    export NR_NON_INTERACTIVE=1
+    run "$NETREAPER" config reset
     [ "$status" -eq 0 ]
 
     # Verify it was reset to default
-    unset VW_NON_INTERACTIVE
-    run "$VOIDWAVE" config get log_level
+    unset NR_NON_INTERACTIVE
+    run "$NETREAPER" config get log_level
     [ "$status" -eq 0 ]
     [ "$output" = "INFO" ]
 }
@@ -180,43 +180,43 @@ teardown() {
 
 @test "config file is created on first run" {
     # Remove any existing config
-    rm -f "$VOIDWAVE_CONFIG_FILE"
+    rm -f "$NETREAPER_CONFIG_FILE"
 
     # Run a command that triggers init_config
-    run "$VOIDWAVE" config show
+    run "$NETREAPER" config show
     [ "$status" -eq 0 ]
 
     # Verify config file was created
-    [ -f "$VOIDWAVE_CONFIG_FILE" ]
+    [ -f "$NETREAPER_CONFIG_FILE" ]
 }
 
 @test "config file has correct permissions" {
-    run "$VOIDWAVE" config show
+    run "$NETREAPER" config show
     [ "$status" -eq 0 ]
 
     # Check permissions (should be 600)
-    perms=$(stat -c %a "$VOIDWAVE_CONFIG_FILE" 2>/dev/null || stat -f %Lp "$VOIDWAVE_CONFIG_FILE" 2>/dev/null)
+    perms=$(stat -c %a "$NETREAPER_CONFIG_FILE" 2>/dev/null || stat -f %Lp "$NETREAPER_CONFIG_FILE" 2>/dev/null)
     [ "$perms" = "600" ]
 }
 
 @test "config directory is created if missing" {
     # Remove config directory
-    rm -rf "$VOIDWAVE_CONFIG_DIR"
+    rm -rf "$NETREAPER_CONFIG_DIR"
 
     # Run command
-    run "$VOIDWAVE" config show
+    run "$NETREAPER" config show
     [ "$status" -eq 0 ]
 
     # Verify directory was created
-    [ -d "$VOIDWAVE_CONFIG_DIR" ]
+    [ -d "$NETREAPER_CONFIG_DIR" ]
 }
 
 #───────────────────────────────────────────────────────────────────────────────
 # Invalid subcommand tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave config invalid_subcommand fails" {
-    run "$VOIDWAVE" config invalid_subcommand_xyz
+@test "netreaper config invalid_subcommand fails" {
+    run "$NETREAPER" config invalid_subcommand_xyz
     [ "$status" -ne 0 ]
 }
 
@@ -226,15 +226,15 @@ teardown() {
 
 @test "custom keys survive config reload" {
     # Set a custom key
-    run "$VOIDWAVE" config set my_custom_setting my_custom_value
+    run "$NETREAPER" config set my_custom_setting my_custom_value
     [ "$status" -eq 0 ]
 
     # Set another key to trigger a file rewrite
-    run "$VOIDWAVE" config set log_level WARNING
+    run "$NETREAPER" config set log_level WARNING
     [ "$status" -eq 0 ]
 
     # Custom key should still be there
-    run "$VOIDWAVE" config get my_custom_setting
+    run "$NETREAPER" config get my_custom_setting
     [ "$status" -eq 0 ]
     [ "$output" = "my_custom_value" ]
 }

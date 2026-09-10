@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Automation Engine: Attack chains, target filtering, pillage mode
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_AUTOMATION_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_AUTOMATION_LOADED=1
+[[ -n "${_NETREAPER_AUTOMATION_LOADED:-}" ]] && return 0
+readonly _NETREAPER_AUTOMATION_LOADED=1
 
 # Source dependencies
 if ! declare -F log_info &>/dev/null; then
@@ -510,7 +510,7 @@ auto_export_results() {
     local output_file="${1:-/tmp/automation_results.txt}"
 
     {
-        echo "VOIDWAVE Automation Results"
+        echo "NETREAPER Automation Results"
         echo "Generated: $(date)"
         echo "================================"
         echo ""

@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Version Resolution Helper
+# NETREAPER - Version Resolution Helper
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Shared helper for resolving VOIDWAVE_ROOT and VERSION.
+# Shared helper for resolving NETREAPER_ROOT and VERSION.
 # This centralizes version handling to prevent drift between CLI output,
 # VERSION file, documentation, and release workflow.
 #
 # Usage:
-#   source "$VOIDWAVE_ROOT/lib/version.sh"   # If VOIDWAVE_ROOT is already set
-#   source "/path/to/lib/version.sh"          # Auto-detects VOIDWAVE_ROOT
+#   source "$NETREAPER_ROOT/lib/version.sh"   # If NETREAPER_ROOT is already set
+#   source "/path/to/lib/version.sh"          # Auto-detects NETREAPER_ROOT
 #
-# VOIDWAVE_ROOT Resolution Order:
-#   1. VOIDWAVE_ROOT environment variable (if set and valid)
+# NETREAPER_ROOT Resolution Order:
+#   1. NETREAPER_ROOT environment variable (if set and valid)
 #   2. Script's actual location (following symlinks)
-#   3. /usr/local/share/voidwave (system install)
-#   4. /opt/voidwave (alternative system install)
-#   5. ~/.local/share/voidwave (user install)
+#   3. /usr/local/share/netreaper (system install)
+#   4. /opt/netreaper (alternative system install)
+#   5. ~/.local/share/netreaper (user install)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_VERSION_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_VERSION_LOADED=1
+[[ -n "${_NETREAPER_VERSION_LOADED:-}" ]] && return 0
+readonly _NETREAPER_VERSION_LOADED=1
 
-# --- VOIDWAVE_ROOT Resolution ------------------------------------------------
-# If VOIDWAVE_ROOT is not already set, compute it from this file's location.
+# --- NETREAPER_ROOT Resolution ------------------------------------------------
+# If NETREAPER_ROOT is not already set, compute it from this file's location.
 # This file lives in lib/, so the root is one directory up.
-if [[ -z "${VOIDWAVE_ROOT:-}" ]]; then
+if [[ -z "${NETREAPER_ROOT:-}" ]]; then
     # Follow symlinks to get actual script location
     _vw_script_path=""
     if command -v readlink &>/dev/null; then
@@ -37,28 +37,28 @@ if [[ -z "${VOIDWAVE_ROOT:-}" ]]; then
         _vw_script_path="${BASH_SOURCE[0]}"
     fi
 
-    if ! VOIDWAVE_ROOT="$(cd "$(dirname "$_vw_script_path")/.." 2>/dev/null && pwd)"; then
+    if ! NETREAPER_ROOT="$(cd "$(dirname "$_vw_script_path")/.." 2>/dev/null && pwd)"; then
         # Fallback: check standard locations
-        if [[ -d "/usr/local/share/voidwave/lib" ]]; then
-            VOIDWAVE_ROOT="/usr/local/share/voidwave"
-        elif [[ -d "/opt/voidwave/lib" ]]; then
-            VOIDWAVE_ROOT="/opt/voidwave"
-        elif [[ -d "${HOME}/.local/share/voidwave/lib" ]]; then
-            VOIDWAVE_ROOT="${HOME}/.local/share/voidwave"
+        if [[ -d "/usr/local/share/netreaper/lib" ]]; then
+            NETREAPER_ROOT="/usr/local/share/netreaper"
+        elif [[ -d "/opt/netreaper/lib" ]]; then
+            NETREAPER_ROOT="/opt/netreaper"
+        elif [[ -d "${HOME}/.local/share/netreaper/lib" ]]; then
+            NETREAPER_ROOT="${HOME}/.local/share/netreaper"
         else
-            echo "ERROR: Failed to resolve VOIDWAVE_ROOT from ${BASH_SOURCE[0]}" >&2
+            echo "ERROR: Failed to resolve NETREAPER_ROOT from ${BASH_SOURCE[0]}" >&2
             return 1
         fi
     fi
     unset _vw_script_path
 fi
-readonly VOIDWAVE_ROOT 2>/dev/null || true  # May already be readonly
+readonly NETREAPER_ROOT 2>/dev/null || true  # May already be readonly
 
 # --- VERSION Resolution -------------------------------------------------------
 # Read VERSION file (first line, strip whitespace). Fallback to "unknown".
 if [[ -z "${VERSION:-}" ]]; then
-    if [[ -f "$VOIDWAVE_ROOT/VERSION" ]]; then
-        IFS= read -r VERSION < "$VOIDWAVE_ROOT/VERSION"
+    if [[ -f "$NETREAPER_ROOT/VERSION" ]]; then
+        IFS= read -r VERSION < "$NETREAPER_ROOT/VERSION"
         VERSION="${VERSION//[[:space:]]/}"
     else
         VERSION="unknown"
@@ -67,4 +67,4 @@ fi
 readonly VERSION 2>/dev/null || true  # May already be readonly
 
 # --- Exports ------------------------------------------------------------------
-export VOIDWAVE_ROOT VERSION
+export NETREAPER_ROOT VERSION

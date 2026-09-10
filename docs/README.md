@@ -1,13 +1,13 @@
-# VOIDWAVE Documentation
+# NETREAPER Documentation
 
-This folder contains internal documentation for VOIDWAVE development and maintenance.
+This folder contains internal documentation for NETREAPER development and maintenance.
 
 ## Files
 
 | Document | Description |
 |----------|-------------|
-| `VOIDWAVE-GIT-HOWTO.md` | Git workflow, release pipeline, VERSION sync checklist, gh CLI usage, panic recovery |
-| `VOIDWAVE-FORGOTTEN-FEATURES.md` | Complete specification of 67 features across 17 categories (architecture, wireless, installer, etc.) |
+| `NETREAPER-GIT-HOWTO.md` | Git workflow, release pipeline, VERSION sync checklist, gh CLI usage, panic recovery |
+| `NETREAPER-FORGOTTEN-FEATURES.md` | Complete specification of 67 features across 17 categories (architecture, wireless, installer, etc.) |
 
 ## Quick Links
 
@@ -19,10 +19,10 @@ This folder contains internal documentation for VOIDWAVE development and mainten
 
 ## Installation
 
-Copy these files to your VOIDWAVE repo:
+Copy these files to your NETREAPER repo:
 
 ```bash
-cp *.md ~/VOIDWAVE/docs/
+cp *.md ~/NETREAPER/docs/
 ```
 
 ---

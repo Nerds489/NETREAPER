@@ -1,20 +1,20 @@
 [project]
-name = "voidwave"
+name = "netreaper"
 version = "2.0.0"
 description = "Offensive Security Framework with Modern TUI"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.11"
 keywords = ["security", "pentesting", "wireless", "hacking", "tui"]
 authors = [
-    { name = "VOIDWAVE Team" }
+    { name = "NETREAPER Team" }
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -58,28 +58,28 @@ docs = [
 ]
 
 [project.scripts]
-voidwave = "voidwave.cli:app"
+netreaper = "netreaper.cli:app"
 
-[project.entry-points."voidwave.tools"]
+[project.entry-points."netreaper.tools"]
 # Built-in tools registered here
-nmap = "voidwave.tools.nmap:NmapTool"
-masscan = "voidwave.tools.masscan:MasscanTool"
-hashcat = "voidwave.tools.hashcat:HashcatTool"
-john = "voidwave.tools.john:JohnTool"
-hydra = "voidwave.tools.hydra:HydraTool"
+nmap = "netreaper.tools.nmap:NmapTool"
+masscan = "netreaper.tools.masscan:MasscanTool"
+hashcat = "netreaper.tools.hashcat:HashcatTool"
+john = "netreaper.tools.john:JohnTool"
+hydra = "netreaper.tools.hydra:HydraTool"
 
-[project.entry-points."voidwave.attacks"]
+[project.entry-points."netreaper.attacks"]
 # Built-in attacks registered here
-wps = "voidwave.attacks.wps:WPSAttack"
-handshake = "voidwave.attacks.handshake:HandshakeAttack"
-pmkid = "voidwave.attacks.pmkid:PMKIDAttack"
+wps = "netreaper.attacks.wps:WPSAttack"
+handshake = "netreaper.attacks.handshake:HandshakeAttack"
+pmkid = "netreaper.attacks.pmkid:PMKIDAttack"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/voidwave"]
+packages = ["src/netreaper"]
 
 [tool.ruff]
 target-version = "py311"
@@ -114,8 +114,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v --cov=voidwave --cov-report=term-missing"
+addopts = "-v --cov=netreaper --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["src/voidwave"]
+source = ["src/netreaper"]
 branch = true

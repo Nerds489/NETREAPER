@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Automation Library
+# NETREAPER - Automation Library
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Smart automation: auto-detect, auto-fix, auto-acquire missing requirements
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_AUTOMATION_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_AUTOMATION_LOADED=1
+[[ -n "${_NETREAPER_AUTOMATION_LOADED:-}" ]] && return 0
+readonly _NETREAPER_AUTOMATION_LOADED=1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # AUTO-INTERFACE: Select wireless interface automatically
@@ -228,7 +228,7 @@ auto_scan_aps() {
     fi
 
     # Run quick scan (5 seconds)
-    local tmpfile="/tmp/voidwave_apscan_$$"
+    local tmpfile="/tmp/netreaper_apscan_$$"
     timeout 6 run_with_sudo airodump-ng --write-interval 1 -w "$tmpfile" --output-format csv "$iface" &>/dev/null || true
 
     # Parse results
@@ -277,7 +277,7 @@ auto_scan_clients() {
     log_info "Scanning for clients on $bssid..."
 
     # Run targeted scan (8 seconds)
-    local tmpfile="/tmp/voidwave_clscan_$$"
+    local tmpfile="/tmp/netreaper_clscan_$$"
     timeout 9 run_with_sudo airodump-ng --bssid "$bssid" --write-interval 1 -w "$tmpfile" --output-format csv "$iface" &>/dev/null || true
 
     # Parse client MACs from CSV

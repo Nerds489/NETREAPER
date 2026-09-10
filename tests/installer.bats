@@ -1,18 +1,18 @@
 #!/usr/bin/env bats
-# VOIDWAVE Installer Tests
-# Tests for bin/voidwave-install functions
+# NETREAPER Installer Tests
+# Tests for bin/netreaper-install functions
 
 setup() {
-    VOIDWAVE_ROOT="$BATS_TEST_DIRNAME/.."
-    VOIDWAVE_INSTALL="$VOIDWAVE_ROOT/bin/voidwave-install"
-    export VOIDWAVE_ROOT
-    export VW_NON_INTERACTIVE=1
+    NETREAPER_ROOT="$BATS_TEST_DIRNAME/.."
+    NETREAPER_INSTALL="$NETREAPER_ROOT/bin/netreaper-install"
+    export NETREAPER_ROOT
+    export NR_NON_INTERACTIVE=1
 
     # Source the installer for function testing
     # Note: We need to handle the set -o pipefail by disabling exit on error
     set +e
     # Only source the function definitions, not execute main
-    source <(sed '/^main "\$@"/d' "$VOIDWAVE_INSTALL")
+    source <(sed '/^main "\$@"/d' "$NETREAPER_INSTALL")
     set +e
 }
 
@@ -149,19 +149,19 @@ setup() {
 # CLI tests
 #===============================================================================
 
-@test "voidwave-install --help shows usage" {
-    run "$VOIDWAVE_INSTALL" --help
+@test "netreaper-install --help shows usage" {
+    run "$NETREAPER_INSTALL" --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]]
 }
 
-@test "voidwave-install status shows tool status" {
-    run "$VOIDWAVE_INSTALL" status
+@test "netreaper-install status shows tool status" {
+    run "$NETREAPER_INSTALL" status
     [ "$status" -eq 0 ]
 }
 
-@test "voidwave-install --dry-run is recognized" {
-    run "$VOIDWAVE_INSTALL" --dry-run --help
+@test "netreaper-install --dry-run is recognized" {
+    run "$NETREAPER_INSTALL" --dry-run --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Dry-run"* ]] || [[ "$output" == *"Usage"* ]]
 }

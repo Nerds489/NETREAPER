@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Wizard library: interactive guided workflows for common tasks
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Prevent multiple sourcing
-[[ -n "${_VOIDWAVE_WIZARDS_LOADED:-}" ]] && return 0
-readonly _VOIDWAVE_WIZARDS_LOADED=1
+[[ -n "${_NETREAPER_WIZARDS_LOADED:-}" ]] && return 0
+readonly _NETREAPER_WIZARDS_LOADED=1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # WIZARD HELPERS (only define if not already defined by ui.sh)
@@ -78,7 +75,7 @@ fi
 # Press enter to continue
 if ! declare -F press_enter &>/dev/null; then
     press_enter() {
-        [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 0
+        [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 0
         read -rp "    Press Enter to continue..."
     }
 fi
@@ -89,12 +86,12 @@ fi
 
 first_run_wizard() {
     # Skip in non-interactive mode or when not attached to a terminal
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 0
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 0
     [[ ! -t 0 ]] && return 0
 
     clear_screen 2>/dev/null || clear
     show_banner "${VERSION:-}" 2>/dev/null || true
-    draw_header "Welcome to VOIDWAVE" 2>/dev/null || echo -e "\n    === Welcome to VOIDWAVE ==="
+    draw_header "Welcome to NETREAPER" 2>/dev/null || echo -e "\n    === Welcome to NETREAPER ==="
 
     echo -e "\n    First-time setup wizard\n"
 
@@ -120,17 +117,17 @@ first_run_wizard() {
 
     if [[ $tools_missing -gt 0 ]]; then
         echo -e "\n    ${C_YELLOW:-}!${C_RESET:-} $tools_missing tool(s) missing"
-        echo "    Run 'voidwave-install' to install dependencies"
+        echo "    Run 'netreaper-install' to install dependencies"
     fi
 
     # Step 3: Create directories
     echo -e "\n    ${C_CYAN:-}[3/4]${C_RESET:-} Creating directories..."
     local dirs=(
-        "${VOIDWAVE_HOME:-$HOME/.voidwave}"
-        "${CONFIG_DIR:-$HOME/.voidwave/config}"
-        "${LOG_DIR:-$HOME/.voidwave/logs}"
-        "${OUTPUT_DIR:-$HOME/.voidwave/output}"
-        "${SESSION_DIR:-$HOME/.voidwave/sessions}"
+        "${NETREAPER_HOME:-$HOME/.netreaper}"
+        "${CONFIG_DIR:-$HOME/.netreaper/config}"
+        "${LOG_DIR:-$HOME/.netreaper/logs}"
+        "${OUTPUT_DIR:-$HOME/.netreaper/output}"
+        "${SESSION_DIR:-$HOME/.netreaper/sessions}"
     )
     for dir in "${dirs[@]}"; do
         mkdir -p "$dir" 2>/dev/null || true
@@ -139,12 +136,12 @@ first_run_wizard() {
 
     # Step 4: Mark complete
     echo -e "\n    ${C_CYAN:-}[4/4]${C_RESET:-} Finalizing..."
-    local config_dir="${CONFIG_DIR:-$HOME/.voidwave/config}"
+    local config_dir="${CONFIG_DIR:-$HOME/.netreaper/config}"
     touch "$config_dir/.wizard_complete" 2>/dev/null || true
     echo -e "    ${C_GREEN:-}✓${C_RESET:-} Setup complete"
 
-    echo -e "\n    ${C_GREEN:-}VOIDWAVE is ready!${C_RESET:-}"
-    echo -e "    Run 'voidwave --help' for usage\n"
+    echo -e "\n    ${C_GREEN:-}NETREAPER is ready!${C_RESET:-}"
+    echo -e "    Run 'netreaper --help' for usage\n"
 
     press_enter
 }
@@ -152,9 +149,9 @@ first_run_wizard() {
 # Check if first run needed
 check_first_run() {
     # Skip in non-interactive mode or when not attached to a terminal
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 0
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 0
     [[ ! -t 0 ]] && return 0
-    local config_dir="${CONFIG_DIR:-$HOME/.voidwave/config}"
+    local config_dir="${CONFIG_DIR:-$HOME/.netreaper/config}"
     [[ -f "$config_dir/.wizard_complete" ]] && return 0
     first_run_wizard
 }
@@ -164,7 +161,7 @@ check_first_run() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 scan_wizard() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && {
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && {
         echo "Error: scan_wizard requires interactive mode"
         return 1
     }
@@ -214,7 +211,7 @@ scan_wizard() {
 
     # Step 3: Output location
     echo -e "\n    ${C_CYAN:-}Step 3: Output${C_RESET:-}"
-    local output_base="${OUTPUT_DIR:-$HOME/.voidwave/output}"
+    local output_base="${OUTPUT_DIR:-$HOME/.netreaper/output}"
     local output_file="$output_base/scan_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$output_base" 2>/dev/null || true
     echo -e "    ${C_GREEN:-}✓${C_RESET:-} Output: $output_file.*"
@@ -288,7 +285,7 @@ scan_wizard() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 wifi_wizard() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && {
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && {
         echo "Error: wifi_wizard requires interactive mode"
         return 1
     }
@@ -296,7 +293,7 @@ wifi_wizard() {
     # Require root
     if [[ $EUID -ne 0 ]]; then
         echo -e "    ${C_RED:-}✗${C_RESET:-} WiFi wizard requires root privileges"
-        echo "    Run: sudo voidwave wizard wifi"
+        echo "    Run: sudo netreaper wizard wifi"
         return 1
     fi
 
@@ -402,7 +399,7 @@ wifi_wizard() {
             bssid=$(prompt_input "Target BSSID (e.g., AA:BB:CC:DD:EE:FF)")
             channel=$(prompt_input "Channel (1-14)")
 
-            output_cap="${OUTPUT_DIR:-$HOME/.voidwave/output}/capture_$(date +%Y%m%d_%H%M%S)"
+            output_cap="${OUTPUT_DIR:-$HOME/.netreaper/output}/capture_$(date +%Y%m%d_%H%M%S)"
             mkdir -p "$(dirname "$output_cap")" 2>/dev/null || true
 
             echo -e "\n    ${C_CYAN:-}Capturing on channel $channel...${C_RESET:-}"
@@ -436,7 +433,7 @@ wifi_wizard() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 wizard_pentest() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 1
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 1
 
     clear_screen 2>/dev/null || clear
     show_banner "${VERSION:-}"
@@ -480,7 +477,7 @@ wizard_pentest() {
     read -rp "    Exclusions [none]: " scope
 
     # Create output directory
-    local outdir="${VOIDWAVE_OUTPUT_DIR:-$HOME/.voidwave/output}/pentest_$(date +%Y%m%d_%H%M%S)"
+    local outdir="${NETREAPER_OUTPUT_DIR:-$HOME/.netreaper/output}/pentest_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$outdir"/{recon,scan,enum,vuln,exploit,report}
 
     echo ""
@@ -640,7 +637,7 @@ wizard_pentest() {
     local report="$outdir/report/pentest_summary.txt"
 
     {
-        echo "VOIDWAVE Penetration Test Report"
+        echo "NETREAPER Penetration Test Report"
         echo "=================================="
         echo ""
         echo "Target: $target"
@@ -698,7 +695,7 @@ wizard_pentest() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 wizard_recon() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 1
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 1
 
     clear_screen 2>/dev/null || clear
     show_banner "${VERSION:-}"
@@ -730,7 +727,7 @@ wizard_recon() {
     fi
 
     # Create output directory
-    local outdir="${VOIDWAVE_OUTPUT_DIR:-$HOME/.voidwave/output}/recon_${target}_$(date +%Y%m%d_%H%M%S)"
+    local outdir="${NETREAPER_OUTPUT_DIR:-$HOME/.netreaper/output}/recon_${target}_$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$outdir"
 
     echo ""
@@ -842,7 +839,7 @@ wizard_recon() {
     echo -e "    ${C_GRAY:-}[$current/$total] Generating summary...${C_RESET:-}"
 
     {
-        echo "VOIDWAVE Reconnaissance Report"
+        echo "NETREAPER Reconnaissance Report"
         echo "================================"
         echo ""
         echo "Target: $target"

@@ -1,33 +1,30 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Offensive Security Framework
+# NETREAPER - Offensive Security Framework
 # ═══════════════════════════════════════════════════════════════════════════════
 # Copyright (c) 2025 Nerds489
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at:
+# NETREAPER is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# NETREAPER is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# See LICENSE and NOTICE files in the project root for full details.
+# See the LICENSE file in the project root for the full GPL-3.0 text.
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Settings Menu: configuration, API keys, paths, logging
 # ═══════════════════════════════════════════════════════════════════════════════
 
-[[ -n "${_VOIDWAVE_SETTINGS_MENU_LOADED:-}" ]] && return 0
-declare -r _VOIDWAVE_SETTINGS_MENU_LOADED=1
+[[ -n "${_NETREAPER_SETTINGS_MENU_LOADED:-}" ]] && return 0
+declare -r _NETREAPER_SETTINGS_MENU_LOADED=1
 
 show_settings_menu() {
-    [[ "${VW_NON_INTERACTIVE:-0}" == "1" ]] && return 1
+    [[ "${NR_NON_INTERACTIVE:-0}" == "1" ]] && return 1
 
     while true; do
         clear_screen 2>/dev/null || clear
@@ -68,26 +65,26 @@ show_settings_menu() {
 _settings_view() {
     echo ""
     echo -e "    ${C_CYAN:-}═══════════════════════════════════════════${C_RESET:-}"
-    echo -e "    ${C_BOLD:-}VOIDWAVE Configuration${C_RESET:-}"
+    echo -e "    ${C_BOLD:-}NETREAPER Configuration${C_RESET:-}"
     echo -e "    ${C_CYAN:-}═══════════════════════════════════════════${C_RESET:-}"
     echo ""
 
     echo -e "    ${C_BOLD:-}Version${C_RESET:-}"
     echo "      Version: ${VERSION:-unknown}"
-    echo "      Root: ${VOIDWAVE_ROOT:-unknown}"
+    echo "      Root: ${NETREAPER_ROOT:-unknown}"
     echo ""
 
     echo -e "    ${C_BOLD:-}Paths${C_RESET:-}"
-    echo "      Home: ${VOIDWAVE_HOME:-$HOME/.voidwave}"
-    echo "      Config: ${VOIDWAVE_CONFIG_DIR:-$HOME/.voidwave/config}"
-    echo "      Logs: ${VOIDWAVE_LOG_DIR:-$HOME/.voidwave/logs}"
-    echo "      Output: ${VOIDWAVE_OUTPUT_DIR:-$HOME/.voidwave/output}"
+    echo "      Home: ${NETREAPER_HOME:-$HOME/.netreaper}"
+    echo "      Config: ${NETREAPER_CONFIG_DIR:-$HOME/.netreaper/config}"
+    echo "      Logs: ${NETREAPER_LOG_DIR:-$HOME/.netreaper/logs}"
+    echo "      Output: ${NETREAPER_OUTPUT_DIR:-$HOME/.netreaper/output}"
     echo ""
 
     echo -e "    ${C_BOLD:-}Environment${C_RESET:-}"
-    echo "      Log Level: ${VOIDWAVE_LOG_LEVEL:-1}"
-    echo "      Non-Interactive: ${VW_NON_INTERACTIVE:-0}"
-    echo "      Unsafe Mode: ${VW_UNSAFE_MODE:-0}"
+    echo "      Log Level: ${NETREAPER_LOG_LEVEL:-1}"
+    echo "      Non-Interactive: ${NR_NON_INTERACTIVE:-0}"
+    echo "      Unsafe Mode: ${NR_UNSAFE_MODE:-0}"
     echo "      Dry Run: ${DRY_RUN:-0}"
     echo ""
 
@@ -105,7 +102,7 @@ _settings_logging() {
     echo ""
     echo -e "    ${C_BOLD:-}Logging Configuration${C_RESET:-}"
     echo ""
-    echo "    Current level: ${VOIDWAVE_LOG_LEVEL:-1}"
+    echo "    Current level: ${NETREAPER_LOG_LEVEL:-1}"
     echo ""
     echo "    0) DEBUG (verbose)"
     echo "    1) INFO (default)"
@@ -119,13 +116,13 @@ _settings_logging() {
     read -rp "    Select level [0-5]: " level
 
     if [[ "$level" =~ ^[0-5]$ ]]; then
-        _save_setting "VOIDWAVE_LOG_LEVEL" "$level"
-        export VOIDWAVE_LOG_LEVEL="$level"
+        _save_setting "NETREAPER_LOG_LEVEL" "$level"
+        export NETREAPER_LOG_LEVEL="$level"
         echo -e "    ${C_GREEN:-}Log level set to $level${C_RESET:-}"
     fi
 
     echo ""
-    echo "    File logging: ${VOIDWAVE_FILE_LOGGING:-1}"
+    echo "    File logging: ${NETREAPER_FILE_LOGGING:-1}"
     echo ""
     echo "    1) Enable"
     echo "    2) Disable"
@@ -136,13 +133,13 @@ _settings_logging() {
 
     case "$file_log" in
         1)
-            _save_setting "VOIDWAVE_FILE_LOGGING" "1"
-            export VOIDWAVE_FILE_LOGGING="1"
+            _save_setting "NETREAPER_FILE_LOGGING" "1"
+            export NETREAPER_FILE_LOGGING="1"
             echo -e "    ${C_GREEN:-}File logging enabled${C_RESET:-}"
             ;;
         2)
-            _save_setting "VOIDWAVE_FILE_LOGGING" "0"
-            export VOIDWAVE_FILE_LOGGING="0"
+            _save_setting "NETREAPER_FILE_LOGGING" "0"
+            export NETREAPER_FILE_LOGGING="0"
             echo -e "    ${C_GREEN:-}File logging disabled${C_RESET:-}"
             ;;
     esac
@@ -235,8 +232,8 @@ _settings_paths() {
     echo -e "    ${C_BOLD:-}Path Configuration${C_RESET:-}"
     echo ""
     echo "    Current paths:"
-    echo "      Output: ${VOIDWAVE_OUTPUT_DIR:-$HOME/.voidwave/output}"
-    echo "      Logs: ${VOIDWAVE_LOG_DIR:-$HOME/.voidwave/logs}"
+    echo "      Output: ${NETREAPER_OUTPUT_DIR:-$HOME/.netreaper/output}"
+    echo "      Logs: ${NETREAPER_LOG_DIR:-$HOME/.netreaper/logs}"
     echo ""
     echo "    1) Change output directory"
     echo "    2) Change logs directory"
@@ -254,8 +251,8 @@ _settings_paths() {
             if [[ -n "$new_path" ]]; then
                 mkdir -p "$new_path" 2>/dev/null
                 if [[ -d "$new_path" ]]; then
-                    _save_setting "VOIDWAVE_OUTPUT_DIR" "$new_path"
-                    export VOIDWAVE_OUTPUT_DIR="$new_path"
+                    _save_setting "NETREAPER_OUTPUT_DIR" "$new_path"
+                    export NETREAPER_OUTPUT_DIR="$new_path"
                     echo -e "    ${C_GREEN:-}Output directory updated${C_RESET:-}"
                 else
                     echo -e "    ${C_RED:-}Cannot create directory${C_RESET:-}"
@@ -268,8 +265,8 @@ _settings_paths() {
             if [[ -n "$new_path" ]]; then
                 mkdir -p "$new_path" 2>/dev/null
                 if [[ -d "$new_path" ]]; then
-                    _save_setting "VOIDWAVE_LOG_DIR" "$new_path"
-                    export VOIDWAVE_LOG_DIR="$new_path"
+                    _save_setting "NETREAPER_LOG_DIR" "$new_path"
+                    export NETREAPER_LOG_DIR="$new_path"
                     echo -e "    ${C_GREEN:-}Logs directory updated${C_RESET:-}"
                 else
                     echo -e "    ${C_RED:-}Cannot create directory${C_RESET:-}"
@@ -277,8 +274,8 @@ _settings_paths() {
             fi
             ;;
         3)
-            _remove_setting "VOIDWAVE_OUTPUT_DIR"
-            _remove_setting "VOIDWAVE_LOG_DIR"
+            _remove_setting "NETREAPER_OUTPUT_DIR"
+            _remove_setting "NETREAPER_LOG_DIR"
             echo -e "    ${C_GREEN:-}Paths reset to defaults${C_RESET:-}"
             ;;
     esac
@@ -289,12 +286,12 @@ _settings_paths() {
 _settings_export() {
     echo ""
 
-    local config_dir="${VOIDWAVE_CONFIG_DIR:-$HOME/.voidwave/config}"
+    local config_dir="${NETREAPER_CONFIG_DIR:-$HOME/.netreaper/config}"
     local settings_file="$config_dir/settings.conf"
 
     local export_path
-    read -rp "    Export path [~/voidwave_config_backup.conf]: " export_path
-    export_path="${export_path:-$HOME/voidwave_config_backup.conf}"
+    read -rp "    Export path [~/netreaper_config_backup.conf]: " export_path
+    export_path="${export_path:-$HOME/netreaper_config_backup.conf}"
 
     if [[ -f "$settings_file" ]]; then
         cp "$settings_file" "$export_path"
@@ -318,7 +315,7 @@ _settings_import() {
         return 1
     fi
 
-    local config_dir="${VOIDWAVE_CONFIG_DIR:-$HOME/.voidwave/config}"
+    local config_dir="${NETREAPER_CONFIG_DIR:-$HOME/.netreaper/config}"
     mkdir -p "$config_dir"
 
     # Parse config file safely line-by-line instead of sourcing
@@ -362,16 +359,16 @@ _settings_reset() {
 
     confirm "Reset all settings?" || return
 
-    local config_dir="${VOIDWAVE_CONFIG_DIR:-$HOME/.voidwave/config}"
+    local config_dir="${NETREAPER_CONFIG_DIR:-$HOME/.netreaper/config}"
 
     rm -f "$config_dir/settings.conf"
     rm -f "$config_dir/api_keys.conf"
 
     # Unset env vars
-    unset VOIDWAVE_LOG_LEVEL
-    unset VOIDWAVE_FILE_LOGGING
-    unset VOIDWAVE_OUTPUT_DIR
-    unset VOIDWAVE_LOG_DIR
+    unset NETREAPER_LOG_LEVEL
+    unset NETREAPER_FILE_LOGGING
+    unset NETREAPER_OUTPUT_DIR
+    unset NETREAPER_LOG_DIR
     unset SHODAN_API_KEY
     unset VT_API_KEY
     unset CENSYS_API_KEY
@@ -387,7 +384,7 @@ _save_setting() {
     local key="$1"
     local value="$2"
 
-    local config_dir="${VOIDWAVE_CONFIG_DIR:-$HOME/.voidwave/config}"
+    local config_dir="${NETREAPER_CONFIG_DIR:-$HOME/.netreaper/config}"
     local settings_file="$config_dir/settings.conf"
 
     mkdir -p "$config_dir"
@@ -407,7 +404,7 @@ _save_setting() {
 _remove_setting() {
     local key="$1"
 
-    local config_dir="${VOIDWAVE_CONFIG_DIR:-$HOME/.voidwave/config}"
+    local config_dir="${NETREAPER_CONFIG_DIR:-$HOME/.netreaper/config}"
     local settings_file="$config_dir/settings.conf"
 
     if [[ -f "$settings_file" ]]; then
@@ -418,7 +415,7 @@ _remove_setting() {
 
 # Load settings on source
 _load_settings() {
-    local config_dir="${VOIDWAVE_CONFIG_DIR:-$HOME/.voidwave/config}"
+    local config_dir="${NETREAPER_CONFIG_DIR:-$HOME/.netreaper/config}"
     local settings_file="$config_dir/settings.conf"
 
     if [[ -f "$settings_file" ]]; then

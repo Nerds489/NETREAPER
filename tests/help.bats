@@ -1,62 +1,62 @@
 #!/usr/bin/env bats
 # ═══════════════════════════════════════════════════════════════════════════════
-# VOIDWAVE - Test Suite: Help and Version
+# NETREAPER - Test Suite: Help and Version
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tests for CLI help output and version information
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Get the project root directory
-VOIDWAVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+NETREAPER_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 
 #───────────────────────────────────────────────────────────────────────────────
-# voidwave help tests
+# netreaper help tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave --help exits with code 0" {
-    run "$VOIDWAVE_ROOT/voidwave" --help
+@test "netreaper --help exits with code 0" {
+    run "$NETREAPER_ROOT/netreaper" --help
     [ "$status" -eq 0 ]
 }
 
-@test "voidwave -h exits with code 0" {
-    run "$VOIDWAVE_ROOT/voidwave" -h
+@test "netreaper -h exits with code 0" {
+    run "$NETREAPER_ROOT/netreaper" -h
     [ "$status" -eq 0 ]
 }
 
-@test "voidwave --help shows usage information" {
-    run "$VOIDWAVE_ROOT/voidwave" --help
+@test "netreaper --help shows usage information" {
+    run "$NETREAPER_ROOT/netreaper" --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
-@test "voidwave --help mentions available commands" {
-    run "$VOIDWAVE_ROOT/voidwave" --help
+@test "netreaper --help mentions available commands" {
+    run "$NETREAPER_ROOT/netreaper" --help
     [ "$status" -eq 0 ]
     # Check for common command references
     [[ "$output" == *"scan"* ]] || [[ "$output" == *"recon"* ]] || [[ "$output" == *"--"* ]]
 }
 
 #───────────────────────────────────────────────────────────────────────────────
-# voidwave version tests
+# netreaper version tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave --version exits with code 0" {
-    run "$VOIDWAVE_ROOT/voidwave" --version
+@test "netreaper --version exits with code 0" {
+    run "$NETREAPER_ROOT/netreaper" --version
     [ "$status" -eq 0 ]
 }
 
-@test "voidwave --version outputs version number" {
-    run "$VOIDWAVE_ROOT/voidwave" --version
+@test "netreaper --version outputs version number" {
+    run "$NETREAPER_ROOT/netreaper" --version
     [ "$status" -eq 0 ]
     # Version should contain a version pattern (e.g., 5.3.1)
     [[ "$output" =~ [0-9]+\.[0-9]+\.[0-9]+ ]]
 }
 
-@test "voidwave version matches VERSION file" {
+@test "netreaper version matches VERSION file" {
     # Read version from VERSION file
-    version_file=$(cat "$VOIDWAVE_ROOT/VERSION" 2>/dev/null | tr -d '[:space:]')
+    version_file=$(cat "$NETREAPER_ROOT/VERSION" 2>/dev/null | tr -d '[:space:]')
 
-    # Get version from voidwave --version
-    run "$VOIDWAVE_ROOT/voidwave" --version
+    # Get version from netreaper --version
+    run "$NETREAPER_ROOT/netreaper" --version
     [ "$status" -eq 0 ]
 
     # Check if version file content appears in output
@@ -64,34 +64,34 @@ VOIDWAVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 }
 
 #───────────────────────────────────────────────────────────────────────────────
-# voidwave-install help tests
+# netreaper-install help tests
 #───────────────────────────────────────────────────────────────────────────────
 
-@test "voidwave-install --help exits with code 0" {
-    run "$VOIDWAVE_ROOT/voidwave-install" --help
+@test "netreaper-install --help exits with code 0" {
+    run "$NETREAPER_ROOT/netreaper-install" --help
     [ "$status" -eq 0 ]
 }
 
-@test "voidwave-install -h exits with code 0" {
-    run "$VOIDWAVE_ROOT/voidwave-install" -h
+@test "netreaper-install -h exits with code 0" {
+    run "$NETREAPER_ROOT/netreaper-install" -h
     [ "$status" -eq 0 ]
 }
 
-@test "voidwave-install --help shows usage information" {
-    run "$VOIDWAVE_ROOT/voidwave-install" --help
+@test "netreaper-install --help shows usage information" {
+    run "$NETREAPER_ROOT/netreaper-install" --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"usage"* ]] || [[ "$output" == *"USAGE"* ]] || [[ "$output" == *"install"* ]]
 }
 
-@test "voidwave-install --help mentions tool installation" {
-    run "$VOIDWAVE_ROOT/voidwave-install" --help
+@test "netreaper-install --help mentions tool installation" {
+    run "$NETREAPER_ROOT/netreaper-install" --help
     [ "$status" -eq 0 ]
     # Should mention tools or installation
     [[ "$output" == *"tool"* ]] || [[ "$output" == *"Tool"* ]] || [[ "$output" == *"install"* ]] || [[ "$output" == *"Install"* ]]
 }
 
-@test "voidwave-install help shows version in output" {
-    run "$VOIDWAVE_ROOT/voidwave-install" --help
+@test "netreaper-install help shows version in output" {
+    run "$NETREAPER_ROOT/netreaper-install" --help
     [ "$status" -eq 0 ]
     # Version appears in help/usage output
     [[ "$output" =~ [0-9]+\.[0-9]+\.[0-9]+ ]]
