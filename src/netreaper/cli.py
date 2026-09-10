@@ -1,7 +1,6 @@
 """NETREAPER CLI interface using Typer."""
 import asyncio
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -70,8 +69,8 @@ def scan(
     scan_type: str = typer.Option(
         "standard", "--type", "-t", help="Scan type (quick/standard/full)"
     ),
-    ports: Optional[str] = typer.Option(None, "--ports", "-p", help="Port specification"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file"),
+    ports: str | None = typer.Option(None, "--ports", "-p", help="Port specification"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output file"),
 ):
     """Run a network scan."""
 
@@ -110,60 +109,92 @@ def scan(
 @app.command()
 def status():
     """Show system status and tool availability."""
+    from netreaper.detection.tools import tool_registry
 
-    async def show_status():
-        from netreaper.detection.tools import tool_registry
+    tools = tool_registry.check_all()
+    table = Table(title="NETREAPER System Status")
+    table.add_column("Tool", style="cyan")
+    table.add_column("Status")
+    table.add_column("Version", style="yellow")
+    table.add_column("Path", style="dim")
+    available = 0
+    for name in sorted(tools):
+        info = tools[name]
+        if info.available:
+            available += 1
+        mark = "[green]available[/green]" if info.available else "[red]missing[/red]"
+        table.add_row(name, mark, info.version or "-", str(info.path) if info.path else "-")
+    console.print(table)
+    console.print(f"[dim]{available}/{len(tools)} tools available[/dim]")
 
-        await tool_registry.detect_all()
 
-        # Create table
-        table = Table(title="NETREAPER System Status")
-        table.add_column("Tool", style="cyan")
-        table.add_column("Status", style="green")
-        table.add_column("Version", style="yellow")
-        table.add_column("Path", style="dim")
+def _coerce(value: str):
+    low = value.lower()
+    if low in ("true", "false"):
+        return low == "true"
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        return value
 
-        for tool_name, tool_info in tool_registry.tools.items():
-            status = "✓ Available" if tool_info.available else "✗ Missing"
-            status_style = "green" if tool_info.available else "red"
-            table.add_row(
-                tool_name,
-                f"[{status_style}]{status}[/{status_style}]",
-                tool_info.version or "N/A",
-                str(tool_info.path) if tool_info.path else "N/A",
-            )
 
-        console.print(table)
+def _persist_config(dotted_key: str, value: str) -> None:
+    """Write a dotted key into the user config.toml (creating it if needed)."""
+    import tomllib
 
-    asyncio.run(show_status())
+    import tomli_w
+
+    from netreaper.core.constants import NETREAPER_CONFIG_DIR
+
+    cfg_path = NETREAPER_CONFIG_DIR / "config.toml"
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    data: dict = {}
+    if cfg_path.exists():
+        with cfg_path.open("rb") as fh:
+            data = tomllib.load(fh)
+    parts = dotted_key.split(".")
+    node = data
+    for part in parts[:-1]:
+        node = node.setdefault(part, {})
+        if not isinstance(node, dict):
+            raise typer.BadParameter(f"{dotted_key!r} conflicts with a non-table value")
+    node[parts[-1]] = _coerce(value)
+    with cfg_path.open("wb") as fh:
+        tomli_w.dump(data, fh)
 
 
 @app.command()
 def config(
-    action: str = typer.Argument(..., help="Action: get, set, list"),
-    key: Optional[str] = typer.Argument(None, help="Configuration key"),
-    value: Optional[str] = typer.Argument(None, help="Configuration value"),
+    action: str = typer.Argument(..., help="Action: show, get, set"),
+    key: str | None = typer.Argument(None, help="Config key (dotted), e.g. safety.unsafe_mode"),
+    value: str | None = typer.Argument(None, help="Value for 'set'"),
 ):
     """Manage configuration."""
-    from netreaper.config.settings import get_settings
+    from netreaper.config.settings import get_settings, reload_settings
 
     settings = get_settings()
 
-    if action == "list":
-        console.print("[cyan]Current Configuration:[/cyan]")
+    if action in ("show", "list"):
         console.print(settings.model_dump_json(indent=2))
     elif action == "get" and key:
-        # Get nested key
-        parts = key.split(".")
         val = settings
-        for part in parts:
-            val = getattr(val, part)
+        try:
+            for part in key.split("."):
+                val = getattr(val, part)
+        except AttributeError:
+            console.print(f"[red]unknown key:[/red] {key}")
+            raise typer.Exit(1) from None
         console.print(f"{key} = {val}")
-    elif action == "set" and key and value:
-        console.print(f"[yellow]Setting {key} = {value}[/yellow]")
-        console.print("[dim]Configuration changes require restart[/dim]")
+    elif action == "set" and key and value is not None:
+        _persist_config(key, value)
+        reload_settings()
+        console.print(f"[green]set[/green] {key} = {_coerce(value)}")
     else:
-        console.print("[red]Invalid config command[/red]")
+        console.print("[red]usage:[/red] config show | get <key> | set <key> <value>")
         raise typer.Exit(1)
 
 
