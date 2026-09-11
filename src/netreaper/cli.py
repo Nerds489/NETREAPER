@@ -479,16 +479,16 @@ def wifi_eviltwin(
 
         et = EvilTwin()
         try:
-            await et.start(interface, ssid, channel, gateway_ip=gateway)
-        except TargetValidationError as exc:
-            console.print(f"[red]Denied by scope gate: {exc}[/red]")
-            raise typer.Exit(2) from exc
+            try:
+                await et.start(interface, ssid, channel, gateway_ip=gateway)
+            except TargetValidationError as exc:
+                console.print(f"[red]Denied by scope gate: {exc}[/red]")
+                raise typer.Exit(2) from exc
 
-        console.print(
-            f"[green]Evil-twin '{ssid}' up on {interface} (ch {channel}). "
-            "Press Ctrl-C to stop.[/green]"
-        )
-        try:
+            console.print(
+                f"[green]Evil-twin '{ssid}' up on {interface} (ch {channel}). "
+                "Press Ctrl-C to stop.[/green]"
+            )
             if deauth_bssid and mon_interface:
                 await et.deauth_real_ap(mon_interface, deauth_bssid)
             while True:
@@ -496,8 +496,12 @@ def wifi_eviltwin(
         except (KeyboardInterrupt, asyncio.CancelledError):
             pass
         finally:
-            await et.stop()
-            console.print("[cyan]Evil-twin torn down.[/cyan]")
+            # Tear down whatever start() actually mutated, even if it failed
+            # partway (state is published before the first mutation). A scope
+            # denial before any mutation leaves state None, so nothing to undo.
+            if et.state is not None:
+                await et.stop()
+                console.print("[cyan]Evil-twin torn down.[/cyan]")
 
     try:
         asyncio.run(run_et())

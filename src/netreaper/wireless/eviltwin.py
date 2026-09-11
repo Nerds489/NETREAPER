@@ -188,10 +188,12 @@ class EvilTwin:
         if state is None:
             return
 
-        # Delete exactly the iptables rules we added, in reverse order.
-        for rule in reversed(state.applied_rules):
+        # Delete exactly the iptables rules we added, in reverse order, dropping
+        # each from the tracked set as it goes so a mid-teardown failure leaves
+        # only the still-applied rules recorded (dirty stays set: retry is safe).
+        for rule in reversed(list(state.applied_rules)):
             await self._run(["iptables", *delete_form(rule)], destructive=True)
-        state.applied_rules.clear()
+            state.applied_rules.remove(rule)
 
         await self._run(["sysctl", "-w", "net.ipv4.ip_forward=0"], destructive=True)
         # Kill exactly the daemons we started, by their pidfile, never a global

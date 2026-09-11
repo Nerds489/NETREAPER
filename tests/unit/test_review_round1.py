@@ -296,3 +296,40 @@ def test_eviltwin_retry_blocked_after_failure_before_first_rule(tmp_path):
     assert et.state.dirty  # but a mutation was attempted
     with pytest.raises(RuntimeError):  # so a naive retry is refused
         asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
+
+
+# ======================================================================
+# Round-4 verification-review fixes (LOW hardening)
+# ======================================================================
+
+
+def test_eapol_tiny_declared_length_still_classifies():
+    # a corrupt/too-short 802.1X declared length must not drop an otherwise-valid
+    # frame; the parser falls back to the unbounded body so key_info is readable
+    frame = bytearray(_m1_with_pmkid(16))
+    frame[34], frame[35] = 0x00, 0x02  # EAPOL length field -> 2 (too short)
+    parsed = eapol._parse_dot11(bytes(frame))
+    assert parsed is not None and parsed.msg == 1
+
+
+def test_eviltwin_stop_incrementally_untracks_rules(tmp_path):
+    class _FailNthDelete:
+        def __init__(self, fail_on_nth_delete):
+            self.n = 0
+            self._fail_on = fail_on_nth_delete
+
+        async def __call__(self, cmd, **kw):
+            if cmd[:1] == ["iptables"] and "-D" in cmd:
+                self.n += 1
+                if self.n == self._fail_on:
+                    raise SubprocessError("delete failed")
+            return None
+
+    et = EvilTwin(runner=_FailNthDelete(fail_on_nth_delete=2))
+    asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
+    assert len(et.state.applied_rules) == 5
+    with pytest.raises(SubprocessError):
+        asyncio.run(et.stop())
+    # the first delete untracked its rule before the second failed
+    assert len(et.state.applied_rules) == 4
+    assert et.state.dirty  # stop() did not complete, so a stop() is still required
