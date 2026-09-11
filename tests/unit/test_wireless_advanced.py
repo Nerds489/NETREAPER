@@ -143,19 +143,36 @@ def test_wpa2_downgrade_config_is_wpa2_only_and_banded():
 class FakeRunner:
     """Fake ProcessRunner recording (cmd, kwargs); writes an airodump CSV."""
 
-    def __init__(self, *, reveal_csv: str | None = None, ping_ok: bool = True):
+    def __init__(
+        self,
+        *,
+        reveal_csv: str | None = None,
+        ping_ok: bool = True,
+        block_arpspoof: bool = False,
+        ping_tool_missing: bool = False,
+    ):
         self.calls: list[tuple[list[str], dict]] = []
         self._reveal_csv = reveal_csv
         self._ping_ok = ping_ok
+        self._block_arpspoof = block_arpspoof
+        self._ping_tool_missing = ping_tool_missing
 
     async def run(self, cmd, **kw):
         self.calls.append((cmd, kw))
-        if cmd and cmd[0] == "airodump-ng" and self._reveal_csv is not None:
+        if cmd[0] == "ping" and self._ping_tool_missing:
+            from netreaper.core.exceptions import ToolNotFoundError
+
+            raise ToolNotFoundError("ping not installed")
+        if cmd[0] == "airodump-ng" and self._reveal_csv is not None:
             # Emit the CSV airodump would have written, at its --write prefix.
             prefix = cmd[cmd.index("--write") + 1]
             from pathlib import Path
 
             Path(f"{prefix}-01.csv").write_text(self._reveal_csv)
+        if cmd[0] == "arpspoof" and self._block_arpspoof:
+            # Stay live until the poison task is cancelled, so stop()'s
+            # cancel-then-reap path is actually exercised (L1).
+            await asyncio.Event().wait()
         rc = 0 if (cmd[0] != "ping" or self._ping_ok) else 1
         return ProcessResult(cmd=list(cmd), returncode=rc)
 
@@ -308,12 +325,17 @@ def test_check_isolation_unreachable_false():
 
 def test_arpspoof_start_stop_lifecycle():
     _mitm_engagement("10.0.0.0/24")
-    runner = FakeRunner()
+    # block_arpspoof keeps the poison tasks LIVE so stop() genuinely cancels and
+    # reaps them (rather than finding them already done - the L1 no-op trap).
+    runner = FakeRunner(block_arpspoof=True)
+    captured: dict = {}
 
     async def scenario():
         spoof = ArpSpoof(runner=runner)
         await spoof.start("eth0", "10.0.0.1", "10.0.0.5")
-        await asyncio.sleep(0)  # let both poison tasks run through the fake
+        for _ in range(5):  # let both poison tasks enter run() and block
+            await asyncio.sleep(0)
+        captured["tasks"] = list(spoof._tasks)
         await spoof.stop()
         return spoof
 
@@ -329,6 +351,8 @@ def test_arpspoof_start_stop_lifecycle():
         assert kw["tier"] == Tier.MITM
         assert set(kw["targets"]) == {"10.0.0.1", "10.0.0.5"}
     assert not any("killall" in t for t in cmds)
+    # the live poison tasks were cancelled and reaped by stop()
+    assert captured["tasks"] and all(t.cancelled() for t in captured["tasks"])
     assert spoof.state.running is False and spoof.state.dirty is False
 
 
@@ -398,3 +422,70 @@ def test_clone_ap_mac_rejects_bad_bssid(monkeypatch):
     monkeypatch.setattr(advanced, "change_mac", lambda *a, **k: None)
     with pytest.raises(TargetValidationError):
         asyncio.run(clone_ap_mac("wlan0", "not-a-mac", 11, runner=FakeHostRunner()))
+
+
+def test_clone_ap_mac_normalises_hyphen_and_bare_hex(monkeypatch):
+    # M1: require_bssid accepts hyphen/bare-hex; change_mac needs colon-upper form.
+    seen: list = []
+
+    async def fake_change_mac(interface, new_mac=None, vendor="random"):
+        seen.append(new_mac)
+        return new_mac
+
+    monkeypatch.setattr(advanced, "change_mac", fake_change_mac)
+    host = FakeHostRunner()
+    for form in ("aa-bb-cc-dd-ee-ff", "aabbccddeeff", "Aa:Bb:Cc:Dd:Ee:Ff"):
+        asyncio.run(clone_ap_mac("wlan0", form, 6, runner=host))
+    assert seen == ["AA:BB:CC:DD:EE:FF"] * 3
+
+
+# --- L2: teardown / error-path coverage ---
+
+
+def test_reveal_by_deauth_missing_csv_returns_none():
+    # airodump produced no CSV (never started) -> None, missing-capture branch.
+    runner = FakeRunner(reveal_csv=None)
+    reveal = HiddenSSIDReveal(aireplay=FakeAireplay(), runner=runner)
+    essid = asyncio.run(
+        reveal.reveal_by_deauth(
+            "wlan0mon", "AA:BB:CC:DD:EE:FF", 6, capture_seconds=1, settle_seconds=0
+        )
+    )
+    assert essid is None
+
+
+def test_reveal_by_deauth_cleans_temp_dir(tmp_path, monkeypatch):
+    # M2: the mkdtemp scratch dir is removed on the success path.
+    scratch = tmp_path / "cap"
+
+    def fake_mkdtemp(*a, **k):
+        scratch.mkdir(parents=True, exist_ok=True)
+        return str(scratch)
+
+    monkeypatch.setattr(advanced.tempfile, "mkdtemp", fake_mkdtemp)
+    runner = FakeRunner(reveal_csv=_csv("AA:BB:CC:DD:EE:FF", "Shown"))
+    reveal = HiddenSSIDReveal(aireplay=FakeAireplay(), runner=runner)
+    essid = asyncio.run(
+        reveal.reveal_by_deauth(
+            "wlan0mon", "AA:BB:CC:DD:EE:FF", 6, capture_seconds=1, settle_seconds=0
+        )
+    )
+    assert essid == "Shown"
+    assert not scratch.exists()
+
+
+def test_check_isolation_tool_missing_returns_false():
+    runner = FakeRunner(ping_tool_missing=True)
+    assert asyncio.run(check_isolation("10.0.0.5", runner=runner)) is False
+
+
+def test_downgrade_stop_without_pidfile_no_kill(tmp_path):
+    host = FakeHostRunner()
+    dg = WPA3Downgrade(runner=host)
+    asyncio.run(dg.start("wlan0", "CorpWiFi", 6, config_dir=tmp_path))
+    # no pidfile written -> stop() issues no kill, still brings the iface down
+    asyncio.run(dg.stop())
+    teardown = host.cmd_strings()
+    assert not any(t.startswith("kill ") for t in teardown)
+    assert "ip link set wlan0 down" in teardown
+    assert dg.state.dirty is False
