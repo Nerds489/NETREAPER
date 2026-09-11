@@ -875,6 +875,66 @@ def wifi_crack(
     asyncio.run(run_crack())
 
 
+@wifi_app.command("auto")
+def wifi_auto(
+    interface: str = typer.Option(..., "--interface", "-i", help="Wireless interface"),
+    goal: str = typer.Option("wifi.password", "--goal", "-g", help="Goal capability"),
+    target: str = typer.Option(None, "--target", "-t", help="Target BSSID (capture)"),
+    channel: int = typer.Option(None, "--channel", "-c", help="Target channel"),
+    wordlist: str = typer.Option(None, "--wordlist", "-w", help="Wordlist (crack)"),
+    run: bool = typer.Option(
+        False, "--run", help="Execute the chain (default: dry-run preview)"
+    ),
+):
+    """Resolve a goal and auto-run its capability chain (dry run unless --run)."""
+
+    async def _auto():
+        from netreaper.chaining.executor import ChainExecutor
+        from netreaper.chaining.manifest import MissingCapabilityError, resolve_chain
+        from netreaper.chaining.plan_exec import manifest_step_runner, plan_to_chain
+        from netreaper.core.exceptions import PluginError, TargetValidationError
+        from netreaper.wireless.autochain import AutoContext, build_wifi_registry
+
+        ctx = AutoContext(
+            interface=interface, target_bssid=target,
+            channel=channel, wordlist=wordlist,
+        )
+        reg = build_wifi_registry(ctx)
+        try:
+            plan = resolve_chain(goal, reg)
+        except MissingCapabilityError as exc:
+            console.print(f"[red]Cannot plan {goal!r}: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        console.print(plan.render())
+        if not run:
+            console.print("[cyan]Dry run — re-run with --run to execute.[/cyan]")
+            return
+        try:
+            result = await ChainExecutor(
+                step_runner=manifest_step_runner(reg)
+            ).execute(plan_to_chain(plan))
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        except PluginError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(1) from exc
+        if result.success and ctx.password:
+            console.print(f"[green]Recovered {goal}: {ctx.password}[/green]")
+        elif result.success:
+            console.print("[green]Chain completed.[/green]")
+        else:
+            failed = [s.tool for s in result.steps.values()
+                      if s.status.value == "failed"]
+            console.print(
+                f"[yellow]Chain did not complete; step(s) failed: "
+                f"{', '.join(failed) or '?'}[/yellow]"
+            )
+            raise typer.Exit(1)
+
+    asyncio.run(_auto())
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
