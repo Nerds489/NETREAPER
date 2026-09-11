@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 from netreaper.automation.handlers.cleanup import AutoCleanupHandler
-from netreaper.core.exceptions import TargetValidationError
+from netreaper.core.exceptions import SubprocessError, TargetValidationError
 from netreaper.core.process import ProcessRunner
 from netreaper.core.validation import require_bssid, valid_bssid
 from netreaper.safety.scope import ScopeGate
@@ -175,3 +175,64 @@ def test_eviltwin_state_visible_before_daemons(tmp_path):
     state = asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
     assert et.state is state
     assert state.hostapd_pidfile and state.dnsmasq_pidfile
+
+
+# ======================================================================
+# Round-2 verification-review fixes
+# ======================================================================
+
+
+class _FlakyRunner:
+    """Fails on the Nth iptables call, to simulate a partial-setup failure."""
+
+    def __init__(self, fail_on_nth_iptables: int):
+        self.cmds: list[list[str]] = []
+        self._n = 0
+        self._fail_on = fail_on_nth_iptables
+
+    async def __call__(self, cmd, **kw):
+        self.cmds.append(cmd)
+        if cmd and cmd[0] == "iptables":
+            self._n += 1
+            if self._n == self._fail_on:
+                raise SubprocessError("iptables failed")
+        return None
+
+
+def test_eviltwin_partial_start_then_retry_is_blocked(tmp_path):
+    et = EvilTwin(runner=_FlakyRunner(fail_on_nth_iptables=2))
+    with pytest.raises(SubprocessError):
+        asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
+    # partial state remains, so a naive retry must be refused (not silently orphan)
+    assert et.state is not None and not et.state.running and et.state.applied_rules
+    with pytest.raises(RuntimeError):
+        asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
+    # stop() reconciles: it deletes exactly the rules that were applied
+    asyncio.run(et.stop())
+    assert et.state.applied_rules == []
+
+
+def test_eviltwin_restart_after_clean_stop_is_allowed(tmp_path):
+    et = EvilTwin(runner=_FakeRunner())
+    asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
+    asyncio.run(et.stop())
+    # a clean post-stop state (not running, no rules) permits a fresh start
+    asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
+    assert et.state.running is True
+
+
+def test_pmkid_not_fabricated_from_trailing_bytes():
+    # 16-byte-MIC Key-Data-Length is 0 (no PMKID), but a valid PMKID KDE sits at
+    # the 24-byte-MIC offset with an over-long kd_len that overruns the frame.
+    # The exact-length check must reject it rather than fabricate a PMKID.
+    frame = bytearray(103)
+    frame[101], frame[102] = 0x00, 0xFF  # 24-MIC kd_len = 255 (overruns remaining)
+    frame += bytes([0xDD, 0x14]) + b"\x00\x0f\xac" + b"\x04" + b"\xAA" * 16
+    assert len(frame) == 125
+    assert eapol._pmkid_from_m1(bytes(frame)) is None
+
+
+def test_killall_cleanup_methods_removed():
+    # the global-killall stop_hostapd/stop_dnsmasq landmine is gone
+    assert not hasattr(AutoCleanupHandler, "stop_hostapd")
+    assert not hasattr(AutoCleanupHandler, "stop_dnsmasq")

@@ -124,8 +124,12 @@ class EvilTwin:
         config_dir: Path | None = None,
     ) -> EvilTwinState:
         """Write configs, bring up the AP subnet, and start hostapd + dnsmasq."""
-        if self.state is not None and self.state.running:
-            raise RuntimeError("evil-twin already running; call stop() first")
+        # Block a restart while any unreconciled state exists: running, or a
+        # partial-setup failure that left rules applied. Either way stop() must
+        # run first (it clears applied_rules), so nothing is ever orphaned. A
+        # clean post-stop state (not running, no rules) allows a fresh start.
+        if self.state is not None and (self.state.running or self.state.applied_rules):
+            raise RuntimeError("evil-twin has unreconciled state; call stop() first")
         iface = require_interface(interface)
         cfg_dir = config_dir or NETREAPER_CONFIG_DIR
         cfg_dir.mkdir(parents=True, exist_ok=True)
