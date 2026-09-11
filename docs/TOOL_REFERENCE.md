@@ -1,6 +1,6 @@
 # NETREAPER Tool Reference (v10.0.0)
 
-NETREAPER wraps 70+ tools behind one interface. Run it via `./netreaper` inside the repo (wrapper) or `netreaper` after installing system-wide; both call the executable under `bin/`. Use the interactive menu for guided flows. CLI shortcuts available:
+NETREAPER wraps 70+ tools behind one interface. Run it via `netreaper` after `pip install .` (the Python CLI); run with no arguments for the interactive menu, or use the CLI shortcuts below:
 - `netreaper scan <target> (--quick|--full|--vuln|--stealth)`
 - `netreaper wifi --monitor <iface>`
 - `netreaper crack <capture> --hashcat`
