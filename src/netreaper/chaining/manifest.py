@@ -12,8 +12,9 @@ same manifest shape and no new planner code.
 Guards the design doc left open: capability-namespacing is validated at manifest
 construction; a second provider of a capability collides at registration; a
 require-cycle is caught with a clear error instead of looping; and a capability
-no tool provides raises :class:`MissingCapabilityError`, which names it (partial
-plans surface exactly what is missing).
+no tool provides raises :class:`MissingCapabilityError`, which names the unmet
+capability so the caller sees exactly what is missing (the call raises rather
+than returning a partial plan).
 
 The planner sits ABOVE the existing :class:`~netreaper.chaining.executor.ChainExecutor`
 (which is unchanged); compiling a resolved :class:`Plan` into a runnable
@@ -29,6 +30,10 @@ from netreaper.core.exceptions import ConfigurationError, PluginError
 # A manifest's optional live runner: a coroutine that executes the tool and
 # returns its outputs. Left unset in the planning-only slice.
 Runner = Callable[..., Awaitable[dict[str, object]]]
+
+
+def _has_space(s: str) -> bool:
+    return any(c.isspace() for c in s)
 
 
 class MissingCapabilityError(PluginError):
@@ -56,16 +61,18 @@ class ToolManifest:
         if not self.name or not self.domain:
             raise ConfigurationError("a manifest needs a name and a domain")
         for cap in self.provides:
-            if not cap.startswith(f"{self.domain}."):
+            head, _, tail = cap.partition(".")
+            if head != self.domain or not tail or _has_space(cap):
                 raise ConfigurationError(
-                    f"{self.name}: provided capability {cap!r} is not in its "
-                    f"domain namespace {self.domain!r}.*"
+                    f"{self.name}: provided capability {cap!r} must be "
+                    f"'{self.domain}.<name>' with a non-empty name and no spaces"
                 )
         for cap in self.requires:
-            if "." not in cap:
+            head, sep, tail = cap.partition(".")
+            if not sep or not head or not tail or _has_space(cap):
                 raise ConfigurationError(
-                    f"{self.name}: required capability {cap!r} must be namespaced "
-                    "as <domain>.<name>"
+                    f"{self.name}: required capability {cap!r} must be "
+                    "'<domain>.<name>' with non-empty parts and no spaces"
                 )
 
 
@@ -171,6 +178,9 @@ def resolve_chain(
         for req in tool.requires:
             visit(req)
         resolving.discard(capability)
+        # `have` already ensures a tool is reached once (all its outputs enter
+        # `have` on append, short-circuiting any later visit); the membership
+        # check is a cheap belt-and-braces against that invariant regressing.
         if tool not in plan:
             plan.append(tool)
             # Every capability this tool produces is now available downstream.

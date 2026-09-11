@@ -84,12 +84,12 @@ def test_collision_two_providers_of_one_capability():
 
 
 def test_provides_must_be_in_domain_namespace():
-    with pytest.raises(ConfigurationError, match="domain namespace"):
+    with pytest.raises(ConfigurationError, match="must be"):
         ToolManifest("t", "wifi", provides=("web.thing",))
 
 
 def test_requires_must_be_namespaced():
-    with pytest.raises(ConfigurationError, match="namespaced"):
+    with pytest.raises(ConfigurationError, match="must be"):
         ToolManifest("t", "wifi", requires=("nodot",))
 
 
@@ -116,3 +116,59 @@ def test_find_provider_and_replace():
     reg.register(ToolManifest("v1", "wifi", provides=("wifi.k2",)), replace=True)
     assert reg.find_provider("wifi.k") is None
     assert reg.find_provider("wifi.k2").name == "v1"
+
+
+# --- hard graphs (L1: the behaviours this module exists to provide) ---
+
+
+def test_diamond_shared_prerequisite_resolves_once():
+    reg = ManifestRegistry()
+    reg.register(ToolManifest("base", "d", provides=("d.base",)))
+    reg.register(ToolManifest("A", "d", provides=("d.a",), requires=("d.base",)))
+    reg.register(ToolManifest("B", "d", provides=("d.b",), requires=("d.base",)))
+    reg.register(ToolManifest("G", "d", provides=("d.g",), requires=("d.a", "d.b")))
+    names = [m.name for m in resolve_chain("d.g", reg).steps]
+    assert names.count("base") == 1
+    assert names.index("base") < names.index("A") < names.index("G")
+    assert names.index("base") < names.index("B") < names.index("G")
+
+
+def test_multi_provides_feeds_two_consumers_once():
+    reg = ManifestRegistry()
+    reg.register(ToolManifest("M", "d", provides=("d.x", "d.y")))
+    reg.register(ToolManifest("C", "d", provides=("d.c",), requires=("d.x",)))
+    reg.register(ToolManifest("D", "d", provides=("d.dd",), requires=("d.y",)))
+    reg.register(ToolManifest("G", "d", provides=("d.g",), requires=("d.c", "d.dd")))
+    names = [m.name for m in resolve_chain("d.g", reg).steps]
+    assert names.count("M") == 1
+    assert names.index("M") < names.index("C")
+    assert names.index("M") < names.index("D")
+
+
+def test_self_loop_is_a_cycle():
+    reg = ManifestRegistry()
+    reg.register(ToolManifest("t", "d", provides=("d.x",), requires=("d.x",)))
+    with pytest.raises(PluginError, match="cycle"):
+        resolve_chain("d.x", reg)
+
+
+def test_cycle_through_a_multi_provides_tool():
+    reg = ManifestRegistry()
+    reg.register(ToolManifest("P", "d", provides=("d.a", "d.b"), requires=("d.r",)))
+    reg.register(ToolManifest("Q", "d", provides=("d.r",), requires=("d.b",)))
+    with pytest.raises(PluginError, match="cycle"):
+        resolve_chain("d.a", reg)
+
+
+# --- tightened validation (M2) ---
+
+
+def test_provides_empty_suffix_rejected():
+    with pytest.raises(ConfigurationError, match="non-empty name"):
+        ToolManifest("t", "wifi", provides=("wifi.",))
+
+
+@pytest.mark.parametrize("bad", [".", ".x", "x.", " . ", "wifi .x", "nodot"])
+def test_requires_malformed_rejected(bad):
+    with pytest.raises(ConfigurationError):
+        ToolManifest("t", "wifi", requires=(bad,))
