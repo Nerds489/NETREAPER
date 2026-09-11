@@ -69,19 +69,23 @@ jobs:
           python -c "import netreaper; print('netreaper', netreaper.__version__)"
           netreaper --version
 
-      - name: Per-artifact SHA256 checksums
-        working-directory: dist
-        run: |
-          set -euo pipefail
-          sha256sum ./*.whl ./*.tar.gz > SHA256SUMS
-          cat SHA256SUMS
-
       - name: SBOM (CycloneDX) for the release
         uses: anchore/sbom-action@v0
         with:
           path: .
           format: cyclonedx-json
           output-file: dist/netreaper-${{ steps.meta.outputs.version }}.sbom.cyclonedx.json
+          upload-artifact: false        # attached to the release via gh below
+          upload-release-assets: false  # no-op on a push event; avoid a dup path
+
+      - name: Per-artifact SHA256 checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          # SBOM is hashed too (it is generated before this step), so signing
+          # SHA256SUMS transitively authenticates every published artifact.
+          sha256sum ./*.whl ./*.tar.gz ./*.sbom.cyclonedx.json > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Sign artifacts (Sigstore keyless)
         uses: sigstore/gh-action-sigstore-python@v3.0.0
@@ -89,6 +93,7 @@ jobs:
           inputs: |
             ./dist/*.whl
             ./dist/*.tar.gz
+            ./dist/*.sbom.cyclonedx.json
             ./dist/SHA256SUMS
 
       - name: Create the GitHub release
@@ -96,16 +101,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          pre_flag=""
-          if [[ "${{ steps.meta.outputs.prerelease }}" == "true" ]]; then
-            pre_flag="--prerelease"
-          fi
-          gh release create "${{ steps.meta.outputs.tag }}" \
-            --title "NETREAPER ${{ steps.meta.outputs.tag }}" \
-            --generate-notes \
-            $pre_flag \
-            dist/*.whl \
-            dist/*.tar.gz \
-            dist/SHA256SUMS \
-            dist/*.sigstore.json \
+          tag="${{ steps.meta.outputs.tag }}"
+          assets=(
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+            dist/*.sigstore.json
             dist/*.sbom.cyclonedx.json
+          )
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # Idempotent: a retry after a mid-pipeline failure re-uploads assets.
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            pre_flag=""
+            if [[ "${{ steps.meta.outputs.prerelease }}" == "true" ]]; then
+              pre_flag="--prerelease"
+            fi
+            gh release create "$tag" \
+              --title "NETREAPER $tag" \
+              --generate-notes \
+              $pre_flag \
+              "${assets[@]}"
+          fi

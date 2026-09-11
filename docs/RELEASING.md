@@ -51,6 +51,11 @@ its channel is derived from the suffix:
 `VERSION` must carry the same suffix (for example `10.3.0-rc.1`) so the
 tag/VERSION check passes.
 
+Note the built artifact filenames are PEP 440-normalised, so the suffix loses its
+hyphen and dot: tag `v10.3.0-rc.1` produces `netreaper-10.3.0rc1-py3-none-any.whl`
+and `netreaper-10.3.0rc1.tar.gz`. The release globs handle this automatically;
+just expect the normalised form when downloading a pre-release.
+
 ## Verifying a downloaded artifact
 
 Checksums:
@@ -65,12 +70,38 @@ Sigstore signature (keyless, verified against the repo's tag workflow identity):
 python -m pip install sigstore
 sigstore verify github \
   --cert-identity "https://github.com/Nerds489/NETREAPER/.github/workflows/release.yml@refs/tags/v10.2.4" \
+  --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
   --bundle netreaper-10.2.4-py3-none-any.whl.sigstore.json \
   netreaper-10.2.4-py3-none-any.whl
 ```
+
+Signing `SHA256SUMS` transitively authenticates every artifact: verify that one
+bundle, then `sha256sum -c SHA256SUMS` proves the wheel, sdist and SBOM.
 
 ## Installing a release
 
 ```bash
 pipx install https://github.com/Nerds489/NETREAPER/releases/download/v10.2.4/netreaper-10.2.4-py3-none-any.whl
 ```
+
+## Rolling back a bad release
+
+The pipeline only creates releases; retracting one is manual and deliberate.
+
+```bash
+# Remove the GitHub release and its assets, and drop the tag.
+gh release delete v10.2.4 --yes --cleanup-tag
+# (or, if the tag was not cleaned up above)
+git push origin :refs/tags/v10.2.4
+```
+
+Then cut a fresh **patch** release with the fix:
+
+- **Never delete-and-reuse a version number.** Bump to the next patch (for
+  example `10.2.5`) and tag that. Downstreams and caches key on the version, and
+  re-publishing a changed artifact under the same version is a supply-chain
+  hazard.
+- Sigstore transparency-log entries are **immutable**: you cannot unsign an
+  artifact. Retraction means deleting the release/tag and superseding it, not
+  revoking the signature.
+
