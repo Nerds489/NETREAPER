@@ -256,6 +256,60 @@ def wifi_monitor(
     asyncio.run(manage_monitor())
 
 
+@wifi_app.command("handshake")
+def wifi_handshake(
+    interface: str = typer.Argument(..., help="Monitor-mode interface"),
+    bssid: str = typer.Argument(..., help="Target access point BSSID"),
+    channel: int = typer.Argument(..., help="Target channel"),
+    client: str = typer.Option(
+        None, "--client", "-c", help="Client MAC to deauth (broadcast if unset)"
+    ),
+    output: str = typer.Option(None, "--output", "-o", help="Capture file prefix"),
+    seconds: int = typer.Option(20, "--seconds", "-s", help="Capture window (s)"),
+    deauth: int = typer.Option(5, "--deauth", "-d", help="Deauth frames (0=off)"),
+    attempts: int = typer.Option(3, "--attempts", "-a", help="Capture rounds"),
+):
+    """Capture and verify a WPA/WPA2 handshake for an access point."""
+
+    async def run_capture():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.handshake import capture_handshake
+
+        console.print(
+            f"[cyan]Capturing handshake for {bssid} on channel {channel}...[/cyan]"
+        )
+        try:
+            result = await capture_handshake(
+                interface,
+                bssid,
+                channel,
+                client=client,
+                output=output,
+                capture_seconds=seconds,
+                deauth_count=deauth,
+                max_attempts=attempts,
+            )
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+
+        if result.captured:
+            msgs = ", ".join(f"M{m}" for m in result.messages)
+            console.print(
+                f"[green]Handshake captured ({msgs}) "
+                f"from client {result.client}[/green]"
+            )
+            console.print(f"Saved to: {result.cap_file}")
+        else:
+            console.print(
+                f"[yellow]No handshake after {result.attempts} attempt(s). "
+                "Try more attempts, a longer window, or a specific client.[/yellow]"
+            )
+            raise typer.Exit(1)
+
+    asyncio.run(run_capture())
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
