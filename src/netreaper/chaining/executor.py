@@ -22,7 +22,7 @@ from netreaper.chaining.models import (
     StepResult,
     StepStatus,
 )
-from netreaper.core.exceptions import PluginError
+from netreaper.core.exceptions import PluginError, TargetValidationError
 
 StepRunner = Callable[[ChainStep, str, dict], Awaitable[dict]]
 
@@ -93,6 +93,8 @@ class ChainExecutor:
                 sr.data = data or {}
                 sr.status = StepStatus.COMPLETED
                 state[step.output_key or step.id] = sr.data
+            except TargetValidationError:
+                raise  # a scope-gate denial is never a routine step failure
             except Exception as exc:
                 sr.status = StepStatus.FAILED
                 sr.errors.append(str(exc))

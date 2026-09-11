@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
+from netreaper.safety.scope import Tier
 from netreaper.tools.base import BaseToolWrapper
 
 logger = get_logger(__name__)
@@ -25,6 +26,14 @@ class JohnConfig(BaseModel):
 
 class JohnTool(BaseToolWrapper):
     """John the Ripper password cracker wrapper."""
+
+    DEFAULT_TIER = Tier.PASSIVE  # local hash cracker: no network target
+
+    def target_identifiers(self, target, options):
+        return []
+
+    def execution_tier(self, target, options):
+        return Tier.PASSIVE
 
     TOOL_BINARY: ClassVar[str] = "john"
 

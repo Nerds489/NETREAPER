@@ -1,5 +1,4 @@
 """SQLMap SQL injection tool wrapper."""
-import json
 import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -31,6 +30,8 @@ class SqlmapConfig(BaseModel):
 
 class SqlmapTool(BaseToolWrapper):
     """SQLMap SQL injection tool wrapper."""
+
+    TARGET_IS_URL = True
 
     TOOL_BINARY: ClassVar[str] = "sqlmap"
 

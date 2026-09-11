@@ -113,9 +113,6 @@ class NmapTool(BaseToolWrapper):
                 cmd.append("-Pn")
 
         # Extra arguments from UI
-        extra_args = options.get("extra_args", [])
-        if extra_args:
-            cmd.extend(extra_args)
 
         # XML output for parsing
         self._output_file = Path(NamedTemporaryFile(suffix=".xml", delete=False).name)
@@ -133,7 +130,7 @@ class NmapTool(BaseToolWrapper):
 
         try:
             return self._parse_xml_output()
-        except Exception as e:
+        except Exception:
             # Fallback to text parsing
             return self._parse_text_output(output)
         finally:

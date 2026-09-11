@@ -159,6 +159,11 @@ class ScopeGate:
                 f"({eng.max_tier.name}); raise the engagement's max_tier to authorise it"
             )
 
+        if not targets:
+            raise TargetValidationError(
+                "deny-by-default: this action has no identifiable in-scope target"
+            )
+
         for target in targets:
             self._check_target(target, eng, tier)
 
@@ -180,6 +185,18 @@ class ScopeGate:
         # IP / CIDR
         if _looks_like_ip(t):
             if "/" in t:  # a network/range target
+                net = ipaddress.ip_network(t, strict=False)
+                if net.num_addresses == 1:
+                    # single-host CIDR (/32, /128): treat as a bare host so the
+                    # protected-address guard still applies.
+                    host = str(net.network_address)
+                    if is_protected_ip(host):
+                        raise TargetValidationError(
+                            f"{host} is a protected/reserved address and must not be targeted"
+                        )
+                    if not eng.scope.allows_ip(host):
+                        raise TargetValidationError(f"{host} is not in the engagement scope")
+                    return
                 if not eng.scope.allows_network(t):
                     raise TargetValidationError(f"{t} is not within the engagement scope")
                 return
