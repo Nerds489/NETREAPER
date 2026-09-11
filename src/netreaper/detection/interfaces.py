@@ -12,7 +12,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from netreaper.core.exceptions import TargetValidationError
+from netreaper.core.exceptions import (
+    SubprocessError,
+    TargetValidationError,
+    ToolNotFoundError,
+)
 from netreaper.core.process import ProcessRunner, get_process_runner
 from netreaper.safety.scope import Tier
 
@@ -56,7 +60,7 @@ async def _run(runner: ProcessRunner, cmd: list[str]) -> str:
     try:
         res = await runner.run(cmd, tier=Tier.PASSIVE)
         return res.stdout
-    except Exception:
+    except (SubprocessError, ToolNotFoundError):
         return ""
 
 

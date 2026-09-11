@@ -90,7 +90,7 @@ def parse_airodump_csv(text: str) -> ScanResult:
                 auth=row[7].strip(),
                 power=_int(row[8]),
                 beacons=_int(row[9]) or 0,
-                essid=row[13].strip(),
+                essid=(",".join(row[13:-1]).strip() if len(row) > 14 else row[13].strip()),
             )
         )
 

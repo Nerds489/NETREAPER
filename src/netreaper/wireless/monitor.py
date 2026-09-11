@@ -15,7 +15,7 @@ import atexit
 import re
 from enum import Enum
 
-from netreaper.core.exceptions import NetreaperError
+from netreaper.core.exceptions import NetreaperError, SubprocessError, ToolNotFoundError
 from netreaper.core.logging import get_logger
 from netreaper.core.process import ProcessRunner, get_process_runner
 from netreaper.detection.interfaces import NetworkInterface, validate_wireless_interface
@@ -66,14 +66,24 @@ class MonitorController:
         # Resolve the real monitor interface by diff (not by name-guessing).
         new = after - before
         if len(new) == 1:
-            self.monitor_iface = next(iter(new))
+            candidate = next(iter(new))
         elif interface in after:
-            self.monitor_iface = interface  # same-name monitor (mt76/rtl8812au)
+            candidate = interface  # same-name monitor (mt76/rtl8812au)
         else:
             raise MonitorModeError(
                 f"could not resolve the monitor interface after enabling on {interface} "
                 f"(before={sorted(before)} after={sorted(after)})"
             )
+        # Verify the candidate is ACTUALLY in monitor mode; airmon-ng can exit
+        # without changing mode (permission/driver), which the name-diff alone
+        # cannot distinguish from a legitimate same-name monitor.
+        verified = await NetworkInterface.from_name(candidate, runner=self._runner)
+        if verified.current_mode != "monitor":
+            raise MonitorModeError(
+                f"airmon-ng ran but {candidate} is not in monitor mode "
+                f"(mode={verified.current_mode!r})"
+            )
+        self.monitor_iface = candidate
         self.managed_iface = interface
         self.state = MonitorState.MONITOR
         logger.info("monitor mode enabled: %s -> %s", interface, self.monitor_iface)
@@ -83,20 +93,21 @@ class MonitorController:
         """Idempotent: safe to call when not in monitor mode."""
         if self.state is not MonitorState.MONITOR or not self.monitor_iface:
             return
-        try:
-            await self._runner.run(["airmon-ng", "stop", self.monitor_iface], tier=Tier.PASSIVE)
-        finally:
-            if self._killed_network_manager:
-                # best-effort: bring NetworkManager back
-                try:
-                    await self._runner.run(
-                        ["systemctl", "restart", "NetworkManager"], tier=Tier.PASSIVE
-                    )
-                except Exception:
-                    logger.warning("could not restart NetworkManager during teardown")
-                self._killed_network_manager = False
-            self.state = MonitorState.MANAGED
-            self.monitor_iface = None
+        # If the stop fails, state stays MONITOR so the atexit hook retries and we
+        # never falsely report a restored adapter.
+        await self._runner.run(
+            ["airmon-ng", "stop", self.monitor_iface], tier=Tier.PASSIVE, check=True
+        )
+        if self._killed_network_manager:
+            try:
+                await self._runner.run(
+                    ["systemctl", "restart", "NetworkManager"], tier=Tier.PASSIVE
+                )
+            except (SubprocessError, ToolNotFoundError):
+                logger.warning("could not restart NetworkManager during teardown")
+            self._killed_network_manager = False
+        self.state = MonitorState.MANAGED
+        self.monitor_iface = None
 
     async def teardown(self) -> None:
         await self.disable()
@@ -120,8 +131,17 @@ async def enable_monitor_mode(interface: str, kill_processes: bool = True) -> st
     return await _controller.enable(interface, kill_processes=kill_processes)
 
 
-async def disable_monitor_mode(interface: str | None = None) -> None:
-    await _controller.disable()
+async def disable_monitor_mode(interface: str | None = None) -> dict:
+    """Stop monitor mode based on the interface's ACTUAL current mode, not on
+    in-process state (each CLI invocation is a separate process). Returns the
+    resulting status."""
+    if interface is None:
+        await _controller.disable()
+        return {"interface": _controller.managed_iface, "current_mode": "managed"}
+    iface = await NetworkInterface.from_name(interface, runner=get_process_runner())
+    if iface.current_mode == "monitor":
+        await get_process_runner().run(["airmon-ng", "stop", interface], tier=Tier.PASSIVE)
+    return await get_monitor_status(interface)
 
 
 async def get_monitor_status(interface: str) -> dict:

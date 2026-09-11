@@ -47,6 +47,16 @@ class BaseToolWrapper(ToolPlugin):
     DEFAULT_TIER: ClassVar[Tier] = Tier.ACTIVE_SCAN
     DESTRUCTIVE: ClassVar[bool] = False
 
+    def target_identifiers(self, target: str, options: dict[str, Any]) -> list[str]:
+        """Scope-relevant targets for this invocation. Override when the real
+        target is not the first positional arg (e.g. wireless: the BSSID/client,
+        not the local interface name)."""
+        return [target] if target else []
+
+    def execution_tier(self, target: str, options: dict[str, Any]) -> Tier:
+        """Blast-radius tier for this invocation (override for per-call tiers)."""
+        return self.DEFAULT_TIER
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._tool_path: Path | None = None
@@ -105,8 +115,8 @@ class BaseToolWrapper(ToolPlugin):
         try:
             result = await get_process_runner().run(
                 full_command,
-                targets=[target] if target else [],
-                tier=self.DEFAULT_TIER,
+                targets=self.target_identifiers(target, options),
+                tier=self.execution_tier(target, options),
                 destructive=self.DESTRUCTIVE,
                 timeout=options.get("timeout", self.config.timeout),
                 dry_run=options.get("dry_run", False),
