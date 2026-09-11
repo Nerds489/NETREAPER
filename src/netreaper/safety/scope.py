@@ -29,6 +29,17 @@ class Tier(IntEnum):
 
 _BROADCAST_MAC = "FF:FF:FF:FF:FF:FF"
 
+# Ranges that must never be targeted, checked by overlap so a wider CIDR target
+# (e.g. 169.254.0.0/24 over the cloud metadata address) cannot slip past.
+_PROTECTED_NETS = [
+    ipaddress.ip_network(n)
+    for n in (
+        "0.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16", "224.0.0.0/4",
+        "240.0.0.0/4", "255.255.255.255/32",
+        "::1/128", "::/128", "fe80::/10", "ff00::/8",
+    )
+]
+
 
 @dataclass
 class Scope:
@@ -185,17 +196,18 @@ class ScopeGate:
         # IP / CIDR
         if _looks_like_ip(t):
             if "/" in t:  # a network/range target
-                net = ipaddress.ip_network(t, strict=False)
+                try:
+                    net = ipaddress.ip_network(t, strict=False)
+                except ValueError as e:
+                    raise TargetValidationError(f"{t!r} is not a valid network/CIDR: {e}") from e
+                # Refuse ANY CIDR (any width) that overlaps a protected range.
+                if any(net.overlaps(pn) for pn in _PROTECTED_NETS if pn.version == net.version):
+                    raise TargetValidationError(
+                        f"{t} overlaps a protected/reserved range and must not be targeted"
+                    )
                 if net.num_addresses == 1:
-                    # single-host CIDR (/32, /128): treat as a bare host so the
-                    # protected-address guard still applies.
-                    host = str(net.network_address)
-                    if is_protected_ip(host):
-                        raise TargetValidationError(
-                            f"{host} is a protected/reserved address and must not be targeted"
-                        )
-                    if not eng.scope.allows_ip(host):
-                        raise TargetValidationError(f"{host} is not in the engagement scope")
+                    if not eng.scope.allows_ip(str(net.network_address)):
+                        raise TargetValidationError(f"{t} is not in the engagement scope")
                     return
                 if not eng.scope.allows_network(t):
                     raise TargetValidationError(f"{t} is not within the engagement scope")
