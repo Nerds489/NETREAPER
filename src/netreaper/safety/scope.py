@@ -9,7 +9,9 @@ target without passing this gate.
 """
 from __future__ import annotations
 
+import hashlib
 import ipaddress
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum
@@ -114,6 +116,36 @@ class Engagement:
     # Highest blast-radius tier this engagement authorises. Broadcast/MITM must be
     # granted explicitly; the default ceiling stops at single-target.
     max_tier: Tier = Tier.SINGLE_TARGET
+    # A tamper-evident fingerprint of the authorising fields (plan §5.2),
+    # computed at construction. verify_consent() detects a later mutation of the
+    # scope/operator/expiry so an altered authorisation record is caught.
+    consent_hash: str = field(init=False, default="")
+
+    def __post_init__(self) -> None:
+        self.consent_hash = self._consent_digest()
+
+    def _consent_digest(self) -> str:
+        body = {
+            "operator": self.operator,
+            "authorization_ref": self.authorization_ref,
+            "scope": {
+                "cidrs": sorted(self.scope.cidrs),
+                "hostnames": sorted(self.scope.hostnames),
+                "bssids": sorted(b.upper() for b in self.scope.bssids),
+                "essids": sorted(self.scope.essids),
+                "deny": sorted(self.scope.deny),
+            },
+            "started_at": self.started_at.isoformat(),
+            "expires_at": self.expires_at.isoformat(),
+            "max_tier": int(self.max_tier),
+        }
+        return hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
+    def verify_consent(self) -> bool:
+        """True iff the authorising fields still match the consent hash."""
+        return self.consent_hash == self._consent_digest()
 
     def is_active(self, now: datetime | None = None) -> bool:
         now = now or datetime.now(UTC)
@@ -181,6 +213,11 @@ class ScopeGate:
         if not eng.is_active():
             raise TargetValidationError(
                 "engagement has expired; re-authorise before continuing"
+            )
+        if not eng.verify_consent():
+            raise TargetValidationError(
+                "engagement consent hash does not verify — the authorisation "
+                "record was altered after it was granted; re-authorise"
             )
         if tier > eng.max_tier:
             raise TargetValidationError(
