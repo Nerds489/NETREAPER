@@ -205,16 +205,43 @@ app.add_typer(wifi_app, name="wifi")
 
 @wifi_app.command("scan")
 def wifi_scan(
-    interface: str = typer.Argument(..., help="Wireless interface"),
-    timeout: int = typer.Option(30, "--timeout", "-t", help="Scan timeout in seconds"),
+    interface: str = typer.Argument(..., help="Monitor-mode interface"),
+    timeout: int = typer.Option(30, "--timeout", "-t", help="Scan duration in seconds"),
 ):
-    """Scan for wireless networks."""
+    """Scan for nearby access points and clients."""
 
     async def run_wifi_scan():
-        console.print(f"[cyan]Scanning wireless networks on {interface}...[/cyan]")
-        console.print(
-            "[yellow]This feature requires full wireless module implementation[/yellow]"
-        )
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.scan import scan_networks
+
+        console.print(f"[cyan]Scanning on {interface} for {timeout}s...[/cyan]")
+        try:
+            result = await scan_networks(interface, duration=timeout)
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+
+        aps = result.access_points
+        if not aps:
+            console.print("[yellow]No access points found.[/yellow]")
+            return
+        table = Table(title=f"Access points ({len(aps)})")
+        table.add_column("BSSID")
+        table.add_column("Ch", justify="right")
+        table.add_column("Pwr", justify="right")
+        table.add_column("Privacy")
+        table.add_column("Clients", justify="right")
+        table.add_column("ESSID")
+        for ap in sorted(aps, key=lambda a: a.power or -999, reverse=True):
+            table.add_row(
+                ap.bssid,
+                str(ap.channel or "-"),
+                str(ap.power or "-"),
+                ap.privacy or "-",
+                str(len(result.clients_for(ap.bssid))),
+                ap.essid or "(hidden)",
+            )
+        console.print(table)
 
     asyncio.run(run_wifi_scan())
 
