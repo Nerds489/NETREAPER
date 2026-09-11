@@ -410,6 +410,54 @@ def wifi_wps(
     asyncio.run(run_wps())
 
 
+@wifi_app.command("wep")
+def wifi_wep(
+    interface: str = typer.Argument(..., help="Monitor-mode interface"),
+    bssid: str = typer.Argument(..., help="Target access point BSSID"),
+    channel: int = typer.Argument(..., help="Target channel"),
+    essid: str = typer.Option("", "--essid", "-e", help="Network name (for fakeauth)"),
+    source_mac: str = typer.Option(
+        None, "--source-mac", "-m", help="Attacker MAC (enables injection)"
+    ),
+    output: str = typer.Option(None, "--output", "-o", help="Capture file prefix"),
+    seconds: int = typer.Option(30, "--seconds", "-s", help="IV window per round"),
+    rounds: int = typer.Option(5, "--rounds", "-r", help="Capture+crack rounds"),
+):
+    """Recover a WEP key (IV collection, injection, aircrack-ng)."""
+
+    async def run_wep():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.wep import crack_wep
+
+        console.print(f"[cyan]WEP attack on {bssid} (channel {channel})...[/cyan]")
+        try:
+            result = await crack_wep(
+                interface,
+                bssid,
+                channel,
+                essid=essid,
+                source_mac=source_mac,
+                output=output,
+                capture_seconds=seconds,
+                max_rounds=rounds,
+            )
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+
+        if result.cracked:
+            console.print(f"[green]WEP key: {result.key}[/green]")
+            console.print(f"Saved to: {result.cap_file}")
+        else:
+            console.print(
+                f"[yellow]No key after {result.rounds} round(s). "
+                "Collect more IVs (longer window, injection).[/yellow]"
+            )
+            raise typer.Exit(1)
+
+    asyncio.run(run_wep())
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
