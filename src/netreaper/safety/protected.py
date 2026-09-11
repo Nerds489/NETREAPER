@@ -19,7 +19,8 @@ def _as_ip(ip: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
 
 
 def is_protected_ip(ip: str) -> bool:
-    """True for addresses that must never be targeted (loopback, link-local,
+    """(Literal IP/CIDR targets only; hostnames are not DNS-resolved by the gate.)
+    True for addresses that must never be targeted (loopback, link-local,
     multicast, reserved, unspecified, broadcast)."""
     addr = _as_ip(ip)
     if addr is None:

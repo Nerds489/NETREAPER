@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
+from netreaper.safety.scope import Tier
 from netreaper.tools.base import BaseToolWrapper
 from netreaper.wireless.scan import essid_from_airodump_row
 
@@ -30,6 +31,8 @@ class AirodumpConfig(BaseModel):
 
 class AirodumpTool(BaseToolWrapper):
     """Airodump-ng wireless packet capture wrapper with full CSV parsing."""
+
+    DEFAULT_TIER = Tier.PASSIVE  # receive-only capture; never transmits
 
     def target_identifiers(self, target, options):
         return [options["bssid"]] if options.get("bssid") else []
