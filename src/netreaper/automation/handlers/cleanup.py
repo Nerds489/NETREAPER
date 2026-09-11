@@ -1,11 +1,16 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Nerds489
 """AUTO-CLEANUP handler for restoring system state."""
 
 import asyncio
-from dataclasses import dataclass, field
-from typing import Callable, Any
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
+from netreaper.automation.handlers._host import run_host
 from netreaper.automation.labels import AUTO_REGISTRY
 from netreaper.core.logging import get_logger
+from netreaper.core.validation import require_interface
 
 logger = get_logger(__name__)
 
@@ -89,83 +94,54 @@ class AutoCleanupHandler:
     @classmethod
     async def restore_network_manager(cls) -> bool:
         """Restore NetworkManager service."""
-        proc = await asyncio.create_subprocess_shell(
-            "systemctl start NetworkManager",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+        result = await run_host(
+            ["systemctl", "start", "NetworkManager"], destructive=True
         )
-        await proc.wait()
-        return proc.returncode == 0
+        return result is not None and result.ok
 
     @classmethod
     async def restore_managed_mode(cls, interface: str) -> bool:
         """Restore interface to managed mode."""
+        iface = require_interface(interface)
         commands = [
-            f"ip link set {interface} down",
-            f"iw dev {interface} set type managed",
-            f"ip link set {interface} up",
+            ["ip", "link", "set", iface, "down"],
+            ["iw", "dev", iface, "set", "type", "managed"],
+            ["ip", "link", "set", iface, "up"],
         ]
-
         for cmd in commands:
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
-
+            await run_host(cmd, destructive=True)
         return True
 
     @classmethod
     async def disable_ip_forwarding(cls) -> bool:
         """Disable IP forwarding."""
-        proc = await asyncio.create_subprocess_shell(
-            "sysctl -w net.ipv4.ip_forward=0",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+        result = await run_host(
+            ["sysctl", "-w", "net.ipv4.ip_forward=0"], destructive=True
         )
-        await proc.wait()
-        return proc.returncode == 0
+        return result is not None and result.ok
 
     @classmethod
     async def flush_iptables(cls) -> bool:
         """Flush iptables rules."""
         commands = [
-            "iptables -F",
-            "iptables -t nat -F",
-            "iptables -t mangle -F",
+            ["iptables", "-F"],
+            ["iptables", "-t", "nat", "-F"],
+            ["iptables", "-t", "mangle", "-F"],
         ]
-
         for cmd in commands:
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
-
+            await run_host(cmd, destructive=True)
         return True
 
     @classmethod
     async def stop_hostapd(cls) -> bool:
         """Stop hostapd service."""
-        proc = await asyncio.create_subprocess_shell(
-            "killall hostapd 2>/dev/null; true",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
+        await run_host(["killall", "hostapd"], destructive=True)
         return True
 
     @classmethod
     async def stop_dnsmasq(cls) -> bool:
         """Stop dnsmasq service."""
-        proc = await asyncio.create_subprocess_shell(
-            "killall dnsmasq 2>/dev/null; true",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
+        await run_host(["killall", "dnsmasq"], destructive=True)
         return True
 
 

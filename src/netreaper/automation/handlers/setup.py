@@ -1,9 +1,8 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Nerds489
 """AUTO-SETUP handler for configuration and service setup."""
 
-import asyncio
-from pathlib import Path
-from typing import Any
-
+from netreaper.automation.handlers._host import run_host
 from netreaper.automation.labels import AUTO_REGISTRY
 from netreaper.core.constants import (
     NETREAPER_CERTS_DIR,
@@ -140,21 +139,24 @@ include_screenshots = true
         server_key = cert_dir / "server.key"
         server_cert = cert_dir / "server.crt"
 
+        # A CSR file replaces the old req|x509 shell pipe so every step is an
+        # exec argument array with no shell involved.
+        server_csr = cert_dir / "server.csr"
         commands = [
-            f"openssl genrsa -out {ca_key} 2048",
-            f'openssl req -new -x509 -days 3650 -key {ca_key} -out {ca_cert} -subj "/CN=NETREAPER CA"',
-            f"openssl genrsa -out {server_key} 2048",
-            f'openssl req -new -key {server_key} -subj "/CN=captive.portal" | openssl x509 -req -days 365 -CA {ca_cert} -CAkey {ca_key} -CAcreateserial -out {server_cert}',
+            ["openssl", "genrsa", "-out", str(ca_key), "2048"],
+            ["openssl", "req", "-new", "-x509", "-days", "3650",
+             "-key", str(ca_key), "-out", str(ca_cert), "-subj", "/CN=NETREAPER CA"],
+            ["openssl", "genrsa", "-out", str(server_key), "2048"],
+            ["openssl", "req", "-new", "-key", str(server_key),
+             "-subj", "/CN=captive.portal", "-out", str(server_csr)],
+            ["openssl", "x509", "-req", "-days", "365", "-in", str(server_csr),
+             "-CA", str(ca_cert), "-CAkey", str(ca_key),
+             "-CAcreateserial", "-out", str(server_cert)],
         ]
 
         for cmd in commands:
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
-            if proc.returncode != 0:
+            result = await run_host(cmd, timeout=60)
+            if result is None or not result.ok:
                 return False
 
         return True

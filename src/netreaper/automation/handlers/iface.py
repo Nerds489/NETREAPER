@@ -1,10 +1,13 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Nerds489
 """AUTO-IFACE handler for interface selection."""
 
-import asyncio
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
+from netreaper.automation.handlers._host import run_host
 from netreaper.automation.labels import AUTO_REGISTRY
+from netreaper.core.validation import valid_interface_name
 
 
 @dataclass
@@ -107,13 +110,10 @@ class AutoIfaceHandler:
 
     async def _is_monitor_mode(self, interface: str) -> bool:
         """Check if interface is in monitor mode."""
-        proc = await asyncio.create_subprocess_shell(
-            f"iw dev {interface} info 2>/dev/null | grep -q 'type monitor'",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
-        return proc.returncode == 0
+        if not valid_interface_name(interface):
+            return False
+        result = await run_host(["iw", "dev", interface, "info"])
+        return result is not None and result.ok and "type monitor" in result.stdout
 
     async def _get_driver(self, iface_path: Path) -> str:
         """Get the driver for an interface."""
