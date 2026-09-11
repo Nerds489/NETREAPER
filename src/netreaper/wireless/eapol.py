@@ -41,10 +41,12 @@ _KI_ACK = 0x0080
 _KI_MIC = 0x0100
 _KI_SECURE = 0x0200
 
-# EAPOL-Key fixed-field layout up to Key Data (WPA2 PSK: 16-byte MIC), used to
-# locate the Key Data that carries the PMKID KDE in message 1.
-_KEY_DATA_LEN_OFFSET = 93  # descriptor(1)+info(2)+len(2)+replay(8)+nonce(32)
-_KEY_DATA_OFFSET = 95      # +iv(16)+rsc(8)+id(8)+mic(16)+key_data_len(2)
+# EAPOL-Key fixed fields before the MIC: descriptor(1)+info(2)+len(2)+replay(8)
+# +nonce(32)+iv(16)+rsc(8)+id(8) = 77. The MIC length varies by AKM (16 bytes for
+# WPA2-PSK, 24 for SHA-384/802.11r), so Key Data is located per candidate MIC
+# length rather than a single fixed offset.
+_MIC_OFFSET = 77
+_MIC_LENGTHS = (16, 24)
 _KDE_VENDOR_TYPE = 0xDD    # vendor-specific KDE element id
 _RSN_OUI = b"\x00\x0f\xac"  # 00-0F-AC
 _KDE_PMKID = 0x04          # RSN KDE data type for a PMKID
@@ -115,6 +117,21 @@ def _extract_pmkid_from_keydata(kd: bytes) -> str | None:
             if pmkid != b"\x00" * 16:  # all-zero PMKID means "not supported"
                 return pmkid.hex()
         i += 2 + kde_len
+    return None
+
+
+def _pmkid_from_m1(keyframe: bytes) -> str | None:
+    """Locate the Key Data (trying each MIC length) and extract any PMKID KDE."""
+    for mic_len in _MIC_LENGTHS:
+        kdl_off = _MIC_OFFSET + mic_len
+        kd_off = kdl_off + 2
+        if len(keyframe) < kd_off:
+            continue
+        kd_len = (keyframe[kdl_off] << 8) | keyframe[kdl_off + 1]
+        key_data = keyframe[kd_off : kd_off + kd_len]
+        pmkid = _extract_pmkid_from_keydata(key_data)
+        if pmkid:
+            return pmkid
     return None
 
 
@@ -194,12 +211,7 @@ def _parse_dot11(data: bytes) -> _Frame | None:
         return None
 
     # Message 1 (AP -> STA) may carry the PMKID in its Key Data KDEs.
-    pmkid = None
-    if msg == 1 and len(keyframe) >= _KEY_DATA_OFFSET:
-        o = _KEY_DATA_LEN_OFFSET
-        kd_len = (keyframe[o] << 8) | keyframe[o + 1]
-        key_data = keyframe[_KEY_DATA_OFFSET : _KEY_DATA_OFFSET + kd_len]
-        pmkid = _extract_pmkid_from_keydata(key_data)
+    pmkid = _pmkid_from_m1(keyframe) if msg == 1 else None
 
     if from_ds and not to_ds:
         bssid, client = addr2, addr1  # AP -> STA
@@ -231,10 +243,12 @@ def iter_dot11_frames(raw: bytes):
     while off + 16 <= n:
         _ts, _tu, incl, _orig = struct.unpack(endian + "IIII", raw[off : off + 16])
         off += 16
-        if incl == 0 or off + incl > n:
-            break
+        if off + incl > n:
+            break  # truncated final record
         pkt = raw[off : off + incl]
         off += incl
+        if incl == 0:
+            continue  # empty record: skip it, do not end the whole parse
         frame = _strip_link_header(linktype, pkt)
         if frame:
             yield frame

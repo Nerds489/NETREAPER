@@ -29,3 +29,19 @@ def require_interface(name: str) -> str:
     if not valid_interface_name(name):
         raise TargetValidationError(f"invalid interface name: {name!r}")
     return name
+
+
+# Six hex pairs (colon/hyphen separated) or twelve bare hex digits.
+_BSSID_RE = re.compile(r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|[0-9A-Fa-f]{12}")
+
+
+def valid_bssid(bssid: str) -> bool:
+    """True when ``bssid`` is a syntactically valid 48-bit MAC/BSSID."""
+    return bool(bssid) and _BSSID_RE.fullmatch(bssid) is not None
+
+
+def require_bssid(bssid: str) -> str:
+    """Return ``bssid`` if valid, else raise :class:`TargetValidationError`."""
+    if not valid_bssid(bssid):
+        raise TargetValidationError(f"invalid BSSID: {bssid!r}")
+    return bssid

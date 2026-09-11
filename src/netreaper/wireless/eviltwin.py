@@ -101,6 +101,8 @@ class EvilTwinState:
     gateway_ip: str
     running: bool = False
     applied_rules: list[list[str]] = field(default_factory=list)
+    hostapd_pidfile: str | None = None
+    dnsmasq_pidfile: str | None = None
 
 
 class EvilTwin:
@@ -122,15 +124,25 @@ class EvilTwin:
         config_dir: Path | None = None,
     ) -> EvilTwinState:
         """Write configs, bring up the AP subnet, and start hostapd + dnsmasq."""
+        if self.state is not None and self.state.running:
+            raise RuntimeError("evil-twin already running; call stop() first")
         iface = require_interface(interface)
         cfg_dir = config_dir or NETREAPER_CONFIG_DIR
         cfg_dir.mkdir(parents=True, exist_ok=True)
         hostapd_path = cfg_dir / "hostapd.conf"
         dnsmasq_path = cfg_dir / "dnsmasq.conf"
+        hostapd_pidfile = cfg_dir / "hostapd.pid"
+        dnsmasq_pidfile = cfg_dir / "dnsmasq.pid"
         hostapd_path.write_text(hostapd_config(ssid, channel, iface))
         dnsmasq_path.write_text(dnsmasq_config(iface, gateway_ip))
 
-        state = EvilTwinState(iface, ssid, channel, gateway_ip)
+        # Publish state BEFORE mutating the host, so a partial-setup failure still
+        # leaves stop() able to find and undo whatever actually ran.
+        state = EvilTwinState(
+            iface, ssid, channel, gateway_ip,
+            hostapd_pidfile=str(hostapd_pidfile), dnsmasq_pidfile=str(dnsmasq_pidfile),
+        )
+        self.state = state
 
         await self._run(["ip", "addr", "add", f"{gateway_ip}/24", "dev", iface],
                         destructive=True)
@@ -141,12 +153,18 @@ class EvilTwin:
             await self._run(["iptables", *rule], destructive=True)
             state.applied_rules.append(rule)
 
-        # hostapd -B daemonises; dnsmasq daemonises by default.
-        await self._run(["hostapd", "-B", str(hostapd_path)], destructive=True)
-        await self._run(["dnsmasq", "-C", str(dnsmasq_path)], destructive=True)
+        # hostapd -B daemonises; dnsmasq daemonises by default. Each writes a
+        # pidfile so teardown can kill exactly our process, never a global killall.
+        await self._run(
+            ["hostapd", "-B", "-P", str(hostapd_pidfile), str(hostapd_path)],
+            destructive=True,
+        )
+        await self._run(
+            ["dnsmasq", "-x", str(dnsmasq_pidfile), "-C", str(dnsmasq_path)],
+            destructive=True,
+        )
 
         state.running = True
-        self.state = state
         logger.info("Evil-twin '%s' up on %s channel %d", ssid, iface, channel)
         return state
 
@@ -170,10 +188,26 @@ class EvilTwin:
         state.applied_rules.clear()
 
         await self._run(["sysctl", "-w", "net.ipv4.ip_forward=0"], destructive=True)
-        await self._run(["killall", "hostapd"], destructive=True)
-        await self._run(["killall", "dnsmasq"], destructive=True)
+        # Kill exactly the daemons we started, by their pidfile, never a global
+        # killall (which would take down an unrelated hostapd/dnsmasq, e.g. libvirt).
+        for pidfile in (state.hostapd_pidfile, state.dnsmasq_pidfile):
+            await self._kill_by_pidfile(pidfile)
         await self._run(["ip", "addr", "del", f"{state.gateway_ip}/24", "dev",
                          state.interface], destructive=True)
 
         state.running = False
         logger.info("Evil-twin '%s' torn down", state.ssid)
+
+    async def _kill_by_pidfile(self, pidfile: str | None) -> None:
+        """Kill the process named in a pidfile, if the file exists and is a PID."""
+        if not pidfile:
+            return
+        path = Path(pidfile)
+        if not path.exists():
+            return
+        try:
+            pid = path.read_text().strip()
+        except OSError:
+            return
+        if pid.isdigit():
+            await self._run(["kill", pid], destructive=True)

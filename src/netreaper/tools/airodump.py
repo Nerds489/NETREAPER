@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel
 
 from netreaper.core.logging import get_logger
+from netreaper.core.validation import require_interface
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
 from netreaper.safety.scope import Tier
@@ -71,6 +72,8 @@ class AirodumpTool(BaseToolWrapper):
                 - write_interval: Seconds between file writes
                 - berlin: Time before removing AP from display
         """
+        require_interface(target)  # reject a bad/flag-like interface before argv
+
         cmd = []
 
         # Channel hopping or specific channel

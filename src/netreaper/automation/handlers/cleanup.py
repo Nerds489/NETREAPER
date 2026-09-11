@@ -9,6 +9,7 @@ from typing import Any
 
 from netreaper.automation.handlers._host import run_host
 from netreaper.automation.labels import AUTO_REGISTRY
+from netreaper.core.exceptions import TargetValidationError
 from netreaper.core.logging import get_logger
 from netreaper.core.validation import require_interface
 
@@ -74,6 +75,8 @@ class AutoCleanupHandler:
                 if asyncio.iscoroutine(result):
                     await result
                 logger.debug(f"Cleanup action completed: {action.name}")
+            except TargetValidationError:
+                raise  # a scope-gate denial is never swallowed
             except Exception as e:
                 logger.warning(f"Cleanup action failed: {action.name}: {e}")
                 success = False
