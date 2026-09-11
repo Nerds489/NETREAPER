@@ -2,12 +2,15 @@
 """Hash-chained audit trail (§5.5) and engagement consent hash (§5.2)."""
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 
 import pytest
 
+from netreaper.core import process as process_mod
 from netreaper.core.audit import GENESIS, AuditTrail
-from netreaper.core.exceptions import TargetValidationError
+from netreaper.core.exceptions import TargetValidationError, ToolNotFoundError
+from netreaper.core.process import ProcessRunner
 from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
 
 
@@ -104,3 +107,55 @@ def test_gate_denies_a_tampered_engagement():
     e.scope.cidrs.append("0.0.0.0/0")
     with pytest.raises(TargetValidationError, match="consent hash"):
         gate.authorize(["10.0.0.5"], tier=Tier.ACTIVE_SCAN)
+
+
+# --- the spawn seam records exactly one entry on every exit path ---
+
+
+@pytest.fixture
+def seam_trail(monkeypatch):
+    """Point ProcessRunner at a fresh in-memory trail so the seam is testable."""
+    t = AuditTrail(path=None)
+    monkeypatch.setattr(process_mod, "get_audit_trail", lambda: t)
+    return t
+
+
+def test_seam_records_denied(seam_trail):
+    # No engagement -> a network target at ACTIVE_SCAN is denied at the gate.
+    with pytest.raises(TargetValidationError):
+        asyncio.run(ProcessRunner().run(
+            ["nmap", "10.0.0.9"], targets=["10.0.0.9"], tier=Tier.ACTIVE_SCAN))
+    assert [e.outcome for e in seam_trail.entries] == ["denied"]
+    assert seam_trail.verify()
+
+
+def test_seam_records_dry_run(seam_trail):
+    res = asyncio.run(ProcessRunner().run(["true"], dry_run=True))
+    assert res.dry_run
+    assert [e.outcome for e in seam_trail.entries] == ["dry-run"]
+
+
+def test_seam_records_tool_not_found(seam_trail):
+    with pytest.raises(ToolNotFoundError):
+        asyncio.run(ProcessRunner().run(["definitely-not-a-real-binary-zzq"]))
+    assert [e.outcome for e in seam_trail.entries] == ["spawn-error"]
+
+
+def test_seam_records_executed(seam_trail):
+    res = asyncio.run(ProcessRunner().run(["true"]))
+    assert res.ok
+    assert [e.outcome for e in seam_trail.entries] == ["executed"]
+    assert seam_trail.entries[0].detail == "rc=0"
+
+
+def test_seam_records_exec_failure(seam_trail, monkeypatch):
+    # HIGH-1: create_subprocess_exec raises AFTER the gate passed and `which`
+    # found the binary -> the authorised action must still leave one spawn-error.
+    async def boom(*a, **k):
+        raise OSError("Too many open files")
+
+    monkeypatch.setattr(process_mod.asyncio, "create_subprocess_exec", boom)
+    with pytest.raises(OSError):
+        asyncio.run(ProcessRunner().run(["true"]))
+    assert [e.outcome for e in seam_trail.entries] == ["spawn-error"]
+    assert "exec failed" in seam_trail.entries[0].detail

@@ -102,12 +102,19 @@ class ProcessRunner:
             raise ToolNotFoundError(f"{cmd[0]!r} is not installed or not on PATH")
 
         started = time.monotonic()
-        proc = await asyncio.create_subprocess_exec(
-            binary, *cmd[1:],
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,  # own process group so we can kill the whole tree
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                binary, *cmd[1:],
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,  # own process group so we can kill the tree
+            )
+        except BaseException as exc:
+            # The exec itself failed after the gate passed (fd exhaustion, ENOMEM,
+            # the binary vanishing in the race after `which`, a cancel). Audit it
+            # so no authorised action leaves the seam without a record.
+            _audit("spawn-error", f"exec failed: {type(exc).__name__}")
+            raise
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:

@@ -1,13 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2025 Nerds489
-"""Hash-chained, tamper-evident audit trail (rebuild plan §5.5).
+"""Hash-chained integrity audit trail (rebuild plan §5.5).
 
-Every process-spawn decision — authorised, denied, executed, or spawn-error — is
+Every process-spawn decision — denied, dry-run, executed or spawn-error — is
 appended here from the one spawn seam (:mod:`netreaper.core.process`), so an
-action that reaches a subprocess without an audit record is structurally
-impossible. Each entry stores the SHA-256 of ``previous entry hash + this
-entry's canonical body``, forming a chain: altering, dropping or reordering any
-past entry breaks every hash after it, which :meth:`AuditTrail.verify` detects.
+action that reaches (or is refused at) that seam without an audit record is
+structurally impossible.
+
+Each entry stores ``sha256(previous entry hash + this entry's canonical body)``,
+forming a chain: any alter, drop or reorder of a past entry that does not also
+recompute every later hash is caught by :meth:`AuditTrail.verify`. This is an
+UNKEYED chain — it detects accidental corruption and naive edits, not a
+motivated local attacker who holds the same code and can rewrite the whole
+chain. Keying it (HMAC with an out-of-band session key) and anchoring ``head``
+externally is the hardening path if that threat matters; not yet done.
 
 The trail is authoritative in memory for the session and best-effort persisted
 as append-only JSONL; a persistence failure never blocks or crashes a spawn (it
@@ -42,7 +48,7 @@ class AuditEntry:
 
     seq: int
     at: str  # ISO-8601 UTC
-    outcome: str  # authorised | denied | executed | dry-run | spawn-error
+    outcome: str  # denied | dry-run | executed | spawn-error
     operator: str
     consent: str  # the engagement's consent hash, or "-" when target-less
     tool: str
@@ -115,23 +121,27 @@ class AuditTrail:
             self._entries.append(entry)
             self._head = entry_hash
             self._seq += 1
+            # Persist under the lock so the JSONL line order always matches the
+            # in-memory chain order. This serialises spawns behind the append;
+            # acceptable for an audit trail, and the write is a single short line.
             self._persist(entry)
             return entry
 
     def verify(self) -> bool:
         """Recompute the whole chain. True iff nothing was altered/dropped/reordered."""
-        prev = GENESIS
-        for i, e in enumerate(self._entries):
-            body = {k: v for k, v in asdict(e).items() if k != "entry_hash"}
-            if body["seq"] != i or body["prev_hash"] != prev:
-                return False
-            if (
-                hashlib.sha256((prev + _canonical(body)).encode()).hexdigest()
-                != e.entry_hash
-            ):
-                return False
-            prev = e.entry_hash
-        return True
+        with self._lock:
+            prev = GENESIS
+            for i, e in enumerate(self._entries):
+                body = {k: v for k, v in asdict(e).items() if k != "entry_hash"}
+                if body["seq"] != i or body["prev_hash"] != prev:
+                    return False
+                if (
+                    hashlib.sha256((prev + _canonical(body)).encode()).hexdigest()
+                    != e.entry_hash
+                ):
+                    return False
+                prev = e.entry_hash
+            return True
 
     def _persist(self, entry: AuditEntry) -> None:
         if self._path is None:
@@ -145,7 +155,8 @@ class AuditTrail:
 
     @property
     def entries(self) -> list[AuditEntry]:
-        return list(self._entries)
+        with self._lock:
+            return list(self._entries)
 
     @property
     def head(self) -> str:
