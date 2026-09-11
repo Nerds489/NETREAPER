@@ -68,6 +68,9 @@ def build_wifi_registry(
         }
 
     async def r_capture(state: dict[str, object], target: str) -> dict[str, object]:
+        # Targets the operator-supplied BSSID/channel. The scan step's
+        # wifi.bssid_list requirement only forces ordering; selecting the target
+        # from the scan is a future enhancement (see #31).
         if not ctx.target_bssid or ctx.channel is None:
             raise PluginError("capture_handshake needs a target BSSID and channel")
         hs = await capture(ctx.monitor_interface, ctx.target_bssid, ctx.channel)
@@ -80,6 +83,11 @@ def build_wifi_registry(
         if not ctx.wordlist:
             raise PluginError("crack_handshake needs a wordlist")
         res = await crack(ctx.cap_file, ctx.target_bssid, ctx.wordlist)
+        # crack_handshake returns cracked=False (not raises) when the passphrase
+        # is not in the wordlist. Fail the step so the goal path is truthful:
+        # result.success stays False and the CLI exits non-zero.
+        if not res.cracked:
+            raise PluginError(f"passphrase for {ctx.target_bssid} not in wordlist")
         ctx.password = res.password
         return {"wifi.password": res.password}
 
