@@ -41,6 +41,14 @@ _KI_ACK = 0x0080
 _KI_MIC = 0x0100
 _KI_SECURE = 0x0200
 
+# EAPOL-Key fixed-field layout up to Key Data (WPA2 PSK: 16-byte MIC), used to
+# locate the Key Data that carries the PMKID KDE in message 1.
+_KEY_DATA_LEN_OFFSET = 93  # descriptor(1)+info(2)+len(2)+replay(8)+nonce(32)
+_KEY_DATA_OFFSET = 95      # +iv(16)+rsc(8)+id(8)+mic(16)+key_data_len(2)
+_KDE_VENDOR_TYPE = 0xDD    # vendor-specific KDE element id
+_RSN_OUI = b"\x00\x0f\xac"  # 00-0F-AC
+_KDE_PMKID = 0x04          # RSN KDE data type for a PMKID
+
 
 class EapolParseError(ValueError):
     """The bytes handed in are not a libpcap capture we can read."""
@@ -73,10 +81,41 @@ class _Frame:
     bssid: str
     client: str
     msg: int
+    pmkid: str | None = None
+
+
+@dataclass
+class Pmkid:
+    """A PMKID captured from an access point's EAPOL message 1."""
+
+    bssid: str
+    client: str
+    pmkid: str  # 32 lowercase hex chars
 
 
 def _mac(raw: bytes) -> str:
     return ":".join(f"{b:02X}" for b in raw)
+
+
+def _extract_pmkid_from_keydata(kd: bytes) -> str | None:
+    """Walk the EAPOL-Key Key Data KDEs and return the PMKID hex, if present."""
+    i = 0
+    while i + 2 <= len(kd):
+        kde_type, kde_len = kd[i], kd[i + 1]
+        if kde_type == 0x00:  # padding: end of key data
+            break
+        body = kd[i + 2 : i + 2 + kde_len]
+        if (
+            kde_type == _KDE_VENDOR_TYPE
+            and len(body) >= 20
+            and body[0:3] == _RSN_OUI
+            and body[3] == _KDE_PMKID
+        ):
+            pmkid = body[4:20]
+            if pmkid != b"\x00" * 16:  # all-zero PMKID means "not supported"
+                return pmkid.hex()
+        i += 2 + kde_len
+    return None
 
 
 def _classify(key_info: int) -> int | None:
@@ -154,6 +193,14 @@ def _parse_dot11(data: bytes) -> _Frame | None:
     if msg is None:
         return None
 
+    # Message 1 (AP -> STA) may carry the PMKID in its Key Data KDEs.
+    pmkid = None
+    if msg == 1 and len(keyframe) >= _KEY_DATA_OFFSET:
+        o = _KEY_DATA_LEN_OFFSET
+        kd_len = (keyframe[o] << 8) | keyframe[o + 1]
+        key_data = keyframe[_KEY_DATA_OFFSET : _KEY_DATA_OFFSET + kd_len]
+        pmkid = _extract_pmkid_from_keydata(key_data)
+
     if from_ds and not to_ds:
         bssid, client = addr2, addr1  # AP -> STA
     elif to_ds and not from_ds:
@@ -162,7 +209,7 @@ def _parse_dot11(data: bytes) -> _Frame | None:
         bssid, client = addr3, addr2  # IBSS: addr3 is the BSSID
     else:
         bssid, client = addr1, addr2  # WDS: best effort
-    return _Frame(_mac(bssid), _mac(client), msg)
+    return _Frame(_mac(bssid), _mac(client), msg, pmkid)
 
 
 def iter_dot11_frames(raw: bytes):
@@ -208,9 +255,35 @@ def parse_handshakes(raw: bytes) -> list[Handshake]:
     return list(pairs.values())
 
 
+def parse_pmkids(raw: bytes) -> list[Pmkid]:
+    """Return every distinct PMKID (from EAPOL message 1) in the capture."""
+    seen: dict[tuple[str, str], Pmkid] = {}
+    for frame in iter_dot11_frames(raw):
+        parsed = _parse_dot11(frame)
+        if parsed is None or parsed.pmkid is None:
+            continue
+        key = (parsed.bssid, parsed.client)
+        if key not in seen:
+            seen[key] = Pmkid(
+                bssid=parsed.bssid, client=parsed.client, pmkid=parsed.pmkid
+            )
+    return list(seen.values())
+
+
 def read_handshakes(path: str | Path) -> list[Handshake]:
     """Parse handshakes from a .cap file on disk."""
     return parse_handshakes(Path(path).read_bytes())
+
+
+def read_pmkids(path: str | Path) -> list[Pmkid]:
+    """Parse PMKIDs from a .cap file on disk."""
+    return parse_pmkids(Path(path).read_bytes())
+
+
+def pmkids_for(path: str | Path, bssid: str) -> list[Pmkid]:
+    """Return PMKIDs captured for a specific BSSID (case-insensitive)."""
+    want = bssid.upper()
+    return [p for p in read_pmkids(path) if p.bssid.upper() == want]
 
 
 def handshakes_for(path: str | Path, bssid: str) -> list[Handshake]:
