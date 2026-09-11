@@ -15,7 +15,10 @@ from datetime import UTC, datetime, timedelta
 from enum import IntEnum
 
 from netreaper.core.exceptions import TargetValidationError
+from netreaper.core.logging import get_logger
 from netreaper.safety.protected import is_protected_ip
+
+logger = get_logger(__name__)
 
 
 class Tier(IntEnum):
@@ -142,13 +145,28 @@ class ScopeGate:
         tier: Tier = Tier.PASSIVE,
         destructive: bool = False,
         requires_confirmation: bool = False,
+        host_action: bool = False,
     ) -> None:
         """Raise :class:`TargetValidationError` unless the action is authorised.
 
         Target-less passive actions are always allowed. Everything else requires
-        an active engagement whose scope covers every target.
+        an active engagement whose scope covers every target. A ``host_action``
+        is a local host/maintenance operation (bring our own interface up,
+        restore NetworkManager, fetch a wordlist): it has no network target to
+        scope-check, so it is allowed and audited, but it must never carry one.
         """
         targets = [t for t in targets if t]
+
+        # Local host/maintenance action. It flows through the one seam so it gets
+        # exec (never shell), timeouts, process-group teardown and this audit
+        # line; it must not carry a network target, and if one slips in we fall
+        # through to the full target checks rather than skipping them.
+        if host_action and not targets:
+            logger.info(
+                "host action authorised%s (local, no network target)",
+                " [destructive]" if destructive else "",
+            )
+            return
 
         # Target-less passive work (help, local status) needs no engagement.
         if not targets and tier <= Tier.PASSIVE and not destructive:

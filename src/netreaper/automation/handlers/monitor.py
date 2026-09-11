@@ -1,11 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Nerds489
 """AUTO-MON handler for monitor mode management."""
 
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Any
 
+from netreaper.automation.handlers._host import run_host
 from netreaper.automation.labels import AUTO_REGISTRY
+from netreaper.core.validation import require_interface
 
 
 class AutoMonHandler:
@@ -68,20 +71,10 @@ class AutoMonHandler:
 
     async def _enable_with_airmon(self) -> bool:
         """Enable monitor mode using airmon-ng."""
-        # Kill interfering processes
-        await asyncio.create_subprocess_shell(
-            "airmon-ng check kill",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-
-        # Enable monitor mode
-        proc = await asyncio.create_subprocess_shell(
-            f"airmon-ng start {self.interface}",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.wait()
+        iface = require_interface(self.interface)
+        # Kill interfering processes, then enable monitor mode.
+        await run_host(["airmon-ng", "check", "kill"], destructive=True)
+        await run_host(["airmon-ng", "start", iface], destructive=True)
 
         # Find the new monitor interface
         await asyncio.sleep(1)
@@ -91,30 +84,15 @@ class AutoMonHandler:
 
     async def _enable_with_iw(self) -> bool:
         """Enable monitor mode using iw."""
-        # Bring interface down
-        await asyncio.create_subprocess_shell(
-            f"ip link set {self.interface} down",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+        iface = require_interface(self.interface)
+        await run_host(["ip", "link", "set", iface, "down"], destructive=True)
+        result = await run_host(
+            ["iw", "dev", iface, "set", "type", "monitor"], destructive=True
         )
+        await run_host(["ip", "link", "set", iface, "up"], destructive=True)
 
-        # Set monitor mode
-        proc = await asyncio.create_subprocess_shell(
-            f"iw dev {self.interface} set type monitor",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.wait()
-
-        # Bring interface up
-        await asyncio.create_subprocess_shell(
-            f"ip link set {self.interface} up",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-
-        if proc.returncode == 0:
-            self.monitor_interface = self.interface
+        if result is not None and result.ok:
+            self.monitor_interface = iface
             return True
 
         return False
@@ -142,44 +120,21 @@ class AutoMonHandler:
         if not self.monitor_interface:
             return False
 
+        iface = require_interface(self.monitor_interface)
+
         if shutil.which("airmon-ng"):
-            proc = await asyncio.create_subprocess_shell(
-                f"airmon-ng stop {self.monitor_interface}",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
-
+            result = await run_host(["airmon-ng", "stop", iface], destructive=True)
             # Restart network manager
-            await asyncio.create_subprocess_shell(
-                "systemctl start NetworkManager",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-
-            return proc.returncode == 0
+            await run_host(["systemctl", "start", "NetworkManager"], destructive=True)
+            return result is not None and result.ok
 
         elif shutil.which("iw"):
-            await asyncio.create_subprocess_shell(
-                f"ip link set {self.monitor_interface} down",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+            await run_host(["ip", "link", "set", iface, "down"], destructive=True)
+            result = await run_host(
+                ["iw", "dev", iface, "set", "type", "managed"], destructive=True
             )
-
-            proc = await asyncio.create_subprocess_shell(
-                f"iw dev {self.monitor_interface} set type managed",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
-
-            await asyncio.create_subprocess_shell(
-                f"ip link set {self.monitor_interface} up",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-
-            return proc.returncode == 0
+            await run_host(["ip", "link", "set", iface, "up"], destructive=True)
+            return result is not None and result.ok
 
         return False
 
