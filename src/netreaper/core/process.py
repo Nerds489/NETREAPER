@@ -89,6 +89,12 @@ class ProcessRunner:
             raise SubprocessError(
                 f"{cmd[0]} timed out after {timeout}s", returncode=None
             ) from None
+        except BaseException:
+            # Cancelled (an outer task aborting this run) or any other failure:
+            # kill the spawned process group so a denied or aborted attack tool
+            # cannot keep running detached (it has its own session).
+            self._terminate(proc)
+            raise
         duration = time.monotonic() - started
         result = ProcessResult(
             cmd=list(cmd),
