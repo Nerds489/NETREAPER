@@ -9,6 +9,7 @@ and needs a monitor-mode adapter (opt-in, not exercised in CI).
 from __future__ import annotations
 
 import csv
+import re
 import time
 from dataclasses import dataclass, field
 from io import StringIO
@@ -66,6 +67,20 @@ def _int(v: str) -> int | None:
         return None
 
 
+def essid_from_airodump_row(row: list[str]) -> str:
+    """Extract the ESSID from an airodump AP row.
+
+    ESSID starts at column 13 and airodump does not quote embedded commas, so it
+    can span several columns. The trailing "Key" column (empty, or a hex WEP key)
+    is dropped only when it is actually present, so a truncated row missing the
+    Key column does not lose the ESSID's last segment.
+    """
+    tail = [f.strip() for f in row[13:]]
+    if len(tail) > 1 and re.fullmatch(r"[0-9A-Fa-f]*", tail[-1] or ""):
+        tail = tail[:-1]
+    return ",".join(tail).strip()
+
+
 def parse_airodump_csv(text: str) -> ScanResult:
     """Parse an airodump-ng CSV dump (AP section, blank line, client section)."""
     # Normalise newlines and split the two sections on the blank line between them.
@@ -90,7 +105,7 @@ def parse_airodump_csv(text: str) -> ScanResult:
                 auth=row[7].strip(),
                 power=_int(row[8]),
                 beacons=_int(row[9]) or 0,
-                essid=(",".join(row[13:-1]).strip() if len(row) > 14 else row[13].strip()),
+                essid=essid_from_airodump_row(row),
             )
         )
 
@@ -134,7 +149,7 @@ async def scan_networks(
     ]
     try:
         # airodump runs until stopped; the timeout is the intended scan window.
-        await runner.run(cmd, tier=Tier.ACTIVE_SCAN, timeout=duration)
+        await runner.run(cmd, tier=Tier.PASSIVE, timeout=duration)
     except SubprocessError:
         pass  # timeout == scan window elapsed; read what was captured
 
@@ -145,4 +160,4 @@ async def scan_networks(
     return parse_airodump_csv(csv_path.read_text(errors="replace"))
 
 
-__all__ = ["AccessPoint", "Client", "ScanResult", "parse_airodump_csv", "scan_networks"]
+__all__ = ["AccessPoint", "Client", "ScanResult", "essid_from_airodump_row", "parse_airodump_csv", "scan_networks"]

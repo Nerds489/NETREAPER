@@ -113,3 +113,15 @@ async def test_teardown_failure_leaves_state_monitor():
         await c.disable()
     assert c.state is MonitorState.MONITOR       # not falsely marked restored
     assert c.monitor_iface == "wlan0mon"
+
+
+@pytest.mark.asyncio
+async def test_enable_restores_networkmanager_when_verify_fails():
+    # airmon-ng "succeeds" but mode stays managed -> verify raises; since we killed
+    # NetworkManager, enable() must restart it before propagating (§5).
+    r = FakeRunner([MANAGED])
+    c = MonitorController(runner=r)
+    with pytest.raises(MonitorModeError):
+        await c.enable("wlan0", kill_processes=True)
+    assert ["systemctl", "restart", "NetworkManager"] in r.calls
+    assert c._killed_network_manager is False

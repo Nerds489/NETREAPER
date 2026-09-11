@@ -13,6 +13,7 @@ from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
 from netreaper.tools.base import BaseToolWrapper
+from netreaper.wireless.scan import essid_from_airodump_row
 
 logger = get_logger(__name__)
 
@@ -199,7 +200,7 @@ class AirodumpTool(BaseToolWrapper):
                     "iv": self._safe_int(row[10]),
                     "lan_ip": row[11].strip() if len(row) > 11 else "",
                     "id_length": self._safe_int(row[12]) if len(row) > 12 else 0,
-                    "essid": (",".join(row[13:-1]).strip() if len(row) > 14 else (row[13].strip() if len(row) > 13 else "")),
+                    "essid": essid_from_airodump_row(row),
                     "key": row[14].strip() if len(row) > 14 else "",
                 }
 

@@ -51,8 +51,11 @@ class AireplayTool(BaseToolWrapper):
         return [t for t in (options.get("bssid"), options.get("essid")) if t]
 
     def execution_tier(self, target, options):
-        # deauth with a specific client is single-target; broadcast/continuous is wider.
-        if not options.get("client") or options.get("count") in (0, "0"):
+        # Only a deauth aimed at a whole AP (no specific client) is broadcast;
+        # fakeauth/arpreplay/fragment/chopchop target one AP -> single-target.
+        attack = options.get("attack", "deauth")
+        attack = str(getattr(attack, "value", attack)).lower()
+        if attack == "deauth" and (not options.get("client") or options.get("count") in (0, "0")):
             return Tier.BROADCAST
         return Tier.SINGLE_TARGET
 

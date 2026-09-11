@@ -23,6 +23,8 @@ class WhatWebConfig(BaseModel):
 class WhatWebTool(BaseToolWrapper):
     """WhatWeb web fingerprinting wrapper."""
 
+    TARGET_IS_URL = True
+
     TOOL_BINARY: ClassVar[str] = "whatweb"
 
     METADATA: ClassVar[PluginMetadata] = PluginMetadata(
