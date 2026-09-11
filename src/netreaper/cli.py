@@ -310,6 +310,55 @@ def wifi_handshake(
     asyncio.run(run_capture())
 
 
+@wifi_app.command("pmkid")
+def wifi_pmkid(
+    interface: str = typer.Argument(..., help="Monitor-mode interface"),
+    bssid: str = typer.Argument(..., help="Target access point BSSID"),
+    channel: int = typer.Argument(..., help="Target channel"),
+    essid: str = typer.Option("", "--essid", "-e", help="Network name (for the hash)"),
+    output: str = typer.Option(None, "--output", "-o", help="Capture file prefix"),
+    seconds: int = typer.Option(20, "--seconds", "-s", help="Capture window (s)"),
+    deauth: int = typer.Option(0, "--deauth", "-d", help="Deauth frames (0=passive)"),
+    attempts: int = typer.Option(3, "--attempts", "-a", help="Capture rounds"),
+):
+    """Capture a clientless PMKID and emit a hashcat 22000 hash."""
+
+    async def run_pmkid():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.pmkid import capture_pmkid
+
+        console.print(
+            f"[cyan]Capturing PMKID for {bssid} on channel {channel}...[/cyan]"
+        )
+        try:
+            result = await capture_pmkid(
+                interface,
+                bssid,
+                channel,
+                essid=essid,
+                output=output,
+                capture_seconds=seconds,
+                deauth_count=deauth,
+                max_attempts=attempts,
+            )
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+
+        if result.captured:
+            console.print(f"[green]PMKID captured: {result.pmkid}[/green]")
+            console.print(f"hashcat 22000: {result.hashcat}")
+            console.print(f"Saved to: {result.cap_file}")
+        else:
+            console.print(
+                f"[yellow]No PMKID after {result.attempts} attempt(s). "
+                "The AP may not offer PMKID; try a handshake capture.[/yellow]"
+            )
+            raise typer.Exit(1)
+
+    asyncio.run(run_pmkid())
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
