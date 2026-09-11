@@ -809,6 +809,39 @@ def wifi_mac_clone(
     asyncio.run(run_c())
 
 
+@wifi_app.command("plan")
+def wifi_plan(
+    goal: str = typer.Argument(
+        "wifi.password", help="Goal capability to resolve (e.g. wifi.password)"
+    ),
+    have: list[str] = typer.Option(
+        None, "--have", help="A known capability (repeatable): --have wifi.handshake"
+    ),
+):
+    """Resolve and print the backward-chained plan for a goal (dry run)."""
+    from netreaper.chaining.manifest import (
+        MissingCapabilityError,
+        manifest_registry,
+        resolve_chain,
+    )
+    from netreaper.core.exceptions import ConfigurationError, PluginError
+    from netreaper.wireless.manifests import register_wifi_manifests
+
+    try:
+        register_wifi_manifests()
+        plan = resolve_chain(goal, manifest_registry, available=set(have or ()))
+    except MissingCapabilityError as exc:
+        console.print(
+            f"[red]Cannot plan {goal!r}: {exc}[/red]\n"
+            "[yellow]No registered tool provides that capability.[/yellow]"
+        )
+        raise typer.Exit(2) from exc
+    except (ConfigurationError, PluginError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+    console.print(plan.render())
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
