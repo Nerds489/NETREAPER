@@ -55,6 +55,7 @@ class AirodumpTool(BaseToolWrapper):
         super().__init__(**kwargs)
         self.airodump_config = airodump_config or AirodumpConfig()
         self._csv_file: Path | None = None
+        self._cap_file: Path | None = None
 
     def build_command(self, target: str, options: dict[str, Any]) -> list[str]:
         """Build airodump-ng command.
@@ -90,9 +91,13 @@ class AirodumpTool(BaseToolWrapper):
         # Output file prefix for CSV/XML/etc
         output = options.get("output")
         if output:
-            self._csv_file = Path(str(output) + "-01.csv")
+            cfg_fmt = self.airodump_config.output_format
+            output_format = options.get("output_format", cfg_fmt)
+            formats = [f.strip() for f in output_format.split(",") if f.strip()]
+            self._csv_file = Path(f"{output}-01.csv") if "csv" in formats else None
+            self._cap_file = Path(f"{output}-01.cap") if "pcap" in formats else None
             cmd.extend(["--write", str(output)])
-            cmd.extend(["--output-format", "csv"])
+            cmd.extend(["--output-format", ",".join(formats)])
 
         # Band selection
         band = options.get("band", self.airodump_config.band)
@@ -454,11 +459,14 @@ class AirodumpTool(BaseToolWrapper):
             "bssid": bssid,
             "channel": channel,
             "output": output,
+            "output_format": "pcap,csv",  # pcap needed to verify handshake
             "write_interval": 1,
             "timeout": duration,
         }
 
         result = await self.execute(interface, options)
+        if self._cap_file is not None:
+            result.data["cap_file"] = str(self._cap_file)
 
         # Emit events for discovered items
         for network in result.data.get("networks", []):
