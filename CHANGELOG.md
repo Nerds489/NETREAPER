@@ -2,6 +2,36 @@
 
 All notable changes to NETREAPER.
 
+## [11.0.0] - 2026-09-12
+
+First GA of the Python rebuild: a single-language, gated, wireless-focused
+framework. This is a **breaking** release. The Bash runtime is gone.
+
+### Removed
+- **The entire Bash runtime** (~27k lines). It lives on the `legacy` tag only.
+  The CLI is now a single `netreaper` entrypoint from the Python package; the old
+  `bin/netreaper`, `lib/*.sh` and `NR_*` interface are no longer shipped.
+
+### Added
+- **Safety spine.** A single spawn seam (`ProcessRunner.run` + `ScopeGate`,
+  deny-by-default), engagement-scoped authorisation with a consent hash, T0-T4
+  tiers, and a hash-chained audit trail.
+- **Backward-chaining planner.** `ToolManifest` (provides/requires,
+  domain-namespaced) + `resolve_chain` compile a goal into an ordered plan that
+  runs on the existing `ChainExecutor`.
+- **Live wifi auto-chain.** `wifi auto` resolves `wifi.password` and drives
+  enable_monitor_mode -> scan -> capture -> crack end to end; dry-run by default,
+  `--run` to execute. A missed passphrase fails the chain (non-zero exit).
+- **Wireless migration.** Monitor mode, scanning, handshake capture, WPA/WEP/WPS
+  and PMKID paths, each routed through the gated spawn seam.
+- **Release engineering.** CycloneDX SBOM in CI; a tag-triggered pipeline that
+  builds, checksums, keyless-signs (Sigstore) and publishes releases, with SemVer
+  pre-release channels. See `docs/RELEASING.md`.
+
+### Changed
+- Version is single-sourced from `VERSION` via hatchling.
+- CI type-checks the safety spine and runs the full pytest suite on every PR.
+
 ## [10.2.3] - 2026-09-11
 
 ### Fixed
