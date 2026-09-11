@@ -359,6 +359,57 @@ def wifi_pmkid(
     asyncio.run(run_pmkid())
 
 
+@wifi_app.command("wps")
+def wifi_wps(
+    bssid: str = typer.Argument(..., help="Target access point BSSID"),
+    interface: str = typer.Option(None, "--interface", "-i", help="Monitor interface"),
+    channel: int = typer.Option(None, "--channel", "-c", help="Target channel"),
+    essid: str = typer.Option("", "--essid", "-e", help="Network name (optional)"),
+    compute: bool = typer.Option(
+        False, "--compute", help="Only compute candidate PINs offline, no attack"
+    ),
+    no_pixie: bool = typer.Option(False, "--no-pixie", help="Skip pixie-dust"),
+):
+    """Compute offline WPS PINs, or run a WPS attack (pixie-dust then PIN list)."""
+    from netreaper.wireless.wps import candidate_pins, format_pin
+
+    if compute:
+        console.print(f"[cyan]Candidate WPS PINs for {bssid}:[/cyan]")
+        for pin in candidate_pins(bssid):
+            console.print(format_pin(pin))
+        return
+
+    if not interface or channel is None:
+        console.print("[red]--interface and --channel are required for an attack[/red]")
+        raise typer.Exit(2)
+
+    async def run_wps():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.wps import wps_attack
+
+        console.print(f"[cyan]WPS attack on {bssid} (channel {channel})...[/cyan]")
+        try:
+            result = await wps_attack(
+                interface, bssid, channel, essid=essid, try_pixie_dust=not no_pixie
+            )
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+
+        if result.success:
+            console.print(f"[green]WPS PIN: {result.pin}[/green]")
+            if result.psk:
+                console.print(f"[green]PSK: {result.psk}[/green]")
+        else:
+            tried = result.tried
+            console.print(
+                f"[yellow]No PIN recovered ({tried} candidate(s) tried).[/yellow]"
+            )
+            raise typer.Exit(1)
+
+    asyncio.run(run_wps())
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
