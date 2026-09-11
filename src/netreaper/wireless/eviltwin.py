@@ -103,6 +103,7 @@ class EvilTwinState:
     applied_rules: list[list[str]] = field(default_factory=list)
     hostapd_pidfile: str | None = None
     dnsmasq_pidfile: str | None = None
+    dirty: bool = False  # any host mutation attempted; cleared only by a clean stop()
 
 
 class EvilTwin:
@@ -124,11 +125,11 @@ class EvilTwin:
         config_dir: Path | None = None,
     ) -> EvilTwinState:
         """Write configs, bring up the AP subnet, and start hostapd + dnsmasq."""
-        # Block a restart while any unreconciled state exists: running, or a
-        # partial-setup failure that left rules applied. Either way stop() must
-        # run first (it clears applied_rules), so nothing is ever orphaned. A
-        # clean post-stop state (not running, no rules) allows a fresh start.
-        if self.state is not None and (self.state.running or self.state.applied_rules):
+        # Block a restart while any host mutation may be outstanding. `dirty` is
+        # set the instant state is published (before the first mutation) and
+        # cleared only by a fully successful stop(), so a failure at ANY point
+        # (even before the first iptables rule) forces a stop() before retrying.
+        if self.state is not None and self.state.dirty:
             raise RuntimeError("evil-twin has unreconciled state; call stop() first")
         iface = require_interface(interface)
         cfg_dir = config_dir or NETREAPER_CONFIG_DIR
@@ -147,6 +148,7 @@ class EvilTwin:
             hostapd_pidfile=str(hostapd_pidfile), dnsmasq_pidfile=str(dnsmasq_pidfile),
         )
         self.state = state
+        state.dirty = True  # from here on, a stop() is required before any restart
 
         await self._run(["ip", "addr", "add", f"{gateway_ip}/24", "dev", iface],
                         destructive=True)
@@ -200,6 +202,7 @@ class EvilTwin:
                          state.interface], destructive=True)
 
         state.running = False
+        state.dirty = False  # teardown complete: a fresh start() is allowed again
         logger.info("Evil-twin '%s' torn down", state.ssid)
 
     async def _kill_by_pidfile(self, pidfile: str | None) -> None:

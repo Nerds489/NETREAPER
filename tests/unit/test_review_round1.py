@@ -23,14 +23,14 @@ from netreaper.wireless.wps import candidate_pins
 def test_run_terminates_process_on_cancellation():
     async def scenario():
         runner = ProcessRunner(gate=ScopeGate())
-        real = ProcessRunner._terminate
+        real = runner._terminate_and_reap
         killed = []
 
-        def spy(proc):
+        async def spy(proc):
             killed.append(proc)
-            real(proc)  # actually kill it too, so the test leaks nothing
+            await real(proc)  # actually kill+reap it, so the test leaks nothing
 
-        runner._terminate = spy  # type: ignore[method-assign]
+        runner._terminate_and_reap = spy  # type: ignore[method-assign]
         task = asyncio.create_task(runner.run(["sleep", "30"], host_action=True))
         await asyncio.sleep(0.15)  # let the process actually spawn
         task.cancel()
@@ -236,3 +236,63 @@ def test_killall_cleanup_methods_removed():
     # the global-killall stop_hostapd/stop_dnsmasq landmine is gone
     assert not hasattr(AutoCleanupHandler, "stop_hostapd")
     assert not hasattr(AutoCleanupHandler, "stop_dnsmasq")
+
+
+# ======================================================================
+# Round-3 verification-review fixes
+# ======================================================================
+
+
+def test_run_sigkills_process_that_ignores_sigterm():
+    # A process that traps SIGTERM must still be killed (SIGKILL escalation) and
+    # the run must not hang. Before the fix this blocked forever on proc.wait().
+    async def scenario():
+        runner = ProcessRunner(gate=ScopeGate())
+        runner._grace = 0.3  # short grace so the test is quick
+        task = asyncio.create_task(
+            runner.run(
+                ["bash", "-c", "trap '' TERM; while true; do sleep 1; done"],
+                host_action=True,
+            )
+        )
+        await asyncio.sleep(0.3)  # let it spawn and install the trap
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=6)  # must not hang
+
+    asyncio.run(scenario())
+
+
+def test_pmkid_survives_trailing_fcs():
+    frame = _m1_with_pmkid(16)  # a real 16-byte-MIC M1 carrying a PMKID
+    assert len(eapol.parse_pmkids(_pcap(frame))) == 1
+    # the identical frame with a 4-byte FCS trailer must still yield the PMKID
+    got = eapol.parse_pmkids(_pcap(frame + b"\xde\xad\xbe\xef"))
+    assert len(got) == 1 and got[0].pmkid == bytes(range(16)).hex()
+
+
+class _FailAtNthRunner:
+    """Fails on the Nth host call, to hit failures before any iptables rule."""
+
+    def __init__(self, fail_on_nth: int):
+        self.n = 0
+        self._fail_on = fail_on_nth
+        self.cmds: list[list[str]] = []
+
+    async def __call__(self, cmd, **kw):
+        self.cmds.append(cmd)
+        self.n += 1
+        if self.n == self._fail_on:
+            raise SubprocessError("host op failed")
+        return None
+
+
+def test_eviltwin_retry_blocked_after_failure_before_first_rule(tmp_path):
+    # fail on the 2nd host call ("ip link set up"), before any iptables rule
+    et = EvilTwin(runner=_FailAtNthRunner(fail_on_nth=2))
+    with pytest.raises(SubprocessError):
+        asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
+    assert et.state.applied_rules == []  # no rule applied yet
+    assert et.state.dirty  # but a mutation was attempted
+    with pytest.raises(RuntimeError):  # so a naive retry is refused
+        asyncio.run(et.start("wlan0", "N", 6, config_dir=tmp_path))
