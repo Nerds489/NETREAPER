@@ -49,14 +49,12 @@ netreaper wifi deauth          # done
 git clone https://github.com/Nerds489/NETREAPER.git
 cd NETREAPER
 
-# Install NETREAPER (system-wide, works with sudo)
-sudo ./install.sh
+# Install NETREAPER (the Python CLI)
+pip install .
+# or, isolated:  pipx install .
 
-# Or install to ~/.local/bin (user only)
-./install.sh --user
-
-# Install security tools (124 tools)
-sudo ./install-tools.sh install-all
+# Install the security tools (optional)
+sudo bin/netreaper-install all
 ```
 
 ---
@@ -209,11 +207,11 @@ sudo netreaper
 ## Tool Installer
 
 ```bash
-./install-tools.sh list              # show all tools and status
-./install-tools.sh install-all       # install everything
-./install-tools.sh category wireless # install by category
-./install-tools.sh install nmap      # install specific tool
-./install-tools.sh search wifi       # search tools
+sudo bin/netreaper-install status       # show installed tools and status
+sudo bin/netreaper-install all          # install everything
+sudo bin/netreaper-install essentials   # essential tools only
+sudo bin/netreaper-install wireless     # install a category (wireless, web, exploit, osint, ...)
+sudo bin/netreaper-install --dry-run all # preview without installing
 ```
 
 Installation methods: `apt` `dnf` `pacman` `zypper` `apk` `pipx` `pip` `go` `cargo` `gem` `snap` `flatpak` `github releases` `git clone`
@@ -290,20 +288,16 @@ netreaper config reset             # restore defaults
 
 ```
 NETREAPER/
-├── bin/netreaper          # CLI entry point
-├── netreaper              # Launcher wrapper
-├── lib/                  # Bash libraries
-│   ├── automation.sh     # Auto-* functions
-│   ├── core.sh           # Core utilities
-│   ├── wireless.sh       # Wireless operations
-│   ├── detection.sh      # System detection
-│   ├── config.sh         # Configuration
-│   ├── ui.sh             # Terminal UI
-│   ├── menus/            # Interactive menus
-│   ├── attacks/          # Attack modules
-│   └── intelligence/     # Smart targeting
-├── install.sh            # NETREAPER installer
-└── install-tools.sh      # Tool installer (124 tools)
+├── src/netreaper/         # Python package (the CLI + core)
+│   ├── cli.py             # `netreaper` entry point (Typer)
+│   ├── core/              # process seam, logging, validation
+│   ├── safety/            # engagement scope gate (deny-by-default)
+│   ├── wireless/          # scan, monitor, handshake, pmkid, wps,
+│   │                      #   wep, eviltwin, enterprise, advanced
+│   └── tools/             # external-tool adapters
+├── bin/netreaper-install  # security-tool installer
+├── tests/                 # pytest suite (+ installer bats)
+└── pyproject.toml         # packaging; `netreaper` console script
 ```
 
 ---

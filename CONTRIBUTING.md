@@ -163,8 +163,8 @@ Once merged, your contributions will be part of the next release.
 git clone https://github.com/Nerds489/NETREAPER.git
 cd NETREAPER
 
-# Run installation script (requires root)
-sudo ./install.sh
+# Install the Python package (editable, with dev extras)
+pip install -e ".[dev]"
 
 # Verify installation
 netreaper --version
