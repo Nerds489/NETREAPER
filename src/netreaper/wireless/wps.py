@@ -22,6 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from netreaper.core.logging import get_logger
+from netreaper.core.validation import require_bssid
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.tools.reaver import ReaverTool
 
@@ -63,6 +64,7 @@ def format_pin(pin: int) -> str:
 
 
 def _mac_to_int(bssid: str) -> int:
+    require_bssid(bssid)  # malformed BSSID -> TargetValidationError, not ValueError
     return int(bssid.replace(":", "").replace("-", ""), 16)
 
 

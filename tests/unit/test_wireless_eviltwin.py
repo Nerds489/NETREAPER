@@ -99,8 +99,8 @@ def test_start_writes_configs_and_applies_rules(tmp_path):
     joined = [" ".join(c) for c in fake.cmds]
     assert any("ip addr add 10.0.0.1/24 dev wlan0" in j for j in joined)
     assert any("sysctl -w net.ipv4.ip_forward=1" in j for j in joined)
-    assert any(j.startswith("hostapd -B") for j in joined)
-    assert any(j.startswith("dnsmasq -C") for j in joined)
+    assert any(j.startswith("hostapd -B") and "-P" in j for j in joined)
+    assert any(j.startswith("dnsmasq ") and "-C" in j and "-x" in j for j in joined)
     assert len(_iptables(fake.cmds)) == 5  # all appends
 
 
@@ -109,6 +109,9 @@ def test_stop_deletes_exactly_added_rules_no_flush(tmp_path):
     et = EvilTwin(runner=fake)
     asyncio.run(et.start("wlan0", "HomeNet", 6, config_dir=tmp_path))
     added = _iptables(fake.cmds)  # iptables append commands
+    # simulate the daemons having written their pidfiles so teardown can kill them
+    (tmp_path / "hostapd.pid").write_text("4242\n")
+    (tmp_path / "dnsmasq.pid").write_text("4243\n")
     fake.cmds.clear()
 
     asyncio.run(et.stop())
@@ -121,8 +124,10 @@ def test_stop_deletes_exactly_added_rules_no_flush(tmp_path):
         assert expected in teardown
     assert not any("-F" in c for c in teardown), "must not flush the whole table"
     assert any("sysctl -w net.ipv4.ip_forward=0" in j for j in joined)
-    assert any("killall hostapd" in j for j in joined)
-    assert any("killall dnsmasq" in j for j in joined)
+    # daemons are killed by their tracked PID, never a global killall
+    assert not any("killall" in c for c in teardown), "must not use global killall"
+    assert ["kill", "4242"] in teardown
+    assert ["kill", "4243"] in teardown
     assert et.state.running is False
     assert et.state.applied_rules == []
 

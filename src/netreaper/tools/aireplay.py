@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel
 
 from netreaper.core.logging import get_logger
+from netreaper.core.validation import require_interface
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
 from netreaper.safety.scope import Tier
@@ -51,11 +52,18 @@ class AireplayTool(BaseToolWrapper):
         return [t for t in (options.get("bssid"), options.get("essid")) if t]
 
     def execution_tier(self, target, options):
-        # Only a deauth aimed at a whole AP (no specific client) is broadcast;
-        # fakeauth/arpreplay/fragment/chopchop target one AP -> single-target.
+        # A deauth bounded to one in-scope AP is SINGLE_TARGET, whether it names a
+        # client or broadcasts to the AP's clients for a finite burst (the normal
+        # handshake technique). Only a sustained, client-less deauth (count 0 =
+        # continuous) is an AP-wide DoS and needs BROADCAST. fakeauth/arpreplay/
+        # fragment/chopchop all target one AP -> single-target.
         attack = options.get("attack", "deauth")
         attack = str(getattr(attack, "value", attack)).lower()
-        if attack == "deauth" and (not options.get("client") or options.get("count") in (0, "0")):
+        if (
+            attack == "deauth"
+            and not options.get("client")
+            and options.get("count") in (0, "0")
+        ):
             return Tier.BROADCAST
         return Tier.SINGLE_TARGET
 
@@ -108,6 +116,8 @@ class AireplayTool(BaseToolWrapper):
                 - reassoc: Reassociation timing for fakeauth (-Q)
                 - read_file: Read packets from pcap file (-r)
         """
+        require_interface(target)  # reject a bad/flag-like interface before argv
+
         cmd = []
 
         # Get attack mode

@@ -65,12 +65,20 @@ async def test_john_is_targetless_passive():
     assert tool.execution_tier("/tmp/hashes.txt", {}) is Tier.PASSIVE
 
 
-# §6: non-deauth aireplay attacks are single-target, not broadcast
-def test_aireplay_fakeauth_is_single_target():
+# §6: aireplay tiers. A deauth bounded to one in-scope AP is SINGLE_TARGET
+# (finite burst or client-specific, the normal handshake technique); only a
+# sustained client-less deauth (count 0 = continuous) is an AP-wide DoS.
+def test_aireplay_tiers():
     t = AireplayTool()
-    assert t.execution_tier("wlan0mon", {"attack": "fakeauth", "bssid": "AA:BB:CC:DD:EE:FF"}) is Tier.SINGLE_TARGET
-    assert t.execution_tier("wlan0mon", {"attack": "deauth", "bssid": "AA:BB:CC:DD:EE:FF"}) is Tier.BROADCAST
-    assert t.execution_tier("wlan0mon", {"attack": "deauth", "bssid": "AA:BB:CC:DD:EE:FF", "client": "11:22:33:44:55:66"}) is Tier.SINGLE_TARGET
+    ap = "AA:BB:CC:DD:EE:FF"
+    assert t.execution_tier("wlan0mon", {"attack": "fakeauth", "bssid": ap}) is Tier.SINGLE_TARGET
+    # finite/unspecified-count client-less deauth -> single-target (handshake)
+    assert t.execution_tier("wlan0mon", {"attack": "deauth", "bssid": ap}) is Tier.SINGLE_TARGET
+    assert t.execution_tier("wlan0mon", {"attack": "deauth", "bssid": ap, "count": 5}) is Tier.SINGLE_TARGET
+    # sustained client-less deauth (count 0 = continuous) -> broadcast/DoS
+    assert t.execution_tier("wlan0mon", {"attack": "deauth", "bssid": ap, "count": 0}) is Tier.BROADCAST
+    # a client-specific deauth is always single-target
+    assert t.execution_tier("wlan0mon", {"attack": "deauth", "bssid": ap, "client": "11:22:33:44:55:66", "count": 0}) is Tier.SINGLE_TARGET
 
 
 # §9: ESSID with comma survives a row that is missing the trailing Key column
