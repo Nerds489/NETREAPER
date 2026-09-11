@@ -23,6 +23,8 @@ class NiktoConfig(BaseModel):
 class NiktoTool(BaseToolWrapper):
     """Nikto web vulnerability scanner wrapper."""
 
+    TARGET_IS_URL = True
+
     TOOL_BINARY: ClassVar[str] = "nikto"
 
     METADATA: ClassVar[PluginMetadata] = PluginMetadata(

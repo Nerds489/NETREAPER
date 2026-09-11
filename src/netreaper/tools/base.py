@@ -46,12 +46,20 @@ class BaseToolWrapper(ToolPlugin):
     # Blast-radius tier for the scope gate; wireless/DoS adapters raise this.
     DEFAULT_TIER: ClassVar[Tier] = Tier.ACTIVE_SCAN
     DESTRUCTIVE: ClassVar[bool] = False
+    # Web adapters whose target is a URL: scope-check the URL's host, not the URL.
+    TARGET_IS_URL: ClassVar[bool] = False
 
     def target_identifiers(self, target: str, options: dict[str, Any]) -> list[str]:
         """Scope-relevant targets for this invocation. Override when the real
         target is not the first positional arg (e.g. wireless: the BSSID/client,
         not the local interface name)."""
-        return [target] if target else []
+        if not target:
+            return []
+        if self.TARGET_IS_URL:
+            from urllib.parse import urlsplit
+            host = urlsplit(target if "://" in target else f"//{target}").hostname
+            return [host] if host else [target]
+        return [target]
 
     def execution_tier(self, target: str, options: dict[str, Any]) -> Tier:
         """Blast-radius tier for this invocation (override for per-call tiers)."""

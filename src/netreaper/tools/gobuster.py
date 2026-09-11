@@ -27,6 +27,8 @@ class GobusterConfig(BaseModel):
 class GobusterTool(BaseToolWrapper):
     """Gobuster directory/DNS bruteforce wrapper."""
 
+    TARGET_IS_URL = True
+
     TOOL_BINARY: ClassVar[str] = "gobuster"
 
     METADATA: ClassVar[PluginMetadata] = PluginMetadata(
