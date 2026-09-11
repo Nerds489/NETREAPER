@@ -12,8 +12,8 @@ jobs:
   python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install (editable, with dev extras)
@@ -28,13 +28,13 @@ jobs:
   bash:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Bash syntax (blocking)
         run: |
-          for f in $(git ls-files '*.sh') bin/netreaper bin/netreaper-install bin/netreaper-distrobox netreaper; do
+          for f in $(git ls-files '*.sh') bin/netreaper-install; do
             echo "bash -n $f"; bash -n "$f"
           done
-      - name: ShellCheck (advisory during the migration)
+      - name: ShellCheck (advisory)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck -S error bin/netreaper lib/*.sh || true
+          shellcheck -S error bin/netreaper-install $(git ls-files '*.sh') || true
