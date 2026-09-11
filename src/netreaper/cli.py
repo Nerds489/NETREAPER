@@ -842,6 +842,39 @@ def wifi_plan(
     console.print(plan.render())
 
 
+@wifi_app.command("crack")
+def wifi_crack(
+    cap_file: str = typer.Argument(..., help="Captured handshake .cap file"),
+    bssid: str = typer.Argument(..., help="Target AP BSSID"),
+    wordlist: str = typer.Argument(..., help="Wordlist path"),
+):
+    """Crack a captured WPA handshake against a wordlist (aircrack-ng, offline)."""
+
+    async def run_crack():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.crack import crack_handshake
+
+        try:
+            res = await crack_handshake(cap_file, bssid, wordlist)
+        except FileNotFoundError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(2) from exc
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        if res.cracked:
+            console.print(
+                f"[green]Password recovered for {bssid}: {res.password}[/green]"
+            )
+        else:
+            console.print(
+                "[yellow]Not cracked (passphrase not in the wordlist).[/yellow]"
+            )
+            raise typer.Exit(1)
+
+    asyncio.run(run_crack())
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
