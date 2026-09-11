@@ -656,6 +656,10 @@ def wifi_wpa3(
             raise typer.Exit(1)
         sec = classify_security(ap)
         console.print(f"[green]{bssid} security: {sec.upper()}[/green]")
+        if "SAE" in ap.auth.upper() and "WPA2" in ap.privacy.upper():
+            console.print(
+                "[cyan]Transition mode (WPA2+WPA3): `wifi downgrade` applies.[/cyan]"
+            )
         if sec == "wpa3":
             console.print(dragonblood_advisory().render())
 
@@ -674,7 +678,7 @@ def wifi_downgrade(
     """WPA2-only twin to downgrade a WPA3 transition-mode AP; Ctrl-C to tear down."""
 
     async def run_dg():
-        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.core.exceptions import TargetValidationError, ToolNotFoundError
         from netreaper.wireless.advanced import WPA3Downgrade
 
         dg = WPA3Downgrade()
@@ -683,6 +687,9 @@ def wifi_downgrade(
                 await dg.start(interface, ssid, channel, passphrase=passphrase)
             except TargetValidationError as exc:
                 console.print(f"[red]Denied by scope gate: {exc}[/red]")
+                raise typer.Exit(2) from exc
+            except (ValueError, ToolNotFoundError) as exc:
+                console.print(f"[red]{exc}[/red]")
                 raise typer.Exit(2) from exc
             console.print(
                 f"[green]WPA2 downgrade twin '{ssid}' up on {interface} "
@@ -712,7 +719,7 @@ def wifi_arpspoof(
     """Bypass client isolation with a bidirectional ARP-spoof MITM; Ctrl-C to stop."""
 
     async def run_arp():
-        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.core.exceptions import TargetValidationError, ToolNotFoundError
         from netreaper.wireless.advanced import ArpSpoof, check_isolation
 
         spoof = ArpSpoof()
@@ -726,6 +733,9 @@ def wifi_arpspoof(
                 await spoof.start(interface, gateway, target)
             except TargetValidationError as exc:
                 console.print(f"[red]Denied by scope gate: {exc}[/red]")
+                raise typer.Exit(2) from exc
+            except (ValueError, ToolNotFoundError) as exc:
+                console.print(f"[red]{exc}[/red]")
                 raise typer.Exit(2) from exc
             console.print(
                 f"[green]ARP spoof {gateway} <-> {target} on {interface}. "
@@ -756,13 +766,16 @@ def wifi_mac_random(
     """Randomise the adapter MAC (WIDS evasion)."""
 
     async def run_r():
-        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.core.exceptions import TargetValidationError, ToolNotFoundError
         from netreaper.wireless.advanced import randomize_mac
 
         try:
             mac = await randomize_mac(interface, vendor=vendor)
         except TargetValidationError as exc:
             console.print(f"[red]Denied: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        except (ValueError, RuntimeError, ToolNotFoundError) as exc:
+            console.print(f"[red]{exc}[/red]")
             raise typer.Exit(2) from exc
         console.print(f"[green]MAC on {interface} -> {mac}[/green]")
 
@@ -778,13 +791,16 @@ def wifi_mac_clone(
     """Clone a legitimate AP's BSSID + channel onto the adapter (WIDS evasion)."""
 
     async def run_c():
-        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.core.exceptions import TargetValidationError, ToolNotFoundError
         from netreaper.wireless.advanced import clone_ap_mac
 
         try:
             mac = await clone_ap_mac(interface, bssid, channel)
         except TargetValidationError as exc:
             console.print(f"[red]Denied: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        except (ValueError, RuntimeError, ToolNotFoundError) as exc:
+            console.print(f"[red]{exc}[/red]")
             raise typer.Exit(2) from exc
         console.print(
             f"[green]{interface} now cloning {mac} on channel {channel}[/green]"
