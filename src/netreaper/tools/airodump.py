@@ -30,6 +30,9 @@ class AirodumpConfig(BaseModel):
 class AirodumpTool(BaseToolWrapper):
     """Airodump-ng wireless packet capture wrapper with full CSV parsing."""
 
+    def target_identifiers(self, target, options):
+        return [options["bssid"]] if options.get("bssid") else []
+
     TOOL_BINARY: ClassVar[str] = "airodump-ng"
 
     METADATA: ClassVar[PluginMetadata] = PluginMetadata(
@@ -196,7 +199,7 @@ class AirodumpTool(BaseToolWrapper):
                     "iv": self._safe_int(row[10]),
                     "lan_ip": row[11].strip() if len(row) > 11 else "",
                     "id_length": self._safe_int(row[12]) if len(row) > 12 else 0,
-                    "essid": row[13].strip() if len(row) > 13 else "",
+                    "essid": (",".join(row[13:-1]).strip() if len(row) > 14 else (row[13].strip() if len(row) > 13 else "")),
                     "key": row[14].strip() if len(row) > 14 else "",
                 }
 

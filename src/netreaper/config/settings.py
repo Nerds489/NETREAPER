@@ -15,6 +15,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from netreaper.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 _DEFAULTS_PATH = Path(__file__).resolve().parent / "defaults.toml"
 _USER_CONFIG_PATH = Path.home() / ".netreaper" / "config" / "config.toml"
 
@@ -87,7 +91,8 @@ def _load_toml(path: Path) -> dict[str, Any]:
             return tomllib.load(fh)
     except FileNotFoundError:
         return {}
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        logger.warning("ignoring unreadable/invalid config %s: %s", path, e)
         return {}
 
 

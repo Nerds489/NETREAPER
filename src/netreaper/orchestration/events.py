@@ -1,6 +1,7 @@
 """Event bus for tool coordination and UI updates."""
+from collections.abc import Callable, Coroutine
 from enum import Enum
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from pyee.asyncio import AsyncIOEventEmitter
 
@@ -32,6 +33,9 @@ class Events(str, Enum):
 
     # Wireless
     NETWORK_FOUND = "wireless.network"
+    CLIENT_FOUND = "wireless.client"
+    DEAUTH_SENT = "wireless.deauth_sent"
+    WPS_PIN_FOUND = "wireless.wps_pin"
     HANDSHAKE_CAPTURED = "wireless.handshake"
     PMKID_CAPTURED = "wireless.pmkid"
     CREDENTIAL_CRACKED = "wireless.cracked"
