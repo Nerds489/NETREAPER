@@ -51,17 +51,21 @@ class ProcessRunner:
         timeout: float | None = None,
         dry_run: bool = False,
         check: bool = False,
+        host_action: bool = False,
     ) -> ProcessResult:
         if not cmd:
             raise ValueError("cmd must be a non-empty argument list")
 
         # THE GATE — before anything is spawned. Raises TargetValidationError
         # if the action is not authorised for these targets at this tier.
+        # host_action marks a local host op (no network target); it is still
+        # gated and audited here so nothing spawns outside this seam.
         self._gate.authorize(
             targets,
             tier=tier,
             destructive=destructive,
             requires_confirmation=requires_confirmation,
+            host_action=host_action,
         )
 
         if dry_run:

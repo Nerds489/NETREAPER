@@ -1,9 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Nerds489
 """AUTO-DATA handler for downloading data files."""
 
-import asyncio
 from pathlib import Path
 from typing import Any
 
+from netreaper.automation.handlers._host import run_host
 from netreaper.automation.labels import AUTO_REGISTRY
 from netreaper.core.constants import NETREAPER_DATA_DIR, NETREAPER_WORDLISTS_DIR
 
@@ -67,18 +69,13 @@ class AutoDataHandler:
         import shutil
 
         if shutil.which("curl"):
-            cmd = f"curl -L -o {dest} {url}"
+            cmd = ["curl", "-L", "-o", str(dest), url]
         else:
-            cmd = f"wget -O {dest} {url}"
+            cmd = ["wget", "-O", str(dest), url]
 
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.wait()
+        result = await run_host(cmd, timeout=600)
 
-        if proc.returncode == 0 and dest.exists():
+        if result is not None and result.ok and dest.exists():
             self.dest_path = dest
             return True
 

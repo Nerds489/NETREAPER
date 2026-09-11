@@ -1,12 +1,13 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Nerds489
 """AUTO-UPDATE handler for refreshing data sources."""
 
-import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from netreaper.automation.handlers._host import run_host
 from netreaper.automation.labels import AUTO_REGISTRY
-
 
 # Update sources configuration
 UPDATE_SOURCES: dict[str, dict[str, Any]] = {
@@ -68,14 +69,9 @@ class AutoUpdateHandler:
         if not command:
             return False
 
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.wait()
+        result = await run_host(command.split(), timeout=600)
 
-        if proc.returncode == 0:
+        if result is not None and result.ok:
             # Record update time
             self._record_update()
             return True
