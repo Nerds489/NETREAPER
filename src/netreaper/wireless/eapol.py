@@ -128,8 +128,12 @@ def _pmkid_from_m1(keyframe: bytes) -> str | None:
         if len(keyframe) < kd_off:
             continue
         kd_len = (keyframe[kdl_off] << 8) | keyframe[kdl_off + 1]
-        key_data = keyframe[kd_off : kd_off + kd_len]
-        pmkid = _extract_pmkid_from_keydata(key_data)
+        # Key Data is the final field of an EAPOL-Key frame: a MIC-length guess
+        # whose declared length does not consume the frame exactly is wrong, so
+        # trailing bytes cannot be misread as a fabricated PMKID.
+        if kd_off + kd_len != len(keyframe):
+            continue
+        pmkid = _extract_pmkid_from_keydata(keyframe[kd_off : kd_off + kd_len])
         if pmkid:
             return pmkid
     return None

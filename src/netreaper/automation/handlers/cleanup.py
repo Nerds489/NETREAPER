@@ -135,17 +135,9 @@ class AutoCleanupHandler:
             await run_host(cmd, destructive=True)
         return True
 
-    @classmethod
-    async def stop_hostapd(cls) -> bool:
-        """Stop hostapd service."""
-        await run_host(["killall", "hostapd"], destructive=True)
-        return True
-
-    @classmethod
-    async def stop_dnsmasq(cls) -> bool:
-        """Stop dnsmasq service."""
-        await run_host(["killall", "dnsmasq"], destructive=True)
-        return True
+    # NOTE: killall-based stop_hostapd/stop_dnsmasq were removed. A global killall
+    # takes down unrelated daemons (e.g. libvirt's dnsmasq); daemon teardown is
+    # ownership-tracked via pidfile in EvilTwin._kill_by_pidfile instead.
 
 
 # Register the handler
