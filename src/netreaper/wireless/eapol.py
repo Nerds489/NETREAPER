@@ -210,7 +210,10 @@ def _parse_dot11(data: bytes) -> _Frame | None:
     # 2-3) so a trailing FCS or other padding after Key Data is not treated as
     # frame content (which would otherwise defeat the PMKID exact-length check).
     pkt_len = (body[2] << 8) | body[3]
-    keyframe = body[4 : 4 + pkt_len] if 0 < pkt_len <= len(body) - 4 else body[4:]
+    bounded = body[4 : 4 + pkt_len] if 0 < pkt_len <= len(body) - 4 else body[4:]
+    # A too-short declared length must not drop an otherwise-valid frame: fall back
+    # to the unbounded body so key_info can still be read and the frame classified.
+    keyframe = bounded if len(bounded) >= 3 else body[4:]
     if len(keyframe) < 3:
         return None
     key_info = (keyframe[1] << 8) | keyframe[2]
