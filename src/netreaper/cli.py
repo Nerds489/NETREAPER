@@ -458,6 +458,53 @@ def wifi_wep(
     asyncio.run(run_wep())
 
 
+@wifi_app.command("eviltwin")
+def wifi_eviltwin(
+    interface: str = typer.Argument(..., help="Interface for the rogue AP"),
+    ssid: str = typer.Argument(..., help="SSID to clone"),
+    channel: int = typer.Argument(..., help="Channel (band is derived from it)"),
+    gateway: str = typer.Option("10.0.0.1", "--gateway", "-g", help="Rogue gateway IP"),
+    deauth_bssid: str = typer.Option(
+        None, "--deauth-bssid", help="Deauth this real AP (needs --mon-interface)"
+    ),
+    mon_interface: str = typer.Option(
+        None, "--mon-interface", help="Monitor interface for the deauth"
+    ),
+):
+    """Stand up an evil-twin AP; press Ctrl-C to tear it down cleanly."""
+
+    async def run_et():
+        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.wireless.eviltwin import EvilTwin
+
+        et = EvilTwin()
+        try:
+            await et.start(interface, ssid, channel, gateway_ip=gateway)
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+
+        console.print(
+            f"[green]Evil-twin '{ssid}' up on {interface} (ch {channel}). "
+            "Press Ctrl-C to stop.[/green]"
+        )
+        try:
+            if deauth_bssid and mon_interface:
+                await et.deauth_real_ap(mon_interface, deauth_bssid)
+            while True:
+                await asyncio.sleep(3600)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            pass
+        finally:
+            await et.stop()
+            console.print("[cyan]Evil-twin torn down.[/cyan]")
+
+    try:
+        asyncio.run(run_et())
+    except KeyboardInterrupt:
+        pass
+
+
 # Plugin commands
 plugin_app = typer.Typer(help="Plugin management")
 app.add_typer(plugin_app, name="plugin")
