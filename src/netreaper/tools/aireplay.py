@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
+from netreaper.safety.scope import Tier
 from netreaper.tools.base import BaseToolWrapper
 
 logger = get_logger(__name__)
@@ -41,6 +42,19 @@ class AireplayConfig(BaseModel):
 
 class AireplayTool(BaseToolWrapper):
     """Aireplay-ng wireless packet injection wrapper with all attack modes."""
+
+    DESTRUCTIVE = True
+
+    def target_identifiers(self, target, options):
+        # Scope authorises the AP (BSSID/ESSID); a client of a scoped AP is
+        # covered by that AP. The interface is not a scope-relevant target.
+        return [t for t in (options.get("bssid"), options.get("essid")) if t]
+
+    def execution_tier(self, target, options):
+        # deauth with a specific client is single-target; broadcast/continuous is wider.
+        if not options.get("client") or options.get("count") in (0, "0"):
+            return Tier.BROADCAST
+        return Tier.SINGLE_TARGET
 
     TOOL_BINARY: ClassVar[str] = "aireplay-ng"
 

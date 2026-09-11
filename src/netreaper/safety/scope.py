@@ -58,6 +58,25 @@ class Scope:
             return False
         return self._in_nets(ip, self.cidrs)
 
+    def allows_network(self, cidr: str) -> bool:
+        try:
+            net = ipaddress.ip_network(cidr, strict=False)
+        except ValueError:
+            return False
+        for d in self.deny:
+            try:
+                if net.overlaps(ipaddress.ip_network(d, strict=False)):
+                    return False
+            except ValueError:
+                continue
+        for a in self.cidrs:
+            try:
+                if net.subnet_of(ipaddress.ip_network(a, strict=False)):
+                    return True
+            except (ValueError, TypeError):
+                continue
+        return False
+
     def allows_hostname(self, host: str) -> bool:
         return host.strip().lower() in {h.lower() for h in self.hostnames}
 
@@ -78,6 +97,9 @@ class Engagement:
     expires_at: datetime = field(
         default_factory=lambda: datetime.now(UTC) + timedelta(hours=12)
     )
+    # Highest blast-radius tier this engagement authorises. Broadcast/MITM must be
+    # granted explicitly; the default ceiling stops at single-target.
+    max_tier: Tier = Tier.SINGLE_TARGET
 
     def is_active(self, now: datetime | None = None) -> bool:
         now = now or datetime.now(UTC)
@@ -131,6 +153,11 @@ class ScopeGate:
             raise TargetValidationError(
                 "engagement has expired; re-authorise before continuing"
             )
+        if tier > eng.max_tier:
+            raise TargetValidationError(
+                f"tier {tier.name} exceeds this engagement's ceiling "
+                f"({eng.max_tier.name}); raise the engagement's max_tier to authorise it"
+            )
 
         for target in targets:
             self._check_target(target, eng, tier)
@@ -152,6 +179,10 @@ class ScopeGate:
 
         # IP / CIDR
         if _looks_like_ip(t):
+            if "/" in t:  # a network/range target
+                if not eng.scope.allows_network(t):
+                    raise TargetValidationError(f"{t} is not within the engagement scope")
+                return
             if is_protected_ip(t):
                 raise TargetValidationError(
                     f"{t} is a protected/reserved address and must not be targeted"

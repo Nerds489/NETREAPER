@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
+from netreaper.safety.scope import Tier
 from netreaper.tools.base import BaseToolWrapper
 
 logger = get_logger(__name__)
@@ -26,6 +27,9 @@ class ReaverConfig(BaseModel):
 
 class ReaverTool(BaseToolWrapper):
     """Reaver WPS attack tool wrapper."""
+
+    DEFAULT_TIER = Tier.SINGLE_TARGET
+    DESTRUCTIVE = True
 
     TOOL_BINARY: ClassVar[str] = "reaver"
 

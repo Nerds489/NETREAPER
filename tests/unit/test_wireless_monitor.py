@@ -78,3 +78,38 @@ async def test_teardown_restores_and_is_idempotent():
     before = len(r.calls)
     await c.disable()
     assert len(r.calls) == before
+
+
+# --- review §3/§4 regressions ---
+from netreaper.core.exceptions import SubprocessError
+from netreaper.wireless.monitor import MonitorModeError
+
+
+@pytest.mark.asyncio
+async def test_enable_raises_when_mode_never_changed():
+    # airmon-ng "succeeds" but the interface is still managed (same name) -> must NOT
+    # report success (§3). Every iw dev call returns MANAGED.
+    c = MonitorController(runner=FakeRunner([MANAGED]))
+    with pytest.raises(MonitorModeError):
+        await c.enable("wlan0")
+    assert c.state is not MonitorState.MONITOR
+
+
+class _StopFailsRunner(FakeRunner):
+    async def run(self, cmd, **kwargs):
+        if cmd[:2] == ["airmon-ng", "stop"]:
+            raise SubprocessError("airmon-ng stop failed", returncode=1)
+        return await super().run(cmd, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_teardown_failure_leaves_state_monitor():
+    # enable succeeds (rename), but the stop command fails -> state must stay MONITOR
+    # so the atexit hook still retries (§4).
+    c = MonitorController(runner=_StopFailsRunner([MANAGED, MANAGED, RENAMED]))
+    await c.enable("wlan0")
+    assert c.state is MonitorState.MONITOR
+    with pytest.raises(SubprocessError):
+        await c.disable()
+    assert c.state is MonitorState.MONITOR       # not falsely marked restored
+    assert c.monitor_iface == "wlan0mon"

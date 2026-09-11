@@ -239,15 +239,16 @@ def wifi_monitor(
             console.print(f"[green]Monitor mode enabled: {monitor_iface}[/green]")
         elif action == "disable":
             console.print(f"[cyan]Disabling monitor mode on {interface}...[/cyan]")
-            managed = await disable_monitor_mode(interface)
-            console.print(f"[green]Monitor mode disabled: {managed}[/green]")
+            result = await disable_monitor_mode(interface)
+            console.print(f"[green]Monitor mode now: {result.get('current_mode')}[/green]")
         elif action == "status":
             status = await get_monitor_status(interface)
             console.print(f"Interface: {interface}")
-            console.print(f"Exists: {status.get('exists')}")
             console.print(f"Is wireless: {status.get('is_wireless')}")
             console.print(f"Current mode: {status.get('current_mode')}")
+            console.print(f"In monitor mode: {status.get('is_monitor')}")
             console.print(f"Supports monitor: {status.get('supports_monitor')}")
+            console.print(f"Supports injection: {status.get('supports_injection')}")
         else:
             console.print("[red]Invalid action. Use: enable, disable, or status[/red]")
             raise typer.Exit(1)
