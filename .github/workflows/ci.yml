@@ -24,6 +24,12 @@ jobs:
         run: ruff check src tests || true
       - name: Type-check the safety spine (advisory during the migration)
         run: mypy src/netreaper/core/process.py src/netreaper/safety/scope.py src/netreaper/safety/protected.py src/netreaper/core/exceptions.py || true
+      - name: SBOM (syft, CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          artifact-name: netreaper-sbom.cyclonedx.json
 
   bash:
     runs-on: ubuntu-latest
