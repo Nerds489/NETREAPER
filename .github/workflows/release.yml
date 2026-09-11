@@ -1,0 +1,111 @@
+name: Release
+
+# Tag-triggered signed-release pipeline (Rebuild Master Plan, Phase 5).
+# Push a SemVer tag to cut a release:
+#   git tag v10.2.4          -> stable release
+#   git tag v10.3.0-rc.1     -> pre-release (rc channel)
+#   git tag v10.3.0-beta.2   -> pre-release (beta channel)
+#   git tag v10.3.0-alpha.1  -> pre-release (alpha channel)
+#   git tag v10.3.0-nightly  -> pre-release (nightly channel)
+# The tag version must match the VERSION file (single source of truth).
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: write   # create the GitHub release and upload assets
+  id-token: write   # Sigstore keyless (OIDC) signing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Derive version and channel from the tag
+        id: meta
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            channel="${version#*-}"; channel="${channel%%.*}"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Releasing $tag (channel=${channel:-stable})"
+
+      - name: Verify the tag matches the VERSION file
+        run: |
+          set -euo pipefail
+          file_version="$(tr -d '[:space:]' < VERSION)"
+          tag_version="${{ steps.meta.outputs.version }}"
+          if [[ "$tag_version" != "$file_version" ]]; then
+            echo "::error::tag version '$tag_version' does not match VERSION file '$file_version'"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Verify the built artifacts install and import
+        run: |
+          set -euo pipefail
+          python -m pip install dist/*.whl
+          python -c "import netreaper; print('netreaper', netreaper.__version__)"
+          netreaper --version
+
+      - name: Per-artifact SHA256 checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum ./*.whl ./*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: SBOM (CycloneDX) for the release
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: dist/netreaper-${{ steps.meta.outputs.version }}.sbom.cyclonedx.json
+
+      - name: Sign artifacts (Sigstore keyless)
+        uses: sigstore/gh-action-sigstore-python@v3.0.0
+        with:
+          inputs: |
+            ./dist/*.whl
+            ./dist/*.tar.gz
+            ./dist/SHA256SUMS
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pre_flag=""
+          if [[ "${{ steps.meta.outputs.prerelease }}" == "true" ]]; then
+            pre_flag="--prerelease"
+          fi
+          gh release create "${{ steps.meta.outputs.tag }}" \
+            --title "NETREAPER ${{ steps.meta.outputs.tag }}" \
+            --generate-notes \
+            $pre_flag \
+            dist/*.whl \
+            dist/*.tar.gz \
+            dist/SHA256SUMS \
+            dist/*.sigstore.json \
+            dist/*.sbom.cyclonedx.json
