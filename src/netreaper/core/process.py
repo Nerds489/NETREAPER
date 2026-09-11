@@ -40,6 +40,7 @@ class ProcessRunner:
 
     def __init__(self, gate: ScopeGate | None = None) -> None:
         self._gate = gate or get_scope_gate()
+        self._grace = 5.0  # seconds to wait after SIGTERM before escalating to SIGKILL
 
     async def run(
         self,
@@ -86,20 +87,16 @@ class ProcessRunner:
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
-            self._terminate(proc)
-            with contextlib.suppress(BaseException):
-                await proc.wait()  # reap it so the transport closes cleanly
+            await self._terminate_and_reap(proc)
             raise SubprocessError(
                 f"{cmd[0]} timed out after {timeout}s", returncode=None
             ) from None
         except BaseException:
             # Cancelled (an outer task aborting this run) or any other failure:
-            # kill the spawned process group so a denied or aborted attack tool
-            # cannot keep running detached (it has its own session), then reap it
-            # so asyncio closes the subprocess transport instead of the finaliser.
-            self._terminate(proc)
-            with contextlib.suppress(BaseException):
-                await proc.wait()
+            # tear the spawned process group down (SIGTERM, then SIGKILL if it does
+            # not exit) and reap it, so a denied or aborted attack tool cannot keep
+            # running detached (it has its own session).
+            await self._terminate_and_reap(proc)
             raise
         duration = time.monotonic() - started
         result = ProcessResult(
@@ -121,14 +118,33 @@ class ProcessRunner:
         """Blocking convenience wrapper around :meth:`run`."""
         return asyncio.run(self.run(cmd, **kwargs))
 
+    async def _terminate_and_reap(self, proc: asyncio.subprocess.Process) -> None:
+        """Stop a spawned process group and reap it: bounded and escalating.
+
+        SIGTERM the group, wait up to ``self._grace``, then SIGKILL if it has not
+        exited, and reap it so asyncio closes the transport. Never blocks forever,
+        even against a process that ignores SIGTERM.
+        """
+        if proc.returncode is not None:
+            return
+        waiter = asyncio.ensure_future(proc.wait())
+        self._signal(proc, signal.SIGTERM)
+        with contextlib.suppress(BaseException):
+            await asyncio.wait_for(asyncio.shield(waiter), timeout=self._grace)
+        if proc.returncode is None:
+            self._signal(proc, signal.SIGKILL)  # unignorable: guarantees exit
+            with contextlib.suppress(BaseException):
+                await waiter
+
     @staticmethod
-    def _terminate(proc: asyncio.subprocess.Process) -> None:
+    def _signal(proc: asyncio.subprocess.Process, sig: int) -> None:
+        """Send a signal to the whole process group, falling back to the process."""
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            os.killpg(os.getpgid(proc.pid), sig)
         except (ProcessLookupError, PermissionError, OSError):
             try:
-                proc.kill()
-            except ProcessLookupError:
+                proc.send_signal(sig)
+            except (ProcessLookupError, ValueError):
                 pass
 
 
