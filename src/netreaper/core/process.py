@@ -17,6 +17,7 @@ import signal
 import time
 from dataclasses import dataclass
 
+from netreaper.core.audit import get_audit_trail
 from netreaper.core.exceptions import SubprocessError, ToolNotFoundError
 from netreaper.safety.scope import ScopeGate, Tier, get_scope_gate
 
@@ -58,23 +59,46 @@ class ProcessRunner:
         if not cmd:
             raise ValueError("cmd must be a non-empty argument list")
 
+        # Audit context for this spawn: operator + the engagement's consent
+        # fingerprint, so every entry ties back to the authorisation it ran under.
+        eng = self._gate.engagement
+        operator = eng.operator if eng is not None else "-"
+        consent = eng.consent_hash if eng is not None else "-"
+        audit = get_audit_trail()
+
+        def _audit(outcome: str, detail: str = "") -> None:
+            audit.record(
+                outcome=outcome, operator=operator, consent=consent,
+                tool=cmd[0], argv=list(cmd), targets=list(targets),
+                tier=tier.name, destructive=destructive,
+                host_action=host_action, detail=detail,
+            )
+
         # THE GATE — before anything is spawned. Raises TargetValidationError
         # if the action is not authorised for these targets at this tier.
         # host_action marks a local host op (no network target); it is still
-        # gated and audited here so nothing spawns outside this seam.
-        self._gate.authorize(
-            targets,
-            tier=tier,
-            destructive=destructive,
-            requires_confirmation=requires_confirmation,
-            host_action=host_action,
-        )
+        # gated and audited here so nothing spawns outside this seam. Every
+        # decision — denied, dry-run, executed or spawn-error — lands in the
+        # hash-chained audit trail from this one place.
+        try:
+            self._gate.authorize(
+                targets,
+                tier=tier,
+                destructive=destructive,
+                requires_confirmation=requires_confirmation,
+                host_action=host_action,
+            )
+        except Exception as exc:
+            _audit("denied", str(exc)[:200])
+            raise
 
         if dry_run:
+            _audit("dry-run")
             return ProcessResult(cmd=list(cmd), returncode=0, dry_run=True)
 
         binary = shutil.which(cmd[0])
         if binary is None:
+            _audit("spawn-error", "tool not installed or not on PATH")
             raise ToolNotFoundError(f"{cmd[0]!r} is not installed or not on PATH")
 
         started = time.monotonic()
@@ -88,6 +112,7 @@ class ProcessRunner:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
             await self._terminate_and_reap(proc)
+            _audit("spawn-error", f"timed out after {timeout}s")
             raise SubprocessError(
                 f"{cmd[0]} timed out after {timeout}s", returncode=None
             ) from None
@@ -97,6 +122,7 @@ class ProcessRunner:
             # not exit) and reap it, so a denied or aborted attack tool cannot keep
             # running detached (it has its own session).
             await self._terminate_and_reap(proc)
+            _audit("spawn-error", "cancelled or aborted")
             raise
         duration = time.monotonic() - started
         result = ProcessResult(
@@ -106,6 +132,7 @@ class ProcessRunner:
             stderr=(err or b"").decode(errors="replace"),
             duration=duration,
         )
+        _audit("executed", f"rc={result.returncode}")
         if check and not result.ok:
             raise SubprocessError(
                 f"{cmd[0]} exited {result.returncode}",

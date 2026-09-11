@@ -1,0 +1,166 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Nerds489
+"""Hash-chained, tamper-evident audit trail (rebuild plan §5.5).
+
+Every process-spawn decision — authorised, denied, executed, or spawn-error — is
+appended here from the one spawn seam (:mod:`netreaper.core.process`), so an
+action that reaches a subprocess without an audit record is structurally
+impossible. Each entry stores the SHA-256 of ``previous entry hash + this
+entry's canonical body``, forming a chain: altering, dropping or reordering any
+past entry breaks every hash after it, which :meth:`AuditTrail.verify` detects.
+
+The trail is authoritative in memory for the session and best-effort persisted
+as append-only JSONL; a persistence failure never blocks or crashes a spawn (it
+is logged and the entry is kept in memory).
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import threading
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+from netreaper.core.constants import NETREAPER_LOG_DIR
+from netreaper.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# The chain root: prev_hash of the first entry. 64 zeros = "no prior entry".
+GENESIS = "0" * 64
+
+
+def _canonical(body: dict[str, object]) -> str:
+    """Deterministic serialisation of an entry body (stable key order)."""
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)
+
+
+@dataclass(frozen=True)
+class AuditEntry:
+    """One immutable, hash-linked audit record."""
+
+    seq: int
+    at: str  # ISO-8601 UTC
+    outcome: str  # authorised | denied | executed | dry-run | spawn-error
+    operator: str
+    consent: str  # the engagement's consent hash, or "-" when target-less
+    tool: str
+    argv: list[str]
+    targets: list[str]
+    tier: str
+    destructive: bool
+    host_action: bool
+    detail: str
+    prev_hash: str
+    entry_hash: str
+
+
+class AuditTrail:
+    """Append-only, hash-chained audit log. Thread-safe."""
+
+    def __init__(self, path: Path | None = None) -> None:
+        self._lock = threading.Lock()
+        self._entries: list[AuditEntry] = []
+        self._head = GENESIS
+        self._seq = 0
+        self._path = path  # None => in-memory only (tests)
+
+    def record(
+        self,
+        *,
+        outcome: str,
+        operator: str = "-",
+        consent: str = "-",
+        tool: str = "",
+        argv: list[str] | tuple[str, ...] = (),
+        targets: list[str] | tuple[str, ...] = (),
+        tier: str = "PASSIVE",
+        destructive: bool = False,
+        host_action: bool = False,
+        detail: str = "",
+    ) -> AuditEntry:
+        """Append one entry, hash-linked to the current chain head."""
+        with self._lock:
+            seq = self._seq
+            prev = self._head
+            at = datetime.now(UTC).isoformat()
+            argv_l = list(argv)
+            targets_l = list(targets)
+            body = {
+                "seq": seq,
+                "at": at,
+                "outcome": outcome,
+                "operator": operator,
+                "consent": consent,
+                "tool": tool,
+                "argv": argv_l,
+                "targets": targets_l,
+                "tier": tier,
+                "destructive": bool(destructive),
+                "host_action": bool(host_action),
+                "detail": detail,
+                "prev_hash": prev,
+            }
+            entry_hash = hashlib.sha256(
+                (prev + _canonical(body)).encode()
+            ).hexdigest()
+            entry = AuditEntry(
+                seq=seq, at=at, outcome=outcome, operator=operator,
+                consent=consent, tool=tool, argv=argv_l, targets=targets_l,
+                tier=tier, destructive=bool(destructive),
+                host_action=bool(host_action), detail=detail,
+                prev_hash=prev, entry_hash=entry_hash,
+            )
+            self._entries.append(entry)
+            self._head = entry_hash
+            self._seq += 1
+            self._persist(entry)
+            return entry
+
+    def verify(self) -> bool:
+        """Recompute the whole chain. True iff nothing was altered/dropped/reordered."""
+        prev = GENESIS
+        for i, e in enumerate(self._entries):
+            body = {k: v for k, v in asdict(e).items() if k != "entry_hash"}
+            if body["seq"] != i or body["prev_hash"] != prev:
+                return False
+            if (
+                hashlib.sha256((prev + _canonical(body)).encode()).hexdigest()
+                != e.entry_hash
+            ):
+                return False
+            prev = e.entry_hash
+        return True
+
+    def _persist(self, entry: AuditEntry) -> None:
+        if self._path is None:
+            return
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with self._path.open("a", encoding="utf-8") as fh:
+                fh.write(_canonical(asdict(entry)) + "\n")
+        except OSError as e:
+            logger.warning("audit persist failed (%s); entry kept in memory", e)
+
+    @property
+    def entries(self) -> list[AuditEntry]:
+        return list(self._entries)
+
+    @property
+    def head(self) -> str:
+        return self._head
+
+
+_TRAIL: AuditTrail | None = None
+
+
+def get_audit_trail() -> AuditTrail:
+    """Return the process-wide audit trail (JSONL-persisted under the log dir)."""
+    global _TRAIL
+    if _TRAIL is None:
+        _TRAIL = AuditTrail(path=NETREAPER_LOG_DIR / "audit.jsonl")
+    return _TRAIL
+
+
+__all__ = ["GENESIS", "AuditEntry", "AuditTrail", "get_audit_trail"]
