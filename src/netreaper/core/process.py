@@ -10,6 +10,7 @@ process without first passing authorisation, so the gate cannot be bypassed.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import shutil
 import signal
@@ -86,14 +87,19 @@ class ProcessRunner:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
             self._terminate(proc)
+            with contextlib.suppress(BaseException):
+                await proc.wait()  # reap it so the transport closes cleanly
             raise SubprocessError(
                 f"{cmd[0]} timed out after {timeout}s", returncode=None
             ) from None
         except BaseException:
             # Cancelled (an outer task aborting this run) or any other failure:
             # kill the spawned process group so a denied or aborted attack tool
-            # cannot keep running detached (it has its own session).
+            # cannot keep running detached (it has its own session), then reap it
+            # so asyncio closes the subprocess transport instead of the finaliser.
             self._terminate(proc)
+            with contextlib.suppress(BaseException):
+                await proc.wait()
             raise
         duration = time.monotonic() - started
         result = ProcessResult(
