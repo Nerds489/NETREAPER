@@ -45,7 +45,7 @@ dev = [
     "hypothesis>=6.92.0",
     "textual-dev>=1.2.0",
     "ruff>=0.1.9",
-    "mypy>=1.8.0",
+    "mypy>=2.3,<3",  # pinned <3: the safety-spine mypy gate is blocking (CI), keep it stable
     "pre-commit>=3.6.0",
 ]
 distributed = [
