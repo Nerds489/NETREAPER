@@ -48,6 +48,18 @@ def _mitm_engagement(*cidrs: str) -> None:
     )
 
 
+def _mitm_essid(*essids: str) -> None:
+    """Authorise the given ESSIDs up to MITM tier for the current test."""
+    get_scope_gate().set_engagement(
+        Engagement(
+            operator="t",
+            authorization_ref="T",
+            scope=Scope(essids=set(essids)),
+            max_tier=Tier.MITM,
+        )
+    )
+
+
 _HEADER = (
     "BSSID, First time seen, Last time seen, channel, Speed, Privacy, Cipher, "
     "Authentication, Power, # beacons, # IV, LAN IP, ID-length, ESSID, Key\n"
@@ -270,6 +282,7 @@ def test_reveal_by_probe_missing_wordlist(tmp_path):
 
 
 def test_downgrade_start_writes_config_and_starts_hostapd(tmp_path):
+    _mitm_essid("CorpWiFi")
     host = FakeHostRunner()
     dg = WPA3Downgrade(runner=host)
     state = asyncio.run(dg.start("wlan0", "CorpWiFi", 6, config_dir=tmp_path))
@@ -278,7 +291,21 @@ def test_downgrade_start_writes_config_and_starts_hostapd(tmp_path):
     assert any(c[:3] == ["hostapd", "-B", "-P"] for c, _ in host.calls)
 
 
+def test_downgrade_denied_without_engagement(tmp_path):
+    # C-1 gate: the downgrade twin clones an SSID; with no engagement it is
+    # denied before any config is written or host command issued.
+    get_scope_gate().clear_engagement()
+    host = FakeHostRunner()
+    dg = WPA3Downgrade(runner=host)
+    with pytest.raises(TargetValidationError):
+        asyncio.run(dg.start("wlan0", "CorpWiFi", 6, config_dir=tmp_path))
+    assert host.calls == []
+    assert not (tmp_path / "downgrade-hostapd.conf").exists()
+    assert dg.state is None
+
+
 def test_downgrade_double_start_blocked(tmp_path):
+    _mitm_essid("CorpWiFi")
     dg = WPA3Downgrade(runner=FakeHostRunner())
     asyncio.run(dg.start("wlan0", "CorpWiFi", 6, config_dir=tmp_path))
     with pytest.raises(RuntimeError):
@@ -286,6 +313,7 @@ def test_downgrade_double_start_blocked(tmp_path):
 
 
 def test_downgrade_stop_kills_by_pidfile_no_killall(tmp_path):
+    _mitm_essid("CorpWiFi")
     host = FakeHostRunner()
     dg = WPA3Downgrade(runner=host)
     asyncio.run(dg.start("wlan0", "CorpWiFi", 6, config_dir=tmp_path))
@@ -480,6 +508,7 @@ def test_check_isolation_tool_missing_returns_false():
 
 
 def test_downgrade_stop_without_pidfile_no_kill(tmp_path):
+    _mitm_essid("CorpWiFi")
     host = FakeHostRunner()
     dg = WPA3Downgrade(runner=host)
     asyncio.run(dg.start("wlan0", "CorpWiFi", 6, config_dir=tmp_path))
