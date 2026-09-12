@@ -16,6 +16,7 @@ import shutil
 import signal
 import time
 from dataclasses import dataclass
+from typing import Any
 
 from netreaper.core.audit import get_audit_trail
 from netreaper.core.exceptions import SubprocessError, ToolNotFoundError
@@ -148,7 +149,7 @@ class ProcessRunner:
             )
         return result
 
-    def run_sync(self, cmd: list[str], **kwargs) -> ProcessResult:
+    def run_sync(self, cmd: list[str], **kwargs: Any) -> ProcessResult:
         """Blocking convenience wrapper around :meth:`run`."""
         return asyncio.run(self.run(cmd, **kwargs))
 

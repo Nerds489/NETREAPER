@@ -22,8 +22,20 @@ jobs:
         run: python -m pytest tests/ -q
       - name: Lint (advisory during the migration)
         run: ruff check src tests || true
-      - name: Type-check the safety spine (advisory during the migration)
-        run: mypy src/netreaper/core/process.py src/netreaper/safety/scope.py src/netreaper/safety/protected.py src/netreaper/core/exceptions.py || true
+      - name: Type-check the safety spine (blocking)
+        # These files are the security chokepoint (scope gate, spawn seam,
+        # engagement/consent, audit chain). They are type-clean and must stay so;
+        # the rest of the tree remains advisory during the migration (see below).
+        run: >-
+          mypy
+          src/netreaper/core/process.py
+          src/netreaper/safety/scope.py
+          src/netreaper/safety/protected.py
+          src/netreaper/core/exceptions.py
+          src/netreaper/core/audit.py
+          src/netreaper/safety/validators.py
+      - name: Type-check the rest of the tree (advisory during the migration)
+        run: mypy src tests || true
       - name: SBOM (syft, CycloneDX)
         uses: anchore/sbom-action@v0
         with:
