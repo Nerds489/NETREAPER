@@ -7,6 +7,7 @@ import asyncio
 import pytest
 
 from netreaper.core.exceptions import TargetValidationError
+from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
 from netreaper.wireless.enterprise import (
     EnterpriseAttack,
     EnterpriseCredential,
@@ -15,6 +16,17 @@ from netreaper.wireless.enterprise import (
     hostapd_wpe_config,
     parse_enterprise_credentials,
 )
+
+
+@pytest.fixture(autouse=True)
+def _arm_gate():
+    """A rogue enterprise AP is a gated MITM action; authorise its SSID per test."""
+    get_scope_gate().set_engagement(
+        Engagement(operator="t", authorization_ref="T",
+                   scope=Scope(essids={"CorpNet"}), max_tier=Tier.MITM)
+    )
+    yield
+    get_scope_gate().clear_engagement()
 
 LOG = """\
 wlan0: STA aa:bb:cc:dd:ee:ff IEEE 802.1X: authentication
@@ -133,3 +145,27 @@ def test_invalid_interface_rejected(tmp_path):
     ent = EnterpriseAttack(runner=FakeRunner())
     with pytest.raises(TargetValidationError):
         asyncio.run(ent.start("wlan0; rm -rf /", "CorpNet", 6, config_dir=tmp_path))
+
+
+def test_start_denied_without_engagement(tmp_path):
+    # C-1 gate: standing up a rogue enterprise AP with no engagement is denied,
+    # before any cert/config write or host mutation.
+    get_scope_gate().clear_engagement()
+    fake = FakeRunner()
+    ent = EnterpriseAttack(runner=fake)
+    with pytest.raises(TargetValidationError):
+        asyncio.run(ent.start("wlan0", "CorpNet", 6, config_dir=tmp_path))
+    assert fake.cmds == []
+    assert ent.state is None
+
+
+def test_start_denied_when_essid_out_of_scope(tmp_path):
+    get_scope_gate().set_engagement(
+        Engagement(operator="t", authorization_ref="T",
+                   scope=Scope(essids={"OtherNet"}), max_tier=Tier.MITM)
+    )
+    fake = FakeRunner()
+    ent = EnterpriseAttack(runner=fake)
+    with pytest.raises(TargetValidationError):
+        asyncio.run(ent.start("wlan0", "CorpNet", 6, config_dir=tmp_path))
+    assert fake.cmds == []

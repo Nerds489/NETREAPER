@@ -36,6 +36,20 @@ def main(
     ),
 ):
     """NETREAPER - Offensive Security Framework."""
+    # Arm the scope gate from the persisted engagement (if any) so a consent
+    # established with `netreaper engage start` applies to this process too. A
+    # malformed file must never crash a command, so failures are swallowed here
+    # (load_engagement already logs) and the gate simply stays deny-by-default.
+    try:
+        from netreaper.safety.engagement_store import load_engagement
+        from netreaper.safety.scope import get_scope_gate
+
+        eng = load_engagement()
+        if eng is not None:
+            get_scope_gate().set_engagement(eng)
+    except Exception:  # never let engagement hydration break the CLI
+        logger.debug("engagement hydration skipped", exc_info=True)
+
     # If no subcommand given, launch TUI by default
     if ctx.invoked_subcommand is None:
         _launch_tui()
@@ -196,6 +210,125 @@ def config(
     else:
         console.print("[red]usage:[/red] config show | get <key> | set <key> <value>")
         raise typer.Exit(1)
+
+
+# Engagement (authorisation) commands
+engage_app = typer.Typer(help="Manage the authorisation engagement (scope gate)")
+app.add_typer(engage_app, name="engage")
+
+_TIER_NAMES = "passive | active_scan | single_target | broadcast | mitm"
+
+
+def _scope_summary(scope) -> str:
+    return (
+        f"cidrs={scope.cidrs or '-'} bssids={sorted(scope.bssids) or '-'} "
+        f"essids={sorted(scope.essids) or '-'} "
+        f"hostnames={sorted(scope.hostnames) or '-'}"
+    )
+
+
+@engage_app.command("start")
+def engage_start(
+    operator: str = typer.Option(..., "--operator", "-o", help="Who is authorised"),
+    ref: str = typer.Option(
+        ..., "--ref", "-r", help="Authorisation reference (engagement/RoE id)"
+    ),
+    cidr: list[str] = typer.Option(None, "--cidr", help="In-scope IP/CIDR (repeat)"),
+    bssid: list[str] = typer.Option(None, "--bssid", help="In-scope BSSID (repeat)"),
+    essid: list[str] = typer.Option(
+        None, "--essid", help="In-scope ESSID/SSID (repeatable)"
+    ),
+    hostname: list[str] = typer.Option(
+        None, "--hostname", help="In-scope hostname (repeatable)"
+    ),
+    deny: list[str] = typer.Option(
+        None, "--deny", help="Explicitly out-of-scope IP/CIDR (repeatable)"
+    ),
+    hours: float = typer.Option(12.0, "--hours", help="Hours until expiry"),
+    max_tier: str = typer.Option(
+        "single_target", "--max-tier", help=f"Blast-radius ceiling: {_TIER_NAMES}"
+    ),
+):
+    """Authorise a scope so gated actions can run, and persist it for later runs."""
+    from datetime import UTC, datetime, timedelta
+
+    from netreaper.safety.engagement_store import save_engagement
+    from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
+
+    if not ref.strip():
+        console.print("[red]--ref must not be empty: give the authorisation ref[/red]")
+        raise typer.Exit(2)
+    try:
+        tier = Tier[max_tier.strip().upper()]
+    except KeyError:
+        console.print(
+            f"[red]invalid --max-tier {max_tier!r}; use one of: {_TIER_NAMES}[/red]"
+        )
+        raise typer.Exit(2) from None
+
+    scope = Scope(
+        cidrs=list(cidr or []),
+        hostnames=set(hostname or []),
+        bssids=set(bssid or []),
+        essids=set(essid or []),
+        deny=list(deny or []),
+    )
+    if not (scope.cidrs or scope.hostnames or scope.bssids or scope.essids):
+        console.print(
+            "[yellow]warning: empty scope authorises no target (deny-by-default). "
+            "Add --cidr/--bssid/--essid/--hostname.[/yellow]"
+        )
+    now = datetime.now(UTC)
+    eng = Engagement(
+        operator=operator,
+        authorization_ref=ref.strip(),
+        scope=scope,
+        started_at=now,
+        expires_at=now + timedelta(hours=hours),
+        max_tier=tier,
+    )
+    get_scope_gate().set_engagement(eng)
+    path = save_engagement(eng)
+    console.print(
+        f"[green]Engagement active[/green] (operator={operator}, ref={ref.strip()})"
+    )
+    console.print(f"  scope: {_scope_summary(scope)}")
+    console.print(f"  max tier: {tier.name}, expires: {eng.expires_at.isoformat()}")
+    console.print(f"  [dim]saved to {path}[/dim]")
+
+
+@engage_app.command("status")
+def engage_status():
+    """Show the current engagement, if any."""
+    from netreaper.safety.engagement_store import load_engagement
+
+    eng = load_engagement()
+    if eng is None:
+        console.print("[yellow]No active engagement.[/yellow] Run 'engage start'.")
+        raise typer.Exit(1)
+    active = eng.is_active()
+    console.print(f"[{'green' if active else 'red'}]Engagement "
+                  f"{'active' if active else 'EXPIRED'}[/]")
+    console.print(f"  operator: {eng.operator}, ref: {eng.authorization_ref}")
+    console.print(f"  scope: {_scope_summary(eng.scope)}")
+    console.print(
+        f"  max tier: {eng.max_tier.name}, expires: {eng.expires_at.isoformat()}"
+    )
+    console.print(f"  consent hash verifies: {eng.verify_consent()}")
+
+
+@engage_app.command("end")
+def engage_end():
+    """Clear the current engagement (revoke the authorisation)."""
+    from netreaper.safety.engagement_store import clear_engagement_file
+    from netreaper.safety.scope import get_scope_gate
+
+    get_scope_gate().clear_engagement()
+    removed = clear_engagement_file()
+    if removed:
+        console.print("[green]Engagement cleared.[/green]")
+    else:
+        console.print("[yellow]No engagement file to clear.[/yellow]")
 
 
 # WiFi commands

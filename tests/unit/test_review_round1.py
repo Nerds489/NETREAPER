@@ -10,12 +10,32 @@ from netreaper.automation.handlers.cleanup import AutoCleanupHandler
 from netreaper.core.exceptions import SubprocessError, TargetValidationError
 from netreaper.core.process import ProcessRunner
 from netreaper.core.validation import require_bssid, valid_bssid
-from netreaper.safety.scope import ScopeGate
+from netreaper.safety.scope import (
+    Engagement,
+    Scope,
+    ScopeGate,
+    Tier,
+    get_scope_gate,
+)
 from netreaper.tools.aireplay import AireplayTool
 from netreaper.tools.airodump import AirodumpTool
 from netreaper.wireless import eapol
 from netreaper.wireless.eviltwin import EvilTwin
 from netreaper.wireless.wps import candidate_pins
+
+
+@pytest.fixture(autouse=True)
+def _arm_global_gate():
+    """Arm the global scope gate for the evil-twin SSID ("N") these tests clone.
+    Only affects EvilTwin.start(), which uses the global gate; tests that build a
+    local ScopeGate() for a ProcessRunner are unaffected.
+    """
+    get_scope_gate().set_engagement(
+        Engagement(operator="t", authorization_ref="T",
+                   scope=Scope(essids={"N"}), max_tier=Tier.MITM)
+    )
+    yield
+    get_scope_gate().clear_engagement()
 
 # --- F1: ProcessRunner kills the child on cancellation, not only self-timeout ---
 

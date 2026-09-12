@@ -25,6 +25,7 @@ from netreaper.automation.handlers._host import run_host
 from netreaper.core.constants import NETREAPER_CONFIG_DIR
 from netreaper.core.logging import get_logger
 from netreaper.core.validation import require_interface
+from netreaper.safety.scope import Tier, get_scope_gate
 from netreaper.tools.aireplay import AireplayTool
 
 logger = get_logger(__name__)
@@ -132,6 +133,10 @@ class EvilTwin:
         if self.state is not None and self.state.dirty:
             raise RuntimeError("evil-twin has unreconciled state; call stop() first")
         iface = require_interface(interface)
+        # Cloning a named network is a scoped MITM action, not host maintenance:
+        # authorise the ESSID before any host mutation, so an out-of-scope or
+        # unauthorised twin is denied cleanly and nothing is written or brought up.
+        get_scope_gate().authorize([ssid], tier=Tier.MITM, destructive=True)
         cfg_dir = config_dir or NETREAPER_CONFIG_DIR
         cfg_dir.mkdir(parents=True, exist_ok=True)
         hostapd_path = cfg_dir / "hostapd.conf"

@@ -897,7 +897,7 @@ class ToolRegistry:
         if missing:
             raise ToolNotFoundError(
                 f"Required tools not found: {', '.join(missing)}",
-                details={"missing": missing},
+                context={"missing": missing},
             )
 
         return results

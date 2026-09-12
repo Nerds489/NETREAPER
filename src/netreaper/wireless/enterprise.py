@@ -21,6 +21,7 @@ from netreaper.automation.handlers._host import run_host
 from netreaper.core.constants import NETREAPER_CONFIG_DIR
 from netreaper.core.logging import get_logger
 from netreaper.core.validation import require_interface
+from netreaper.safety.scope import Tier, get_scope_gate
 from netreaper.wireless.eviltwin import channel_hw_mode
 
 logger = get_logger(__name__)
@@ -129,6 +130,9 @@ class EnterpriseAttack:
         if self.state is not None and self.state.dirty:
             raise RuntimeError("enterprise AP dirty; call stop() first")
         iface = require_interface(interface)
+        # A rogue enterprise AP clones a named network to harvest credentials:
+        # authorise the ESSID at MITM before any cert/config write or host change.
+        get_scope_gate().authorize([ssid], tier=Tier.MITM, destructive=True)
         cfg_dir = config_dir or (NETREAPER_CONFIG_DIR / "enterprise")
         cfg_dir.mkdir(parents=True, exist_ok=True)
         conf = cfg_dir / "hostapd-wpe.conf"
