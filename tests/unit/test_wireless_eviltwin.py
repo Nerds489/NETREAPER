@@ -7,6 +7,7 @@ import asyncio
 import pytest
 
 from netreaper.core.exceptions import TargetValidationError
+from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
 from netreaper.wireless.eviltwin import (
     EvilTwin,
     channel_hw_mode,
@@ -15,6 +16,18 @@ from netreaper.wireless.eviltwin import (
     hostapd_config,
     portal_iptables_rules,
 )
+
+
+@pytest.fixture(autouse=True)
+def _arm_gate():
+    """Evil-twin is a gated MITM action; authorise the cloned SSID for each test."""
+    get_scope_gate().set_engagement(
+        Engagement(operator="t", authorization_ref="T",
+                   scope=Scope(essids={"HomeNet"}), max_tier=Tier.MITM)
+    )
+    yield
+    get_scope_gate().clear_engagement()
+
 
 # --- pure builders ---
 
@@ -141,6 +154,32 @@ def test_add_delete_symmetry(tmp_path):
     asyncio.run(et.stop())
     dels = sum(1 for c in _iptables(fake.cmds) if "-D" in c)
     assert adds == dels == 5
+
+
+def test_start_denied_without_engagement(tmp_path):
+    # C-1 gate: cloning a network with no active engagement is denied, before
+    # any config is written or host mutation attempted.
+    get_scope_gate().clear_engagement()
+    fake = FakeRunner()
+    et = EvilTwin(runner=fake)
+    with pytest.raises(TargetValidationError):
+        asyncio.run(et.start("wlan0", "HomeNet", 6, config_dir=tmp_path))
+    assert fake.cmds == []  # nothing ran
+    assert not (tmp_path / "hostapd.conf").exists()
+    assert et.state is None
+
+
+def test_start_denied_when_essid_out_of_scope(tmp_path):
+    # Engagement active, but the cloned SSID is not in scope -> denied.
+    get_scope_gate().set_engagement(
+        Engagement(operator="t", authorization_ref="T",
+                   scope=Scope(essids={"OtherNet"}), max_tier=Tier.MITM)
+    )
+    fake = FakeRunner()
+    et = EvilTwin(runner=fake)
+    with pytest.raises(TargetValidationError):
+        asyncio.run(et.start("wlan0", "HomeNet", 6, config_dir=tmp_path))
+    assert fake.cmds == []
 
 
 def test_invalid_interface_rejected(tmp_path):

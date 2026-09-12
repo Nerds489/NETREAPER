@@ -81,7 +81,7 @@ class BaseToolWrapper(ToolPlugin):
         if self._tool_path is None:
             raise ToolNotFoundError(
                 f"Tool not found: {self.TOOL_BINARY}",
-                details={"tool": self.TOOL_BINARY},
+                context={"tool": self.TOOL_BINARY},
             )
         self._tool_path = Path(self._tool_path)
         self._initialized = True

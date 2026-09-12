@@ -345,6 +345,9 @@ class WPA3Downgrade:
         if self.state is not None and self.state.dirty:
             raise RuntimeError("downgrade AP has unreconciled state; call stop() first")
         iface = require_interface(interface)
+        # Cloning a named network to force clients onto weaker crypto is a scoped
+        # MITM action: authorise the ESSID before any config write or host change.
+        get_scope_gate().authorize([ssid], tier=Tier.MITM, destructive=True)
         cfg_dir = config_dir or NETREAPER_CONFIG_DIR
         cfg_dir.mkdir(parents=True, exist_ok=True)
         conf_path = cfg_dir / "downgrade-hostapd.conf"
