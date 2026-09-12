@@ -71,3 +71,29 @@ def test_start_rejects_bad_tier():
     ])
     assert r.exit_code == 2
     assert "invalid --max-tier" in r.stdout
+
+
+def test_status_reports_expired_and_exits_1():
+    from datetime import UTC, datetime, timedelta
+
+    from netreaper.safety.engagement_store import save_engagement
+    from netreaper.safety.scope import Engagement, Scope, Tier
+
+    now = datetime.now(UTC)
+    save_engagement(
+        Engagement(operator="me", authorization_ref="R", scope=Scope(essids={"X"}),
+                   started_at=now - timedelta(hours=3),
+                   expires_at=now - timedelta(hours=1), max_tier=Tier.MITM),
+        path=engagement_store.engagement_file_path(),
+    )
+    r = runner.invoke(app, ["engage", "status"])
+    assert r.exit_code == 1
+    assert "EXPIRED" in r.stdout
+
+
+def test_garbage_file_does_not_crash_and_gate_stays_closed():
+    engagement_store.engagement_file_path().write_text("] not json {")
+    # A command still runs; hydration swallows the bad file and the gate is closed.
+    r = runner.invoke(app, ["engage", "status"])
+    assert r.exit_code == 1  # status: no usable engagement
+    assert get_scope_gate().engagement is None

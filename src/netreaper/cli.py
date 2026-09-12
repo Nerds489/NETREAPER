@@ -255,8 +255,14 @@ def engage_start(
     from netreaper.safety.engagement_store import save_engagement
     from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
 
+    if not operator.strip():
+        console.print("[red]--operator must not be empty[/red]")
+        raise typer.Exit(2)
     if not ref.strip():
         console.print("[red]--ref must not be empty: give the authorisation ref[/red]")
+        raise typer.Exit(2)
+    if hours <= 0:
+        console.print("[red]--hours must be positive (an engagement must last)[/red]")
         raise typer.Exit(2)
     try:
         tier = Tier[max_tier.strip().upper()]
@@ -314,7 +320,9 @@ def engage_status():
     console.print(
         f"  max tier: {eng.max_tier.name}, expires: {eng.expires_at.isoformat()}"
     )
-    console.print(f"  consent hash verifies: {eng.verify_consent()}")
+    if not active:
+        # An expired record is present but authorises nothing: signal non-zero.
+        raise typer.Exit(1)
 
 
 @engage_app.command("end")

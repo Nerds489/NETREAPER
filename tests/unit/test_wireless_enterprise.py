@@ -157,6 +157,9 @@ def test_start_denied_without_engagement(tmp_path):
         asyncio.run(ent.start("wlan0", "CorpNet", 6, config_dir=tmp_path))
     assert fake.cmds == []
     assert ent.state is None
+    # gate precedes every write, so no config/eap_user file is created
+    assert not (tmp_path / "hostapd-wpe.conf").exists()
+    assert not (tmp_path / "hostapd-wpe.eap_user").exists()
 
 
 def test_start_denied_when_essid_out_of_scope(tmp_path):
@@ -169,3 +172,4 @@ def test_start_denied_when_essid_out_of_scope(tmp_path):
     with pytest.raises(TargetValidationError):
         asyncio.run(ent.start("wlan0", "CorpNet", 6, config_dir=tmp_path))
     assert fake.cmds == []
+    assert not (tmp_path / "hostapd-wpe.conf").exists()

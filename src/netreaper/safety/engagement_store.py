@@ -51,7 +51,11 @@ def _to_dict(eng: Engagement) -> dict[str, object]:
 
 
 def _from_dict(data: dict[str, Any]) -> Engagement:
-    s = data["scope"]
+    if not isinstance(data, dict):
+        raise ValueError("engagement record is not an object")
+    s = data.get("scope")
+    if not isinstance(s, dict):
+        raise ValueError("engagement scope is missing or not an object")
     scope = Scope(
         cidrs=list(s.get("cidrs", [])),
         hostnames=set(s.get("hostnames", [])),
@@ -91,7 +95,7 @@ def load_engagement(*, path: Path | None = None) -> Engagement | None:
     try:
         data = json.loads(p.read_text())
         eng = _from_dict(data)
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         logger.warning("ignoring unreadable engagement file %s: %s", p, exc)
         return None
     stored = data.get("consent_hash", "")
