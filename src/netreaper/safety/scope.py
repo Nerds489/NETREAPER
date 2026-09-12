@@ -87,10 +87,22 @@ class Scope:
                 continue
         for a in self.cidrs:
             try:
-                if net.subnet_of(ipaddress.ip_network(a, strict=False)):
-                    return True
-            except (ValueError, TypeError):
+                allowed = ipaddress.ip_network(a, strict=False)
+            except ValueError:
                 continue
+            # subnet_of requires the same address family; comparing IPv4 with
+            # IPv6 raises TypeError, so narrow to the concrete type first (this
+            # also makes the family check explicit rather than caught-and-skipped).
+            if isinstance(net, ipaddress.IPv4Network) and isinstance(
+                allowed, ipaddress.IPv4Network
+            ):
+                if net.subnet_of(allowed):
+                    return True
+            elif isinstance(net, ipaddress.IPv6Network) and isinstance(
+                allowed, ipaddress.IPv6Network
+            ):
+                if net.subnet_of(allowed):
+                    return True
         return False
 
     def allows_hostname(self, host: str) -> bool:
