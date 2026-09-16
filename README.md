@@ -314,6 +314,23 @@ NETREAPER/
 > - Educational environments
 > - CTF competitions
 
+## Licence
+
+**GPL-3.0-or-later.** Copyright (c) 2025-2026 Nerds489. Full text: [LICENSE](LICENSE).
+
+Every source file carries an `SPDX-License-Identifier: GPL-3.0-or-later` header, and
+`pyproject.toml` declares the same, so the licence travels with the code rather than living
+only in one file.
+
+**What it means in practice.** You may use, study, modify and redistribute NETREAPER,
+including commercially. If you distribute it or anything derived from it, you must pass on
+those same freedoms and make the corresponding source available under GPL-3.0-or-later.
+
+**The "authorized security testing only" notice above is a condition we ask of you, not a
+term of the licence.** GPL-3.0 does not restrict the field of use, and an open-source licence
+that tried to would stop being open source (clause 6 of the Open Source Definition). Using
+this tool without authorisation is your own legal exposure, not a licence breach.
+
 ---
 
 <div align="center">
