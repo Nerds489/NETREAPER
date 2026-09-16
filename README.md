@@ -12,9 +12,9 @@
 
 ```
 
-[![Version](https://img.shields.io/badge/version-10.2.3-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
+[![Version](https://img.shields.io/badge/version-11.0.0-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge)](LICENSE)
-[![Bash](https://img.shields.io/badge/bash-5.0+-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://kernel.org)
 
 **Offensive Security Framework** | **124 Tools** | **Zero Configuration** | **Just Works**
@@ -62,14 +62,25 @@ sudo bin/netreaper-install all
 ## Quick Start
 
 ```bash
-# Launch interactive menu
-sudo netreaper
+# 1. Authorise a scope. Every targeted action is denied without one.
+sudo netreaper engage start \
+    --operator "your name" --ref "ROE-001" \
+    --essid "YourNetwork" --bssid AA:BB:CC:DD:EE:FF \
+    --max-tier mitm --hours 8
 
-# Or use direct commands with auto-everything
-sudo netreaper wifi deauth     # auto: interface, monitor, AP, client
-sudo netreaper wifi capture    # auto: interface, monitor, AP selection
-sudo netreaper scan            # auto: discovers local network
+# 2. Work. NETREAPER resolves interface, monitor mode and target itself.
+sudo netreaper wifi scan         # scan for access points
+sudo netreaper wifi handshake    # capture a WPA handshake
+sudo netreaper wifi auto         # plan and run the whole chain to a password
+sudo netreaper scan              # discover the local network
+
+# 3. Revoke when you are done.
+sudo netreaper engage end
 ```
+
+> **The engagement is not optional.** NETREAPER is deny-by-default: with no active
+> engagement every targeted action fails closed, by design. `engage status` shows the
+> current scope, tier ceiling and expiry.
 
 ---
 
@@ -148,10 +159,12 @@ netreaper --target <IP> scan       # specify target
 
 ## Interactive Mode
 
-Launch without arguments for the full menu system:
+> **Not available in v11.0.0.** The Textual TUI is deferred to v1.1 (issue #31), so running
+> `netreaper` with no arguments does not currently start a menu. Use `netreaper --help`, or
+> the commands above. The layout below is the planned design, not shipped behaviour.
 
 ```bash
-sudo netreaper
+netreaper --help                 # v11: the CLI is the interface
 ```
 
 ```
@@ -278,7 +291,7 @@ netreaper config reset             # restore defaults
 | Requirement | Details |
 |:------------|:--------|
 | **OS** | Linux (kernel 4.x+) |
-| **Shell** | Bash 5.0+ |
+| **Python** | 3.11+ |
 | **Privileges** | Root for wireless/packet capture |
 | **WiFi Adapter** | Monitor mode + injection (for wireless attacks) |
 
@@ -318,7 +331,7 @@ NETREAPER/
 
 <div align="center">
 
-**NETREAPER** v10.2.3 • GPL-3.0-or-later
+**NETREAPER** v11.0.0 • GPL-3.0-or-later
 
 *The airwaves belong to those who listen*
 
