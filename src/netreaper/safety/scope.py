@@ -387,7 +387,14 @@ class ScopeGate:
     def _check_target(self, target: str, eng: Engagement, tier: Tier) -> None:
         t = target.strip()
 
-        # Broadcast / mass targets: only at BROADCAST+ tier, never implicitly.
+        # Broadcast / everything targets are refused at EVERY tier, including
+        # BROADCAST and MITM. This comment used to read "only at BROADCAST+
+        # tier, never implicitly", which described an allowance the code has
+        # never had and invited a future reader to "fix" the code to match it.
+        # Nothing in src passes these: a broadcast deauth is T3 but still names
+        # the AP's BSSID (tools/aireplay.py), and the MITM paths name an ESSID.
+        # A tier is a blast-radius ceiling, not a licence to stop naming a
+        # target, so if a mass action ever needs one it needs its own grammar.
         if t.upper() == _BROADCAST_MAC or t in {"0.0.0.0/0", "::/0"}:
             raise TargetValidationError(
                 f"refusing broadcast/everything target {t!r}: out of scope by default"
