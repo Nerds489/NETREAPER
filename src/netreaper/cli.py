@@ -1201,3 +1201,57 @@ def plugin_list():
 
 if __name__ == "__main__":
     app()
+
+# ─────────────────────────── resources (#33) ────────────────────────────────
+
+resources_app = typer.Typer(help="External sources this build incorporates")
+app.add_typer(resources_app, name="resources")
+
+
+@resources_app.command("list")
+def resources_list():
+    """Show every external source, how it is incorporated, and its licence."""
+    from netreaper.resources import SOURCES
+    from netreaper.resources.registry import validate_registry
+
+    table = Table(title="External sources")
+    for col in ("Source", "Kind", "How", "Domain", "Licence"):
+        table.add_column(col)
+    for s in SOURCES:
+        licence = s.licence if s.licence_verified else "[yellow]unverified[/yellow]"
+        name = f"[red]{s.name}[/red]" if s.is_safety_restricted else s.name
+        table.add_row(name, s.kind.value, s.incorporation.value, s.domain, licence)
+    console.print(table)
+
+    restricted = [s for s in SOURCES if s.is_safety_restricted]
+    if restricted:
+        console.print("\n[red]Safety-restricted (documented, not implemented):[/red]")
+        for s in restricted:
+            console.print(f"  [red]{s.name}[/red]: {s.safety_note}")
+
+    problems = validate_registry()
+    if problems:
+        console.print("\n[red]Registry violations:[/red]")
+        for pr in problems:
+            console.print(f"  {pr}")
+        raise typer.Exit(1)
+
+
+@resources_app.command("show")
+def resources_show(name: str = typer.Argument(..., help="Source name")):
+    """Detail for one source."""
+    from netreaper.resources import get_source
+
+    s = get_source(name)
+    if s is None:
+        console.print(f"[red]no such source: {name}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[cyan]{s.name}[/cyan]  {s.url}")
+    console.print(f"  kind: {s.kind.value}   incorporation: {s.incorporation.value}")
+    console.print(f"  domain: {s.domain}   licence: {s.licence}")
+    console.print(f"  {s.summary}")
+    if s.provides:
+        console.print(f"  provides: {', '.join(s.provides)}")
+    if s.safety_note:
+        console.print(f"\n[red]SAFETY: {s.safety_note}[/red]")
+
