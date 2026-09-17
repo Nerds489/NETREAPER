@@ -27,6 +27,10 @@ import threading
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from netreaper.core.constants import NETREAPER_LOG_DIR
+from netreaper.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 REDACTED = "***"
 
@@ -86,11 +90,6 @@ def redact_argv(argv: list[str] | tuple[str, ...]) -> list[str]:
         if arg in secret:
             redact_next = True
     return out
-
-from netreaper.core.constants import NETREAPER_LOG_DIR
-from netreaper.core.logging import get_logger
-
-logger = get_logger(__name__)
 
 # The chain root: prev_hash of the first entry. 64 zeros = "no prior entry".
 GENESIS = "0" * 64
