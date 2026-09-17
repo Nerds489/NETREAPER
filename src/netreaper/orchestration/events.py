@@ -63,6 +63,39 @@ class Events(str, Enum):
 EventHandler = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
 
 
+# Event payload keys whose value is a command line or raw tool output.
+_COMMAND_KEYS = ("command", "cmd", "argv", "full_command")
+_OUTPUT_KEYS = ("line", "output", "stdout", "stderr")
+
+
+def _redact_event(data: object) -> object:
+    """Mask credentials in an event payload before it is logged or stored.
+
+    Mirrors the audit sink: the emitter cannot be trusted to remember, so the
+    boundary does it. Uses the same per-tool rules, so nmap's port list survives
+    while hydra's password does not.
+    """
+    from netreaper.core.audit import redact_argv, redact_output, redact_text
+
+    if not isinstance(data, dict):
+        return data
+    tool = str(data.get("tool", ""))
+    out = dict(data)
+    for key in _COMMAND_KEYS:
+        val = out.get(key)
+        if isinstance(val, str):
+            out[key] = redact_text(val, tool)
+        elif isinstance(val, (list, tuple)):
+            out[key] = redact_argv([str(x) for x in val])
+    for key in _OUTPUT_KEYS:
+        val = out.get(key)
+        if isinstance(val, str):
+            # Output needs BOTH: a quoted command line (flag-shaped) and the
+            # tool's own "password: x" success line (not flag-shaped at all).
+            out[key] = redact_output(redact_text(val, tool))
+    return out
+
+
 class NetreaperEventBus(AsyncIOEventEmitter):
     """Event bus with typed events and logging."""
 
@@ -87,10 +120,17 @@ class NetreaperEventBus(AsyncIOEventEmitter):
 
         # Log event (skip internal pyee events)
         if not event_name.startswith("new_"):
-            logger.debug(f"Event: {event_name} - {data}")
+            # Redact at THIS sink too. TOOL_STARTED carries the raw joined argv
+            # and TOOL_OUTPUT carries raw stdout, which for hydra/reaver includes
+            # lines like "password: <cracked>". core/logging.py pins the file
+            # handler to DEBUG regardless of console level, so one --debug run
+            # wrote every credential to a plaintext file in the same directory
+            # as the audit trail, with none of the audit's protections.
+            safe = _redact_event(data)
+            logger.debug(f"Event: {event_name} - {safe}")
 
-            # Store in history
-            self._event_history.append((event_name, data))
+            # Store the redacted copy: the history feeds the UI and any dump of it.
+            self._event_history.append((event_name, safe))
             if len(self._event_history) > self._max_history:
                 self._event_history.pop(0)
 
