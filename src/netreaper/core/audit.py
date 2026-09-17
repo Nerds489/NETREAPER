@@ -28,6 +28,7 @@ import threading
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
 from netreaper.core.constants import NETREAPER_LOG_DIR
 from netreaper.core.logging import get_logger
 
@@ -61,6 +62,54 @@ SECRET_FLAGS_ANY_TOOL = frozenset(
 )
 
 
+def _tool_key(name: str) -> str:
+    """Normalise a tool name to the key used by SECRET_FLAGS_BY_TOOL.
+
+    redact_argv derived this from ``Path(argv[0]).name`` while redact_text used
+    the caller's string verbatim, so one entry could have argv masked and detail
+    in the clear. The lookup was also exact and case-sensitive, so ``Hydra``,
+    ``HYDRA`` and ``hydra.exe`` all failed open, silently, for the two tools the
+    design rationale names.
+    """
+    stem = Path(name.strip()).name.lower()
+    for suffix in (".exe", ".bin", ".py"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+    return stem
+
+
+def _secret_flags(tool: str) -> frozenset[str]:
+    return (
+        SECRET_FLAGS_BY_TOOL.get(_tool_key(tool), frozenset()) | SECRET_FLAGS_ANY_TOOL
+    )
+
+
+def redact_url_creds(value: str) -> str:
+    """Strip userinfo credentials from anything shaped like a URL or host.
+
+    A credential is not always behind a flag the allow-list knows: sqlmap takes
+    ``-u http://user:pass@host/``, ``--proxy``, ``--cookie`` and ``--data``, and
+    a target can be ``root:pw@10.0.0.5``. None of those are flag names, so they
+    reached the audit and the exported report verbatim.
+    """
+    if "@" not in value:
+        return value
+    scheme, sep, rest = value.partition("://")
+    if not sep:
+        scheme, rest = "", value
+    userinfo, at, host = rest.rpartition("@")
+    if not at or not userinfo or "/" in userinfo:
+        return value
+    user, colon, _pw = userinfo.partition(":")
+    masked = f"{user}:{REDACTED}" if colon else REDACTED
+    return f"{scheme}://{masked}@{host}" if sep else f"{masked}@{host}"
+
+
+def redact_targets(targets: list[str] | tuple[str, ...]) -> list[str]:
+    """targets was stored raw: ``targets=['root:hunter2@10.0.0.5']`` hit disk."""
+    return [redact_url_creds(str(x)) for x in targets]
+
+
 def redact_argv(argv: list[str] | tuple[str, ...]) -> list[str]:
     """Mask credential values in an argument vector, keeping its shape.
 
@@ -73,21 +122,24 @@ def redact_argv(argv: list[str] | tuple[str, ...]) -> list[str]:
     if not argv:
         return []
 
-    tool = Path(argv[0]).name
-    secret = SECRET_FLAGS_BY_TOOL.get(tool, frozenset()) | SECRET_FLAGS_ANY_TOOL
+    secret = _secret_flags(argv[0])
 
     out = [argv[0]]
     redact_next = False
     for arg in argv[1:]:
         if redact_next:
+            # Mask the consumed value, and if that value is ITSELF a secret flag
+            # then stay armed: ["-p", "-p", "hunter2"] is ambiguous, so fail
+            # closed and mask both rather than let the real secret walk out
+            # behind a flag-shaped decoy.
             out.append(REDACTED)
-            redact_next = False
+            redact_next = arg in secret
             continue
         head = arg.split("=", 1)[0]
         if "=" in arg and head in secret:
             out.append(f"{head}={REDACTED}")
             continue
-        out.append(arg)
+        out.append(redact_url_creds(arg))
         if arg in secret:
             redact_next = True
     return out
@@ -107,7 +159,7 @@ def redact_text(text: str, tool: str = "") -> str:
     """
     if not text:
         return text
-    secret = SECRET_FLAGS_BY_TOOL.get(tool, frozenset()) | SECRET_FLAGS_ANY_TOOL
+    secret = _secret_flags(tool)
     # Split on ANY whitespace but keep the separators, so a newline- or
     # tab-separated command (stderr folded into an exception message) cannot
     # slip a secret past a space-only tokeniser, and the text still reads as
@@ -120,13 +172,13 @@ def redact_text(text: str, tool: str = "") -> str:
             continue
         if redact_next:
             out.append(REDACTED)
-            redact_next = False
+            redact_next = tok in secret
             continue
         head = tok.split("=", 1)[0]
         if "=" in tok and head in secret:
             out.append(f"{head}={REDACTED}")
             continue
-        out.append(tok)
+        out.append(redact_url_creds(tok))
         if tok in secret:
             redact_next = True
     return "".join(out)
@@ -201,9 +253,23 @@ class AuditTrail:
             if tail is None:
                 return
             if torn:
+                # Resume in memory was not enough: the torn bytes stayed on disk
+                # and _persist appends without checking the file ends in a
+                # newline, so the next entry was glued onto the garbage. That
+                # line then stops being the LAST line, which is the only case
+                # verify_file forgives, so the trail broke permanently on the
+                # SECOND write after a crash. Truncate to the last intact entry
+                # so the file matches the head we just adopted.
+                intact = lines[: len(lines) - torn]
+                try:
+                    self._path.write_text(
+                        ("\n".join(intact) + "\n") if intact else "", encoding="utf-8"
+                    )
+                except OSError as e:
+                    logger.warning("could not truncate the torn audit tail: %s", e)
                 logger.warning(
-                    "audit trail had %d torn line(s) at the tail; resuming from the "
-                    "last intact entry", torn
+                    "audit trail had %d torn line(s) at the tail; truncated to the "
+                    "last intact entry and resumed from it", torn
                 )
             self._head = self._start_prev = str(tail["entry_hash"])
             self._seq = self._start_seq = int(tail["seq"]) + 1
@@ -236,10 +302,13 @@ class AuditTrail:
             # Redact at the sink, not at the call site: every caller of record()
             # gets it, so a future one cannot forget and write a password into a
             # permanent hash-chained log.
+            # One tool key for both redactors, so argv and detail can never
+            # disagree about which tool this is.
+            key = tool or (argv[0] if argv else "")
             argv_l = redact_argv(argv)
-            targets_l = list(targets)
+            targets_l = redact_targets(targets)
             # detail is free text from an exception and can quote the command
-            detail = redact_text(detail, tool)
+            detail = redact_text(detail, key)
             body = {
                 "seq": seq,
                 "at": at,

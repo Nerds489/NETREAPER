@@ -77,7 +77,12 @@ def manifest_step_runner(
         # The leaf still gates itself at the seam; this is the earlier, coarser
         # check that makes the manifest's own words binding.
         if m.destructive or m.requires_confirmation:
-            tier = Tier.SINGLE_TARGET if m.destructive else Tier.PASSIVE
+            # Deriving the tier from `destructive` capped this at T2 and, worse,
+            # checked a requires_confirmation-only manifest at PASSIVE, the one
+            # tier that never needs confirming, silently skipping the very check
+            # the manifest asked for. Use the manifest's own tier where it has
+            # one, and never fall below SINGLE_TARGET once it has declared a cost.
+            tier = getattr(m, "tier", None) or Tier.SINGLE_TARGET
             gate = get_scope_gate()
             if target:
                 gate.authorize(
