@@ -1,9 +1,17 @@
-"""MAC address spoofing utilities."""
-import asyncio
+"""MAC address spoofing utilities.
+
+Every spawn here goes through :func:`run_host`, the gated seam, with
+``host_action=True``: changing our own adapter's MAC has no network target, but
+it still needs the seam's exec-only argument arrays, timeout, process-group
+teardown and hash-chained audit line. These helpers sit on a live attack path
+(``wireless.advanced`` calls :func:`change_mac`), so a direct spawn here would
+leave a hole in the trail exactly where it matters most.
+"""
 import random
 import re
 from pathlib import Path
 
+from netreaper.automation.handlers._host import run_host
 from netreaper.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -47,19 +55,13 @@ async def get_current_mac(interface: str) -> str | None:
     except Exception as e:
         logger.debug(f"Failed to read MAC from sysfs for {interface}: {e}")
 
-    # Fallback to ip command
+    # Fallback to the ip command, through the gated seam.
     try:
-        process = await asyncio.create_subprocess_exec(
-            "ip",
-            "link",
-            "show",
-            interface,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await process.communicate()
+        result = await run_host(["ip", "link", "show", interface])
+        if result is None:
+            return None
 
-        match = re.search(r"link/ether\s+([0-9a-f:]{17})", stdout.decode())
+        match = re.search(r"link/ether\s+([0-9a-f:]{17})", result.stdout)
         if match:
             return match.group(1)
     except Exception as e:
@@ -71,16 +73,11 @@ async def get_current_mac(interface: str) -> str | None:
 async def get_permanent_mac(interface: str) -> str | None:
     """Get permanent (hardware) MAC address."""
     try:
-        process = await asyncio.create_subprocess_exec(
-            "ethtool",
-            "-P",
-            interface,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await process.communicate()
+        result = await run_host(["ethtool", "-P", interface])
+        if result is None:
+            return None
 
-        match = re.search(r"Permanent address:\s+([0-9a-f:]{17})", stdout.decode())
+        match = re.search(r"Permanent address:\s+([0-9a-f:]{17})", result.stdout)
         if match:
             return match.group(1)
     except Exception as e:
@@ -142,14 +139,18 @@ async def restore_mac(interface: str) -> str | None:
 
 
 async def _run_ip_command(args: list[str]) -> None:
-    """Run ip command."""
-    process = await asyncio.create_subprocess_exec(
-        "ip",
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await process.communicate()
+    """Run an ip command through the gated seam.
 
-    if process.returncode != 0:
-        raise RuntimeError(f"ip command failed: {stderr.decode()}")
+    ``destructive=True``: these calls take our own interface down and rewrite its
+    hardware address. A scope refusal propagates; a missing tool or a timeout
+    comes back as ``None`` and is raised here, because :func:`change_mac` relies
+    on a failure to trigger its restore path.
+    """
+    result = await run_host(["ip", *args], destructive=True)
+
+    if result is None:
+        raise RuntimeError(
+            f"ip {' '.join(args)} did not run (tool missing or timed out)"
+        )
+    if not result.ok:
+        raise RuntimeError(f"ip command failed: {result.stderr}")
