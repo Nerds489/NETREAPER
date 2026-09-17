@@ -299,6 +299,24 @@ class ScopeGate:
         for target in targets:
             self._check_target(target, eng, tier)
 
+    def require_confirmation(
+        self, *, tier: Tier = Tier.PASSIVE, requires_confirmation: bool = False
+    ) -> None:
+        """Check the confirmation rules alone, with no target scoping.
+
+        For callers that know an action's declared cost before they know its
+        target: a plan step threads its target through the chain state, so the
+        leaf gates the real target at the seam while this settles the
+        confirmation question earlier, where the declaration lives.
+        """
+        eng = self._engagement
+        if eng is None:
+            raise TargetValidationError(
+                "deny-by-default: no active engagement; a step declared "
+                "destructive or needing confirmation cannot run without one"
+            )
+        self._require_confirmation(eng, tier, requires_confirmation)
+
     def _require_confirmation(
         self, eng: Engagement, tier: Tier, requires_confirmation: bool
     ) -> None:
@@ -339,16 +357,22 @@ class ScopeGate:
                 )
             return
 
-        # T2, or anything the manifest flagged. A pre-confirmation always works;
-        # otherwise an operator has to be present to have answered for it.
+        # T2, or anything the manifest flagged. NOTHING here ever prompts, so a
+        # missing grant is a refusal whether or not a terminal is attached. The
+        # first cut of this let an attached TTY through on the reasoning that an
+        # operator "could have been asked", which auto-confirmed exactly what
+        # SEC-001 §3 says must never be auto-confirmed: nobody was asked anything.
         if confirmed:
             return
-        if is_non_interactive():
-            raise TargetValidationError(
-                f"tier {tier.name} requires confirmation and this run is "
-                f"non-interactive; add {tier.name} to the engagement's "
-                f"confirmed_tiers to authorise it up front"
-            )
+        why = (
+            " and this run is non-interactive, so nobody can be asked"
+            if is_non_interactive()
+            else " and nothing prompts mid-run"
+        )
+        raise TargetValidationError(
+            f"tier {tier.name} requires confirmation{why}; add {tier.name} to "
+            f"the engagement's confirmed_tiers to authorise it up front"
+        )
 
     def _check_target(self, target: str, eng: Engagement, tier: Tier) -> None:
         t = target.strip()

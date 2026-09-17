@@ -165,3 +165,97 @@ def test_the_report_still_redacts_credentials(tmp_path, monkeypatch):
     data = asyncio.run(ExportManager()._gather_session_data(1))
     assert "hunter2" not in json.dumps(data)
     assert "***" in json.dumps(data["audit_trail"])
+
+
+# ── revise pass: two defects found by attacking the first version ─────────────
+
+
+def test_detail_is_redacted_too_not_just_argv(tmp_path):
+    """The first version redacted argv and left `detail` open.
+
+    The seam records ``str(exc)[:200]`` as detail, and an exception can quote the
+    command that failed, so a password reached the log through the field that
+    was not covered.
+    """
+    t = _trail(tmp_path)
+    e = t.record(
+        outcome="denied", tool="hydra", argv=["hydra", "-p", "hunter2"],
+        detail="refused running: hydra -p hunter2 10.0.0.5",
+    )
+    assert "hunter2" not in e.detail
+    assert "***" in e.detail
+    assert "hunter2" not in (tmp_path / "audit.jsonl").read_text()
+
+
+def test_detail_redaction_is_per_tool_like_argv(tmp_path):
+    t = _trail(tmp_path)
+    e = t.record(
+        outcome="executed", tool="nmap", argv=["nmap"],
+        detail="nmap -p 80,443 finished rc=0",
+    )
+    assert e.detail == "nmap -p 80,443 finished rc=0", (
+        "-p is a port list for nmap in free text as much as in argv"
+    )
+
+
+def test_the_report_does_not_pretend_the_trail_is_session_scoped(tmp_path, monkeypatch):
+    """The trail is process-wide and carries no session id.
+
+    The first version dropped it into a per-session report with no caveat, so a
+    report for session 1 and one for session 2 were byte-identical. Filtering is
+    impossible without changing the hashed body, so the report says so instead.
+    """
+    trail = _trail(tmp_path)
+    trail.record(outcome="executed", tool="nmap", argv=["nmap"], targets=["10.0.0.5"])
+    monkeypatch.setattr(audit_mod, "_TRAIL", trail)
+
+    one = asyncio.run(ExportManager()._gather_session_data(1))
+    two = asyncio.run(ExportManager()._gather_session_data(2))
+
+    assert one["audit_trail"] == two["audit_trail"]          # still process-wide
+    assert "not filtered by session_id" in one["audit_chain"]["scope"]
+    assert one["audit_chain"]["session_id"] == 1
+    assert two["audit_chain"]["session_id"] == 2
+
+
+def test_redaction_survives_newlines_and_tabs(tmp_path):
+    """Revise pass: the first tokeniser split on spaces only.
+
+    stderr folded into an exception message is newline-separated, so a secret
+    walked straight past it.
+    """
+    t = _trail(tmp_path)
+    for text in ("hydra\n-p\nhunter2", "hydra\t-p\thunter2", "hydra -p hunter2"):
+        e = t.record(outcome="denied", tool="hydra", argv=["hydra"], detail=text)
+        assert "hunter2" not in e.detail, text
+        assert "***" in e.detail
+
+
+def test_a_torn_final_line_does_not_destroy_the_chain(tmp_path):
+    """Revise pass: a crash mid-append used to poison the trail permanently.
+
+    Resume gave up and restarted at GENESIS, so the file gained a second chain
+    and verify_file() returned False for ever after.
+    """
+    p = tmp_path / "audit.jsonl"
+    first = AuditTrail(path=p)
+    for i in range(3):
+        first.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
+    p.write_text(p.read_text()[:-25])          # killed mid-write
+
+    resumed = AuditTrail(path=p)
+    assert resumed.verify_file()
+    resumed.record(outcome="executed", tool="after-crash", argv=["x"])
+    assert resumed.verify_file(), "the chain must continue across the crash"
+
+
+def test_a_damaged_middle_is_still_rejected(tmp_path):
+    """Tolerating a torn tail must not tolerate tampering."""
+    p = tmp_path / "audit.jsonl"
+    t = AuditTrail(path=p)
+    for i in range(3):
+        t.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
+    lines = p.read_text().splitlines()
+    lines[1] = "{broken"
+    p.write_text("\n".join(lines) + "\n")
+    assert not AuditTrail(path=p, resume=False).verify_file()
