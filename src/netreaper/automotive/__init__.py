@@ -11,6 +11,14 @@ a test rather than trusted to a comment.
 from __future__ import annotations
 
 from netreaper.automotive.decode import CanIdDatabase, decode_capture
-from netreaper.automotive.manifests import AUTOMOTIVE_MANIFESTS
+from netreaper.automotive.manifests import (
+    AUTOMOTIVE_MANIFESTS,
+    build_automotive_registry,
+)
 
-__all__ = ["AUTOMOTIVE_MANIFESTS", "CanIdDatabase", "decode_capture"]
+__all__ = [
+    "AUTOMOTIVE_MANIFESTS",
+    "CanIdDatabase",
+    "build_automotive_registry",
+    "decode_capture",
+]

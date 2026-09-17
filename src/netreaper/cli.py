@@ -1255,3 +1255,182 @@ def resources_show(name: str = typer.Argument(..., help="Source name")):
     if s.safety_note:
         console.print(f"\n[red]SAFETY: {s.safety_note}[/red]")
 
+# ───────── wiring the orphaned tool wrappers (#33 reachability) ─────────────
+#
+# GobusterTool, HydraTool, MasscanTool, SubfinderTool and WhatWebTool were
+# complete, tested-in-isolation wrappers that NOTHING referenced: no CLI
+# command, no chain, no manifest. Roughly 1,500 lines a user could not invoke.
+# Each goes through BaseToolWrapper.execute(), so naming the target here is what
+# makes the scope gate check it.
+
+web_app = typer.Typer(help="Web application recon")
+app.add_typer(web_app, name="web")
+
+creds_app = typer.Typer(help="Credential attacks")
+app.add_typer(creds_app, name="creds")
+
+osint_app = typer.Typer(help="Open-source intelligence")
+app.add_typer(osint_app, name="osint")
+
+can_app = typer.Typer(help="Automotive CAN bus (read-only)")
+app.add_typer(can_app, name="can")
+
+
+def _run_tool(coro_factory, label: str):
+    """Shared runner: gate denials and missing tools are reported, not tracebacks."""
+    from netreaper.core.exceptions import (
+        SubprocessError,
+        TargetValidationError,
+        ToolNotFoundError,
+    )
+
+    async def _go():
+        try:
+            return await coro_factory()
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        except ToolNotFoundError as exc:
+            console.print(f"[yellow]{label} is not installed: {exc}[/yellow]")
+            raise typer.Exit(3) from exc
+        except SubprocessError as exc:
+            console.print(f"[red]{label} failed: {exc}[/red]")
+            raise typer.Exit(1) from exc
+
+    return asyncio.run(_go())
+
+
+@web_app.command("dirs")
+def web_dirs(
+    target: str = typer.Argument(..., help="Target URL"),
+    wordlist: str = typer.Option(None, "--wordlist", "-w", help="Wordlist path"),
+):
+    """Directory and file discovery (gobuster)."""
+    from netreaper.tools.gobuster import GobusterTool
+
+    opts = {"wordlist": wordlist} if wordlist else {}
+    res = _run_tool(lambda: GobusterTool().execute(target, opts), "gobuster")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@web_app.command("fingerprint")
+def web_fingerprint(target: str = typer.Argument(..., help="Target URL")):
+    """Identify web technologies (whatweb)."""
+    from netreaper.tools.whatweb import WhatWebTool
+
+    res = _run_tool(lambda: WhatWebTool().execute(target, {}), "whatweb")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@app.command("portscan")
+def portscan(
+    target: str = typer.Argument(..., help="Target IP or CIDR"),
+    ports: str = typer.Option("1-65535", "--ports", "-p", help="Port range"),
+):
+    """Fast port sweep (masscan)."""
+    from netreaper.tools.masscan import MasscanTool
+
+    res = _run_tool(lambda: MasscanTool().execute(target, {"ports": ports}), "masscan")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@osint_app.command("subdomains")
+def osint_subdomains(domain: str = typer.Argument(..., help="Root domain")):
+    """Passive subdomain enumeration (subfinder)."""
+    from netreaper.tools.subfinder import SubfinderTool
+
+    res = _run_tool(lambda: SubfinderTool().execute(domain, {}), "subfinder")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@creds_app.command("attack")
+def creds_attack(
+    target: str = typer.Argument(
+        ..., help="Target host (scheme and port are stripped)"
+    ),
+    service: str = typer.Option(
+        "ssh", "--service", "-s", help="ssh/ftp/smb/rdp/mysql"
+    ),
+    username: str = typer.Option(None, "--username", "-l"),
+    user_list: str = typer.Option(None, "--user-list", "-L"),
+    pass_list: str = typer.Option(None, "--pass-list", "-P"),
+):
+    """Credential attack (hydra).
+
+    Tiered SINGLE_TARGET, so it needs a confirmation grant on the engagement.
+    """
+    from netreaper.tools.hydra import HydraTool
+
+    opts = {
+        k: v
+        for k, v in {
+            "service": service,
+            "username": username,
+            "user_list": user_list,
+            "pass_list": pass_list,
+        }.items()
+        if v
+    }
+    res = _run_tool(lambda: HydraTool().execute(target, opts), "hydra")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@can_app.command("interfaces")
+def can_interfaces():
+    """List SocketCAN interfaces."""
+    from netreaper.tools.canutils import CanUtilsTool
+
+    found = _run_tool(lambda: CanUtilsTool().list_interfaces(), "ip")
+    if not found:
+        console.print(
+            "[yellow]No CAN interfaces. `ip link add dev vcan0 type vcan` "
+            "gives you a virtual one for testing.[/yellow]"
+        )
+        return
+    for i in found:
+        console.print(f"  {i}")
+
+
+@can_app.command("dump")
+def can_dump(
+    interface: str = typer.Argument(
+        ..., help="SocketCAN interface, e.g. can0 or vcan0"
+    ),
+    seconds: int = typer.Option(10, "--seconds", "-s", help="Capture window"),
+    frames: int = typer.Option(
+        0, "--frames", "-n", help="Stop after N frames (0 = time-bound)"
+    ),
+    database: str = typer.Option(
+        None, "--db", "-d", help="CAN id database file or directory"
+    ),
+):
+    """Read and decode a CAN bus. Read-only: this cannot transmit."""
+    from pathlib import Path as _P
+
+    from netreaper.automotive import CanIdDatabase, decode_capture
+    from netreaper.tools.canutils import CanUtilsTool
+
+    cap = _run_tool(
+        lambda: CanUtilsTool().dump(interface, seconds=seconds, max_frames=frames),
+        "candump",
+    )
+    console.print(
+        f"[green]{cap.frame_count} frames, "
+        f"{len(cap.unique_ids)} unique ids[/green]"
+    )
+    if not database:
+        for fid in sorted(cap.unique_ids):
+            console.print(f"  {fid}")
+        return
+    db = CanIdDatabase.load(_P(database))
+    table = Table(title=f"Decoded ({len(db)} known ids)")
+    for col in ("CAN ID", "Signal", "Data"):
+        table.add_column(col)
+    seen = set()
+    for f in decode_capture(cap, db):
+        if f.can_id in seen:
+            continue
+        seen.add(f.can_id)
+        table.add_row(f.can_id, f.name, f.data)
+    console.print(table)
+

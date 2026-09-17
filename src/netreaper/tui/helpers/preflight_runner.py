@@ -3,10 +3,39 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine, TYPE_CHECKING
 
-from netreaper.automation.preflight import PreflightChecker
-from netreaper.automation.engine import PreflightResult
-from netreaper.automation.tool_requirements import get_tool_requirements, get_fallback_tool
+from netreaper.automation.tool_requirements import get_fallback_tool, get_tool_requirements
 from netreaper.core.logging import get_logger
+
+# netreaper.automation.preflight and netreaper.automation.engine do not exist.
+# They are dangling references left by the v11 Bash-to-Python rebuild: this
+# module imported both at module level, so importing it raised
+# ModuleNotFoundError, and that took three TUI screens (credentials, exploit,
+# traffic) down with it. Four modules in the package could not be imported at
+# all, which means they could not be tested, linted for real, or reached.
+#
+# Resolving them properly means designing PreflightChecker and PreflightResult,
+# and the right time for that is the TUI rebuild (#31) when there is a UI to
+# design them against. Inventing an interface now would be guessing.
+#
+# So the import moves to the point of use. The module imports cleanly, the
+# screens import cleanly, and constructing a PreflightRunner raises a specific
+# error naming exactly what is missing. An honest failure at the call site beats
+# an import-time crash four modules wide.
+_PREFLIGHT_MISSING = (
+    "netreaper.automation.preflight.PreflightChecker and "
+    "netreaper.automation.engine.PreflightResult do not exist. They are "
+    "dangling references from the v11 rebuild and are part of the TUI rebuild "
+    "(#31). PreflightRunner cannot be used until they are written."
+)
+
+
+def _load_preflight_checker():
+    """Import PreflightChecker on demand, or say precisely why it cannot."""
+    try:
+        from netreaper.automation.preflight import PreflightChecker
+    except ModuleNotFoundError as e:
+        raise NotImplementedError(_PREFLIGHT_MISSING) from e
+    return PreflightChecker
 
 if TYPE_CHECKING:
     from textual.app import App
@@ -42,7 +71,7 @@ class PreflightRunner:
     def __init__(self, app: "App", session: Any = None) -> None:
         self.app = app
         self.session = session
-        self.checker = PreflightChecker(session)
+        self.checker = _load_preflight_checker()(session)
 
     async def run_with_preflight(
         self,

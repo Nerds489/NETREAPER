@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
+from netreaper.safety.scope import Tier
 from netreaper.tools.base import BaseToolWrapper
 
 logger = get_logger(__name__)
@@ -25,6 +26,25 @@ class HydraConfig(BaseModel):
 
 class HydraTool(BaseToolWrapper):
     """Hydra network authentication cracker wrapper."""
+    # A sustained credential brute-force against one host is not a port scan.
+    # The base default (ACTIVE_SCAN) understated it, so it needed no
+    # confirmation grant; SINGLE_TARGET does, which is the honest cost.
+    DEFAULT_TIER: ClassVar[Tier] = Tier.SINGLE_TARGET
+
+    def target_identifiers(self, target: str, options: dict) -> list[str]:
+        """Scope-check the HOST, not the service URI.
+
+        hydra targets arrive as "ssh://10.0.0.5", "10.0.0.5:22" or a bare host,
+        and the gate's grammar accepts none of the first two, so a perfectly
+        in-scope host was refused for its scheme.
+        """
+        if not target:
+            return []
+        host = target.split("://", 1)[-1].split("/", 1)[0]
+        if host.count(":") == 1 and not host.startswith("["):
+            host = host.rsplit(":", 1)[0]
+        return [host or target]
+
 
     TOOL_BINARY: ClassVar[str] = "hydra"
 
