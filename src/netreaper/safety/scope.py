@@ -134,6 +134,17 @@ class Engagement:
     consent_hash: str = field(init=False, default="")
 
     def __post_init__(self) -> None:
+        # An engagement whose authorisation_ref is blank records no authorisation.
+        # The consent hash would still verify, and every audit line written under
+        # it would claim an authority that points nowhere, so refuse it at
+        # construction rather than let it reach the trail.
+        if not self.authorization_ref or not self.authorization_ref.strip():
+            raise ValueError(
+                "authorization_ref must not be empty: an engagement has to name "
+                "the authorisation it runs under"
+            )
+        if not self.operator or not self.operator.strip():
+            raise ValueError("operator must not be empty")
         self.consent_hash = self._consent_digest()
 
     def _consent_digest(self) -> str:

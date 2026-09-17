@@ -27,11 +27,69 @@ import threading
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-
 from netreaper.core.constants import NETREAPER_LOG_DIR
 from netreaper.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+REDACTED = "***"
+
+# Flags whose VALUE is a credential, per tool. Deliberately per-tool: "-p" is a
+# password to hydra and a recovered WPS PIN to reaver, but a port list to nmap
+# and masscan, a parameter name to sqlmap, a plugin list to whatweb and a
+# pattern to gobuster. A blanket "-p is secret" rule would blank the port list
+# on every scan in the trail, which is exactly the detail an audit is for.
+#
+# Not redacted on purpose: hydra's -P/-C (paths to credential files) and -l/-L
+# (usernames). The path and the account tried are the audit's substance; the
+# secret is the password itself.
+SECRET_FLAGS_BY_TOOL: dict[str, frozenset[str]] = {
+    "hydra": frozenset({"-p"}),
+    "reaver": frozenset({"-p"}),
+}
+
+# Secret whatever the tool. Unambiguous long options, so a tool added later is
+# covered without anyone remembering to extend the map above.
+SECRET_FLAGS_ANY_TOOL = frozenset(
+    {
+        "--password", "--passwd", "--passphrase", "--pass",
+        "--psk", "--pre-shared-key", "--wpa-passphrase",
+        "--secret", "--token", "--auth-token",
+        "--api-key", "--apikey", "--pin",
+    }
+)
+
+
+def redact_argv(argv: list[str] | tuple[str, ...]) -> list[str]:
+    """Mask credential values in an argument vector, keeping its shape.
+
+    The flag stays, only its value becomes ``***``, so the trail still shows
+    that a password was supplied and which option carried it. Handles both
+    ``--password secret`` and ``--password=secret``. A trailing secret flag with
+    no value is left with nothing to redact.
+    """
+    argv = list(argv)
+    if not argv:
+        return []
+
+    tool = Path(argv[0]).name
+    secret = SECRET_FLAGS_BY_TOOL.get(tool, frozenset()) | SECRET_FLAGS_ANY_TOOL
+
+    out = [argv[0]]
+    redact_next = False
+    for arg in argv[1:]:
+        if redact_next:
+            out.append(REDACTED)
+            redact_next = False
+            continue
+        head = arg.split("=", 1)[0]
+        if "=" in arg and head in secret:
+            out.append(f"{head}={REDACTED}")
+            continue
+        out.append(arg)
+        if arg in secret:
+            redact_next = True
+    return out
 
 # The chain root: prev_hash of the first entry. 64 zeros = "no prior entry".
 GENESIS = "0" * 64
@@ -91,7 +149,10 @@ class AuditTrail:
             seq = self._seq
             prev = self._head
             at = datetime.now(UTC).isoformat()
-            argv_l = list(argv)
+            # Redact at the sink, not at the call site: every caller of record()
+            # gets it, so a future one cannot forget and write a password into a
+            # permanent hash-chained log.
+            argv_l = redact_argv(argv)
             targets_l = list(targets)
             body = {
                 "seq": seq,
