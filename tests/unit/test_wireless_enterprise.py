@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 from netreaper.core.exceptions import TargetValidationError
-from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
+from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate, DANGEROUS_OPS_PHRASE
 from netreaper.wireless.enterprise import (
     EnterpriseAttack,
     EnterpriseCredential,
@@ -23,7 +23,8 @@ def _arm_gate():
     """A rogue enterprise AP is a gated MITM action; authorise its SSID per test."""
     get_scope_gate().set_engagement(
         Engagement(operator="t", authorization_ref="T",
-                   scope=Scope(essids={"CorpNet"}), max_tier=Tier.MITM)
+                   scope=Scope(essids={"CorpNet"}), max_tier=Tier.MITM,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE)
     )
     yield
     get_scope_gate().clear_engagement()
@@ -165,7 +166,8 @@ def test_start_denied_without_engagement(tmp_path):
 def test_start_denied_when_essid_out_of_scope(tmp_path):
     get_scope_gate().set_engagement(
         Engagement(operator="t", authorization_ref="T",
-                   scope=Scope(essids={"OtherNet"}), max_tier=Tier.MITM)
+                   scope=Scope(essids={"OtherNet"}), max_tier=Tier.MITM,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE)
     )
     fake = FakeRunner()
     ent = EnterpriseAttack(runner=fake)

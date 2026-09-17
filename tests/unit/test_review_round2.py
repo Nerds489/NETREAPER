@@ -23,7 +23,8 @@ def _clean_gate():
 def test_empty_target_destructive_denied():
     get_scope_gate().set_engagement(
         Engagement(operator="t", authorization_ref="T",
-                   scope=Scope(bssids={"11:11:11:11:11:11"}), max_tier=Tier.BROADCAST)
+                   scope=Scope(bssids={"11:11:11:11:11:11"}), max_tier=Tier.BROADCAST,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST}))
     )
     with pytest.raises(TargetValidationError):
         get_scope_gate().authorize([], tier=Tier.SINGLE_TARGET, destructive=True)

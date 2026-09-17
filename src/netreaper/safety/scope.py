@@ -12,6 +12,8 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import os
+import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum
@@ -33,6 +35,31 @@ class Tier(IntEnum):
 
 
 _BROADCAST_MAC = "FF:FF:FF:FF:FF:FF"
+
+# The exact phrase a T4 (MITM) authorisation must carry. Deliberately awkward to
+# enter, because evil-twin and interception work should cost a sentence rather
+# than a tick-box. (Do not start this comment with "# type:" — mypy reads that
+# as a type comment and fails the whole file with "Invalid syntax".)
+DANGEROUS_OPS_PHRASE = "I ACCEPT RESPONSIBILITY FOR INTERCEPTION"
+
+# Tiers that can never be confirmed at a prompt mid-run. They have to be granted
+# in the authorisation record before the run starts.
+PRECONFIRM_REQUIRED_FROM = Tier.BROADCAST
+
+
+def is_non_interactive() -> bool:
+    """True when nothing can be confirmed at a prompt.
+
+    CI, a cron job, a piped shell, or an explicit override. The T3 refusal is
+    structural rather than a prompt nobody is there to answer.
+    """
+    override = os.environ.get("NETREAPER_NON_INTERACTIVE", "").strip().lower()
+    if override in {"1", "true", "yes"}:
+        return True
+    try:
+        return not sys.stdin.isatty()
+    except (AttributeError, ValueError, OSError):
+        return True
 
 # Ranges that must never be targeted, checked by overlap so a wider CIDR target
 # (e.g. 169.254.0.0/24 over the cloud metadata address) cannot slip past.
@@ -128,6 +155,15 @@ class Engagement:
     # Highest blast-radius tier this engagement authorises. Broadcast/MITM must be
     # granted explicitly; the default ceiling stops at single-target.
     max_tier: Tier = Tier.SINGLE_TARGET
+    # Tiers this authorisation PRE-CONFIRMS. A confirmation cannot be obtained at
+    # a prompt in a non-interactive run, so anything needing one has to be granted
+    # here, in the authorisation record, before the run starts. The grant is
+    # inside the consent digest, so it cannot be bolted on afterwards without
+    # breaking verify_consent().
+    confirmed_tiers: frozenset[Tier] = field(default_factory=frozenset)
+    # T4 (MITM) additionally requires this exact phrase, typed deliberately. A
+    # ceiling and a tick-box are not enough for evil-twin/interception work.
+    dangerous_ops_phrase: str = ""
     # A tamper-evident fingerprint of the authorising fields (plan §5.2),
     # computed at construction. verify_consent() detects a later mutation of the
     # scope/operator/expiry so an altered authorisation record is caught.
@@ -161,6 +197,8 @@ class Engagement:
             "started_at": self.started_at.isoformat(),
             "expires_at": self.expires_at.isoformat(),
             "max_tier": int(self.max_tier),
+            "confirmed_tiers": sorted(int(x) for x in self.confirmed_tiers),
+            "dangerous_ops_phrase": self.dangerous_ops_phrase,
         }
         return hashlib.sha256(
             json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
@@ -248,6 +286,11 @@ class ScopeGate:
                 f"({eng.max_tier.name}); raise the engagement's max_tier to authorise it"
             )
 
+        # SEC-001 §3. A ceiling says what this engagement MAY reach; it is not a
+        # confirmation that this particular action was intended. requires_confirmation
+        # was accepted and then ignored everywhere, so it enforced nothing at all.
+        self._require_confirmation(eng, tier, requires_confirmation)
+
         if not targets:
             raise TargetValidationError(
                 "deny-by-default: this action has no identifiable in-scope target"
@@ -255,6 +298,57 @@ class ScopeGate:
 
         for target in targets:
             self._check_target(target, eng, tier)
+
+    def _require_confirmation(
+        self, eng: Engagement, tier: Tier, requires_confirmation: bool
+    ) -> None:
+        """Enforce the per-tier confirmation rules. Raises, or returns silently.
+
+        T4 (MITM) needs the tier pre-confirmed AND the exact dangerous-ops phrase.
+        T3 (BROADCAST) and above need the tier pre-confirmed; there is no prompt
+        fallback, because a mass/broadcast action must never be answerable by
+        whatever happens to be on stdin. T2 and anything flagged
+        ``requires_confirmation`` need the tier pre-confirmed too, except that an
+        interactive operator is allowed to have answered for it.
+        """
+        needs = requires_confirmation or tier >= Tier.SINGLE_TARGET
+        if not needs:
+            return
+
+        confirmed = tier in eng.confirmed_tiers
+
+        if tier >= Tier.MITM:
+            if not confirmed:
+                raise TargetValidationError(
+                    f"tier {tier.name} requires explicit pre-confirmation; add "
+                    f"{tier.name} to the engagement's confirmed_tiers"
+                )
+            if eng.dangerous_ops_phrase != DANGEROUS_OPS_PHRASE:
+                raise TargetValidationError(
+                    f"tier {tier.name} requires the dangerous-ops phrase on the "
+                    f"engagement; it is missing or does not match"
+                )
+            return
+
+        if tier >= PRECONFIRM_REQUIRED_FROM:
+            if not confirmed:
+                raise TargetValidationError(
+                    f"tier {tier.name} is a mass/broadcast action and cannot be "
+                    f"confirmed mid-run; it must be granted in the authorisation "
+                    f"record (confirmed_tiers) before the engagement starts"
+                )
+            return
+
+        # T2, or anything the manifest flagged. A pre-confirmation always works;
+        # otherwise an operator has to be present to have answered for it.
+        if confirmed:
+            return
+        if is_non_interactive():
+            raise TargetValidationError(
+                f"tier {tier.name} requires confirmation and this run is "
+                f"non-interactive; add {tier.name} to the engagement's "
+                f"confirmed_tiers to authorise it up front"
+            )
 
     def _check_target(self, target: str, eng: Engagement, tier: Tier) -> None:
         t = target.strip()
