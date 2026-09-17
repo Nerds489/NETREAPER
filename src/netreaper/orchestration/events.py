@@ -67,6 +67,17 @@ EventHandler = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
 _COMMAND_KEYS = ("command", "cmd", "argv", "full_command")
 _OUTPUT_KEYS = ("line", "output", "stdout", "stderr")
 
+# Structured credential fields. These are the most direct leak of the three and
+# the first pass missed them entirely: CREDENTIAL_CRACKED is emitted with
+# {"password": <the recovered secret>} from wireless/wep.py, tools/hydra.py,
+# tools/john.py and tools/reaver.py, and went to the DEBUG log verbatim. The
+# value is masked outright, because unlike a command line there is nothing here
+# worth keeping: the event still says a credential was recovered, and for what.
+_CREDENTIAL_KEYS = (
+    "password", "passwd", "pass", "passphrase", "psk", "pmk",
+    "key", "pin", "secret", "token", "credential", "plaintext",
+)
+
 
 def _redact_event(data: object) -> object:
     """Mask credentials in an event payload before it is logged or stored.
@@ -75,7 +86,12 @@ def _redact_event(data: object) -> object:
     boundary does it. Uses the same per-tool rules, so nmap's port list survives
     while hydra's password does not.
     """
-    from netreaper.core.audit import redact_argv, redact_output, redact_text
+    from netreaper.core.audit import (
+        REDACTED,
+        redact_argv,
+        redact_output,
+        redact_text,
+    )
 
     if not isinstance(data, dict):
         return data
@@ -87,6 +103,9 @@ def _redact_event(data: object) -> object:
             out[key] = redact_text(val, tool)
         elif isinstance(val, (list, tuple)):
             out[key] = redact_argv([str(x) for x in val])
+    for key in _CREDENTIAL_KEYS:
+        if isinstance(out.get(key), str) and out[key]:
+            out[key] = REDACTED
     for key in _OUTPUT_KEYS:
         val = out.get(key)
         if isinstance(val, str):

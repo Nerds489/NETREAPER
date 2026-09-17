@@ -164,9 +164,24 @@ class AireplayTool(BaseToolWrapper):
         if source:
             cmd.extend(["-h", source])
 
-        # Ignore negative ACK
-        if options.get("ignore_negative", self.aireplay_config.ignore_negative_ack):
-            cmd.append("-x")
+        # Ignore a negative-one channel report from the driver.
+        #
+        # Two bugs here. The flag emitted was a bare "-x", but in aireplay-ng
+        # "-x" is packets-per-second and takes a NUMBER; the correct option is
+        # "--ignore-negative-one". Because the real "-x <pps>" is appended
+        # further down, the bare one landed immediately before the interface,
+        # so aireplay-ng would have parsed "wlan0mon" as a rate and been left
+        # with no interface at all.
+        #
+        # And the option key never matched the config field: this read
+        # "ignore_negative" while the config declares "ignore_negative_ack",
+        # so passing ignore_negative_ack=True did nothing. Both keys are
+        # accepted now, with the config field as the default.
+        if options.get(
+            "ignore_negative_ack",
+            options.get("ignore_negative", self.aireplay_config.ignore_negative_ack),
+        ):
+            cmd.append("--ignore-negative-one")
 
         # Read from file
         read_file = options.get("read_file")

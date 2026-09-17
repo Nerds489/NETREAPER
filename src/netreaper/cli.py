@@ -658,11 +658,29 @@ def wifi_wep(
     output: str = typer.Option(None, "--output", "-o", help="Capture file prefix"),
     seconds: int = typer.Option(30, "--seconds", "-s", help="IV window per round"),
     rounds: int = typer.Option(5, "--rounds", "-r", help="Capture+crack rounds"),
+    injection: str = typer.Option(
+        "arpreplay",
+        "--injection",
+        "-i",
+        help=(
+            "IV-generation strategy: arpreplay, chopchop, fragment, "
+            "caffe_latte, cfrag, interactive"
+        ),
+    ),
 ):
-    """Recover a WEP key (IV collection, injection, aircrack-ng)."""
+    """Recover a WEP key (IV collection, injection, aircrack-ng).
+
+    --injection picks the strategy. The aireplay-ng primitives for chopchop,
+    fragmentation, caffe-latte, cfrag and interactive replay all existed but
+    were unreachable: wep.py only ever drove ARP replay and there was no flag
+    to choose anything else (#47).
+    """
 
     async def run_wep():
-        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.core.exceptions import (
+            ConfigurationError,
+            TargetValidationError,
+        )
         from netreaper.wireless.wep import crack_wep
 
         console.print(f"[cyan]WEP attack on {bssid} (channel {channel})...[/cyan]")
@@ -676,7 +694,11 @@ def wifi_wep(
                 output=output,
                 capture_seconds=seconds,
                 max_rounds=rounds,
+                injection=injection,
             )
+        except ConfigurationError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(2) from exc
         except TargetValidationError as exc:
             console.print(f"[red]Denied by scope gate: {exc}[/red]")
             raise typer.Exit(2) from exc

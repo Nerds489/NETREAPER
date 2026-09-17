@@ -146,3 +146,58 @@ def test_a_properly_referenced_engagement_still_builds():
     eng = Engagement(operator="tester", authorization_ref="SOW-1", scope=_scope())
     assert eng.consent_hash
     assert eng.verify_consent()
+
+
+# ── the event bus: a hole found in my own event-bus fix, an hour later ───────
+
+
+def test_credential_cracked_events_do_not_log_the_secret():
+    """CREDENTIAL_CRACKED carries {"password": <the recovered secret>}.
+
+    The first event-bus pass redacted the command line and the tool's output
+    but not the structured credential field, which is the most direct leak of
+    the three. Four call sites emit it: wireless/wep.py, tools/hydra.py,
+    tools/john.py and tools/reaver.py.
+    """
+    import json
+
+    from netreaper.orchestration.events import _redact_event
+
+    payloads = [
+        {"type": "wep", "bssid": "AA:BB:CC:DD:EE:FF", "password": "abcd1234"},
+        {"type": "ssh", "target": "10.0.0.5", "username": "root", "password": "hunter2"},
+        {"type": "wps", "bssid": "AA:BB", "pin": "12345670", "psk": "CorrectHorse"},
+        {"type": "hash", "password": "letmein"},
+    ]
+    secrets = ("abcd1234", "hunter2", "12345670", "CorrectHorse", "letmein")
+    for p in payloads:
+        blob = json.dumps(_redact_event(p))
+        for s in secrets:
+            assert s not in blob, f"{s} leaked from {p}"
+
+
+def test_the_event_still_says_what_was_found_and_where():
+    """Masking must not destroy the finding: only the secret goes."""
+    from netreaper.orchestration.events import _redact_event
+
+    out = _redact_event(
+        {"type": "ssh", "target": "10.0.0.5", "username": "root", "password": "x"}
+    )
+    assert out["target"] == "10.0.0.5"
+    assert out["username"] == "root"
+    assert out["type"] == "ssh"
+    assert out["password"] == REDACTED
+
+
+def test_tool_output_lines_are_masked_by_shape_not_by_flag():
+    """A tool REPORTS credentials in a shape no flag matches."""
+    from netreaper.core.audit import redact_output
+
+    assert "hunter2" not in redact_output(
+        "[22][ssh] host: 10.0.0.5   login: root   password: hunter2"
+    )
+    assert "***" in redact_output("KEY FOUND! [ 61:62:63:64:65 ]")
+    assert "12345670" not in redact_output("WPS PIN: '12345670'")
+    # and a harmless line is untouched
+    line = "Scanning 10.0.0.5 ports 80,443 - 2 open"
+    assert redact_output(line) == line
