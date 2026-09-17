@@ -14,7 +14,35 @@ from netreaper.cli import app
 from netreaper.wireless.autochain import AutoContext, build_wifi_registry
 from netreaper.wireless.crack import CrackResult
 from netreaper.wireless.handshake import HandshakeResult
+from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
 from netreaper.wireless.scan import AccessPoint, ScanResult
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _authorised_engagement():
+    """These chains run a manifest declared destructive + requires_confirmation.
+
+    Before #46 item 2 the manifest's own words drove nothing but a "[confirm]"
+    badge, so this whole suite ran a wifi deauth with NO engagement at all and
+    passed. The step runner now enforces what the manifest declares, so the
+    tests have to carry an authorisation, like the real thing does.
+    """
+    gate = get_scope_gate()
+    gate.set_engagement(
+        Engagement(
+            operator="test",
+            authorization_ref="SOW-TEST",
+            scope=Scope(cidrs=["10.0.0.0/8"], bssids={"AA:BB:CC:DD:EE:FF"},
+                        essids={"Net"}, hostnames={"wlan0", "wlan0mon"}),
+            max_tier=Tier.BROADCAST,
+            confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST}),
+        )
+    )
+    yield
+    gate.clear_engagement()
+
 
 
 def _fakes(calls: list[str], *, captured: bool = True, cracked: bool = True):

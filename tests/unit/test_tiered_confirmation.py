@@ -95,10 +95,20 @@ def test_broadcast_allowed_when_granted_up_front():
 # ── T2 and the flag that used to do nothing ───────────────────────────────────
 
 
-def test_single_target_refused_in_a_non_interactive_run_without_a_grant():
-    g = _gate(max_tier=Tier.SINGLE_TARGET)
-    with pytest.raises(TargetValidationError, match="non-interactive"):
-        g.authorize([TARGET], tier=Tier.SINGLE_TARGET)
+def test_single_target_refused_without_a_grant_whatever_is_on_stdin(monkeypatch):
+    """Revise pass: the first cut let an attached TTY through.
+
+    It reasoned that an operator "could have been asked". Nobody was asked
+    anything, which is precisely the auto-confirm SEC-001 §3 forbids. Nothing in
+    the gate prompts, so a missing grant is a refusal either way.
+    """
+    for interactive in (True, False):
+        monkeypatch.setattr(
+            "netreaper.safety.scope.is_non_interactive", lambda: not interactive
+        )
+        g = _gate(max_tier=Tier.SINGLE_TARGET)
+        with pytest.raises(TargetValidationError, match="requires confirmation"):
+            g.authorize([TARGET], tier=Tier.SINGLE_TARGET)
 
 
 def test_single_target_allowed_with_a_grant():
