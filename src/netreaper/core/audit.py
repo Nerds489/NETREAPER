@@ -123,12 +123,43 @@ class AuditEntry:
 class AuditTrail:
     """Append-only, hash-chained audit log. Thread-safe."""
 
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, *, resume: bool = True) -> None:
         self._lock = threading.Lock()
         self._entries: list[AuditEntry] = []
         self._head = GENESIS
         self._seq = 0
         self._path = path  # None => in-memory only (tests)
+        # Where this process's in-memory segment joins the on-disk chain. Without
+        # these, every process restarted at GENESIS/seq 0 and appended to the same
+        # file, so the file held several chains stacked end to end and nothing
+        # noticed. verify() checks the in-memory segment against these, and
+        # verify_file() walks the whole file as one chain.
+        self._start_seq = 0
+        self._start_prev = GENESIS
+        if path is not None and resume:
+            self._resume_from_file()
+
+    def _resume_from_file(self) -> None:
+        """Adopt the on-disk chain head so this process continues it."""
+        try:
+            if not self._path or not self._path.exists():
+                return
+            last = None
+            with self._path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        last = line
+            if last is None:
+                return
+            tail = json.loads(last)
+            self._head = self._start_prev = str(tail["entry_hash"])
+            self._seq = self._start_seq = int(tail["seq"]) + 1
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            # A damaged tail must not stop the session from auditing. Start a new
+            # segment from GENESIS and say so: verify_file() will report the break.
+            logger.warning(
+                "audit trail could not be resumed (%s); starting a new segment", e
+            )
 
     def record(
         self,
@@ -191,10 +222,10 @@ class AuditTrail:
     def verify(self) -> bool:
         """Recompute the whole chain. True iff nothing was altered/dropped/reordered."""
         with self._lock:
-            prev = GENESIS
+            prev = self._start_prev
             for i, e in enumerate(self._entries):
                 body = {k: v for k, v in asdict(e).items() if k != "entry_hash"}
-                if body["seq"] != i or body["prev_hash"] != prev:
+                if body["seq"] != self._start_seq + i or body["prev_hash"] != prev:
                     return False
                 if (
                     hashlib.sha256((prev + _canonical(body)).encode()).hexdigest()
@@ -203,6 +234,40 @@ class AuditTrail:
                     return False
                 prev = e.entry_hash
             return True
+
+    def verify_file(self) -> bool:
+        """Recompute the whole ON-DISK chain, across every session that wrote it.
+
+        :meth:`verify` only covers what this process holds in memory, which was
+        the gap: a trail could verify happily while the file it had been
+        appending to was truncated, reordered or stitched from several chains.
+        True iff the file is one unbroken chain from GENESIS, or there is no
+        file yet.
+        """
+        if self._path is None or not self._path.exists():
+            return True
+        prev = GENESIS
+        expected_seq = 0
+        try:
+            with self._path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if not line.strip():
+                        continue
+                    body = json.loads(line)
+                    entry_hash = body.pop("entry_hash", None)
+                    if body.get("seq") != expected_seq or body.get("prev_hash") != prev:
+                        return False
+                    if (
+                        hashlib.sha256((prev + _canonical(body)).encode()).hexdigest()
+                        != entry_hash
+                    ):
+                        return False
+                    prev = str(entry_hash)
+                    expected_seq += 1
+        except (OSError, ValueError) as e:
+            logger.warning("audit trail file could not be verified: %s", e)
+            return False
+        return True
 
     def _persist(self, entry: AuditEntry) -> None:
         if self._path is None:

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from netreaper.core.constants import (
     NETREAPER_EXPORTS_DIR,
@@ -11,6 +11,7 @@ from netreaper.core.constants import (
     NETREAPER_SCANS_DIR,
     NETREAPER_WIFI_CAPTURES_DIR,
 )
+from netreaper.core.audit import get_audit_trail
 from netreaper.core.logging import get_logger
 
 from .exporters import (
@@ -237,6 +238,20 @@ class ExportManager:
             except Exception as e:
                 logger.debug(f"Failed to fetch audit log for session {session_id}: {e}")
 
+        # The hash-chained trail is the real record of what was spawned, denied,
+        # dry-run or errored against which targets, and until now it reached no
+        # deliverable at all: the report rendered only the DB audit_log, whose
+        # INSERT omits session_id while this query filters on it, so that section
+        # was always empty. Render the chain itself and state whether it verifies.
+        trail = get_audit_trail()
+        audit_trail = [asdict(e) for e in trail.entries]
+        chain = {
+            "entries": len(audit_trail),
+            "head": trail.head,
+            "memory_verified": trail.verify(),
+            "file_verified": trail.verify_file(),
+        }
+
         if self.loot:
             try:
                 loot = await self.loot.list_by_session(session_id) or []
@@ -249,6 +264,8 @@ class ExportManager:
             "loot": loot,
             "tool_executions": tool_runs,
             "audit_log": audit,
+            "audit_trail": audit_trail,
+            "audit_chain": chain,
             "generated_at": datetime.now().isoformat(),
         }
 
