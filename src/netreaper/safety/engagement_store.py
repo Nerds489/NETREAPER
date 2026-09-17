@@ -32,6 +32,11 @@ def engagement_file_path() -> Path:
     return NETREAPER_CONFIG_DIR / "engagement.json"
 
 
+# Bumped whenever the consent digest body changes. Without it, an engagement
+# written by an older build is indistinguishable from a tampered one.
+SCHEMA_VERSION = 2
+
+
 def _to_dict(eng: Engagement) -> dict[str, object]:
     return {
         "operator": eng.operator,
@@ -45,6 +50,7 @@ def _to_dict(eng: Engagement) -> dict[str, object]:
         },
         "started_at": eng.started_at.isoformat(),
         "expires_at": eng.expires_at.isoformat(),
+        "schema": SCHEMA_VERSION,
         "max_tier": int(eng.max_tier),
         # The confirmation grants are part of the authorisation, so they have to
         # survive the round trip; without them a reloaded engagement would lose
@@ -109,6 +115,19 @@ def load_engagement(*, path: Path | None = None) -> Engagement | None:
         return None
     stored = data.get("consent_hash", "")
     if eng.consent_hash != stored:
+        # A schema bump changes the digest body, so a perfectly valid engagement
+        # written by an older build fails this check too. Reporting that as
+        # tampering sent the operator hunting an attacker instead of re-running
+        # `engage start`.
+        found = int(data.get("schema", 0))
+        if found != SCHEMA_VERSION:
+            logger.warning(
+                "engagement file %s was written by an older build "
+                "(schema %d, this build expects %d), so its consent hash cannot "
+                "match; re-run `netreaper engage start` to re-authorise",
+                p, found, SCHEMA_VERSION,
+            )
+            return None
         logger.warning(
             "engagement file %s failed its consent-hash check; ignoring it", p
         )

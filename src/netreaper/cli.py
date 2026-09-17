@@ -216,6 +216,10 @@ def config(
 engage_app = typer.Typer(help="Manage the authorisation engagement (scope gate)")
 app.add_typer(engage_app, name="engage")
 
+# An engagement is time-boxed on purpose; without a cap a grant replays
+# for however long the issuer picked.
+_MAX_ENGAGEMENT_HOURS = 48.0
+
 _TIER_NAMES = "passive | active_scan | single_target | broadcast | mitm"
 
 
@@ -286,6 +290,13 @@ def engage_start(
         raise typer.Exit(2)
     if hours <= 0:
         console.print("[red]--hours must be positive (an engagement must last)[/red]")
+        raise typer.Exit(2)
+    if hours > _MAX_ENGAGEMENT_HOURS:
+        console.print(
+            f"[red]--hours {hours:g} exceeds the {_MAX_ENGAGEMENT_HOURS:g}h cap; an "
+            f"authorisation that outlives its engagement is not an authorisation. "
+            f"Re-run engage start when it expires.[/red]"
+        )
         raise typer.Exit(2)
     try:
         tier = Tier[max_tier.strip().upper()]
