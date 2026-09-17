@@ -20,7 +20,7 @@ from enum import IntEnum
 
 from netreaper.core.exceptions import TargetValidationError
 from netreaper.core.logging import get_logger
-from netreaper.safety.protected import is_protected_ip
+from netreaper.safety.protected import is_protected_ip, is_protected_network
 
 logger = get_logger(__name__)
 
@@ -407,7 +407,13 @@ class ScopeGate:
                 except ValueError as e:
                     raise TargetValidationError(f"{t!r} is not a valid network/CIDR: {e}") from e
                 # Refuse ANY CIDR (any width) that overlaps a protected range.
-                if any(net.overlaps(pn) for pn in _PROTECTED_NETS if pn.version == net.version):
+                # Both checks, because they encode the same policy in two
+                # forms: the explicit range list, and the address properties
+                # that the bare-IP branch already used. Without the second,
+                # 200::1 was refused and 200::1/128 was allowed.
+                if is_protected_network(net) or any(
+                    net.overlaps(pn) for pn in _PROTECTED_NETS if pn.version == net.version
+                ):
                     raise TargetValidationError(
                         f"{t} overlaps a protected/reserved range and must not be targeted"
                     )
@@ -433,8 +439,13 @@ class ScopeGate:
 
 
 def _looks_like_mac(s: str) -> bool:
+    """Shape AND content. It checked only the shape, so "ZZ:ZZ:ZZ:ZZ:ZZ:ZZ"
+    was routed to the BSSID check instead of falling through to hostname/ESSID,
+    denying a target that might legitimately be in scope as an ESSID."""
     parts = s.replace("-", ":").split(":")
-    return len(parts) == 6 and all(len(p) == 2 for p in parts)
+    return len(parts) == 6 and all(
+        len(p) == 2 and all(c in "0123456789abcdefABCDEF" for c in p) for p in parts
+    )
 
 
 def _looks_like_ip(s: str) -> bool:

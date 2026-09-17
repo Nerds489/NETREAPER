@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from netreaper.automation.handlers._host import run_host
+from netreaper.core.cleanup import register_cleanup
 from netreaper.core.constants import NETREAPER_CONFIG_DIR
 from netreaper.core.logging import get_logger
 from netreaper.core.validation import require_interface
@@ -126,6 +127,13 @@ class EvilTwin:
         config_dir: Path | None = None,
     ) -> EvilTwinState:
         """Write configs, bring up the AP subnet, and start hostapd + dnsmasq."""
+        # T4's "mandatory auto-teardown" was only a try/finally on
+        # KeyboardInterrupt/CancelledError in the CLI, so SIGTERM (the default
+        # stop signal for systemd, docker, orchestrators and plain `kill`) left
+        # hostapd/dnsmasq running and intercepting bystander traffic,
+        # unsupervised, indefinitely. CleanupRegistry already installs SIGINT and
+        # SIGTERM handlers; it simply had no callers anywhere in the tree.
+        register_cleanup(self.stop, priority=10)
         # Block a restart while any host mutation may be outstanding. `dirty` is
         # set the instant state is published (before the first mutation) and
         # cleared only by a fully successful stop(), so a failure at ANY point

@@ -36,6 +36,24 @@ def is_protected_ip(ip: str) -> bool:
     )
 
 
+def is_protected_network(net: ipaddress.IPv4Network | ipaddress.IPv6Network) -> bool:
+    """The network form of :func:`is_protected_ip`, using the same policy.
+
+    The gate had two different "must never be targeted" lists: a hand-written
+    tuple of ten ranges for CIDR targets, and this module's property checks for
+    bare addresses. IPv6 ``is_reserved`` alone covers far more than the four
+    IPv6 ranges in that tuple, so ``200::1`` was refused and ``200::1/128``,
+    the identical address, was allowed. One policy, both forms.
+    """
+    return bool(
+        net.is_loopback
+        or net.is_link_local
+        or net.is_multicast
+        or net.is_reserved
+        or net.is_unspecified
+    )
+
+
 def is_public_ip(ip: str) -> bool:
     """True for globally-routable (non-private, non-protected) addresses."""
     addr = _as_ip(ip)
