@@ -63,10 +63,14 @@ sudo bin/netreaper-install all
 
 ```bash
 # 1. Authorise a scope. Every targeted action is denied without one.
+#    --max-tier is the CEILING (what may be reached).
+#    --confirm-tier is the CONFIRMATION (that you meant it). T2+ needs both.
 sudo netreaper engage start \
     --operator "your name" --ref "ROE-001" \
     --essid "YourNetwork" --bssid AA:BB:CC:DD:EE:FF \
-    --max-tier mitm --hours 8
+    --max-tier mitm --hours 8 \
+    --confirm-tier single_target --confirm-tier broadcast \
+    --confirm-tier mitm --accept-interception
 
 # 2. Work. NETREAPER resolves interface, monitor mode and target itself.
 sudo netreaper wifi scan         # scan for access points
@@ -81,6 +85,13 @@ sudo netreaper engage end
 > **The engagement is not optional.** NETREAPER is deny-by-default: with no active
 > engagement every targeted action fails closed, by design. `engage status` shows the
 > current scope, tier ceiling and expiry.
+
+> **A ceiling is not a confirmation.** `--max-tier` says what this engagement *may*
+> reach; `--confirm-tier` says you intended it. Anything at SINGLE_TARGET or above
+> needs the tier pre-confirmed, MITM additionally needs `--accept-interception`, and
+> BROADCAST can never be confirmed mid-run. Nothing prompts: a confirmation is
+> recorded in the authorisation up front, inside its consent hash, or the action is
+> refused. An engagement lasts at most 48 hours.
 
 ---
 
@@ -133,6 +144,9 @@ netreaper wifi monitor off         # disable monitor mode
 netreaper wifi scan                # scan for access points
 netreaper wifi deauth              # deauth attack (fully automated)
 netreaper wifi capture             # capture handshakes
+netreaper wifi wep <if> <bssid> <ch> --injection chopchop
+                                   # WEP: arpreplay (default), chopchop,
+                                   # fragment, caffe_latte, cfrag, interactive
 ```
 
 ### System
@@ -281,8 +295,8 @@ netreaper config reset             # restore defaults
 |:--------|:--------|:------------|
 | `log_level` | INFO | DEBUG, INFO, WARNING, ERROR |
 | `file_logging` | true | Write logs to file |
-| `confirm_dangerous` | true | Prompt before dangerous ops |
-| `warn_public_ip` | true | Warn on public IP targets |
+| `confirm_dangerous` | true | **Not implemented.** Nothing reads it outside the TUI settings screen, and nothing prompts anywhere. Confirmation is `--confirm-tier` on the engagement |
+| `warn_public_ip` | true | **Not implemented.** Nothing reads it outside the TUI settings screen. Protected and reserved ranges are refused outright by the scope gate, in both bare and CIDR notation |
 
 ---
 
