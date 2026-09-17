@@ -2,6 +2,7 @@
 import asyncio
 from typing import Callable
 
+from netreaper.automation.handlers._host import run_host
 from netreaper.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -104,24 +105,21 @@ class ChannelHopper:
     async def set_channel(self, channel: int) -> bool:
         """Set interface to specific channel."""
         try:
-            process = await asyncio.create_subprocess_exec(
-                "iw",
-                self.interface,
-                "set",
-                "channel",
-                str(channel),
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
+            # Through the gated seam: retuning our own adapter is a host action
+            # with no network target, but it is still audited and torn down there.
+            result = await run_host(
+                ["iw", self.interface, "set", "channel", str(channel)],
+                destructive=True,
             )
-            _, stderr = await process.communicate()
 
-            if process.returncode == 0:
+            if result is not None and result.ok:
                 self._current_channel = channel
                 if self._on_channel_change:
                     self._on_channel_change(channel)
                 return True
 
-            logger.debug(f"Failed to set channel {channel}: {stderr.decode()}")
+            detail = result.stderr if result is not None else "tool missing or timed out"
+            logger.debug(f"Failed to set channel {channel}: {detail}")
             return False
 
         except Exception as e:
