@@ -248,12 +248,35 @@ def engage_start(
     max_tier: str = typer.Option(
         "single_target", "--max-tier", help=f"Blast-radius ceiling: {_TIER_NAMES}"
     ),
+    confirm_tier: list[str] = typer.Option(
+        None,
+        "--confirm-tier",
+        help=(
+            "Pre-confirm a tier so gated actions at it can run (repeatable). "
+            "T2+ needs this: a ceiling says what MAY be reached, this says it "
+            "was intended. Nothing prompts mid-run."
+        ),
+    ),
+    accept_interception: bool = typer.Option(
+        False,
+        "--accept-interception",
+        help=(
+            "Required for MITM (T4) alongside --confirm-tier mitm. Records the "
+            "dangerous-ops phrase acknowledging interception of third-party traffic."
+        ),
+    ),
 ):
     """Authorise a scope so gated actions can run, and persist it for later runs."""
     from datetime import UTC, datetime, timedelta
 
     from netreaper.safety.engagement_store import save_engagement
-    from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
+    from netreaper.safety.scope import (
+        DANGEROUS_OPS_PHRASE,
+        Engagement,
+        Scope,
+        Tier,
+        get_scope_gate,
+    )
 
     if not operator.strip():
         console.print("[red]--operator must not be empty[/red]")
@@ -271,6 +294,34 @@ def engage_start(
             f"[red]invalid --max-tier {max_tier!r}; use one of: {_TIER_NAMES}[/red]"
         )
         raise typer.Exit(2) from None
+
+    confirmed: set[Tier] = set()
+    for name in confirm_tier or []:
+        try:
+            confirmed.add(Tier[name.strip().upper()])
+        except KeyError:
+            console.print(
+                f"[red]invalid --confirm-tier {name!r}; use one of: {_TIER_NAMES}[/red]"
+            )
+            raise typer.Exit(2) from None
+    above_ceiling = sorted(x.name for x in confirmed if x > tier)
+    if above_ceiling:
+        console.print(
+            f"[red]--confirm-tier {', '.join(above_ceiling)} exceeds --max-tier "
+            f"{tier.name}; raise the ceiling or drop the confirmation[/red]"
+        )
+        raise typer.Exit(2)
+    if Tier.MITM in confirmed and not accept_interception:
+        console.print(
+            "[red]--confirm-tier mitm also requires --accept-interception: MITM "
+            "intercepts traffic that is not yours[/red]"
+        )
+        raise typer.Exit(2)
+    if accept_interception and Tier.MITM not in confirmed:
+        console.print(
+            "[yellow]warning: --accept-interception without --confirm-tier mitm "
+            "does nothing[/yellow]"
+        )
 
     scope = Scope(
         cidrs=list(cidr or []),
@@ -292,6 +343,12 @@ def engage_start(
         started_at=now,
         expires_at=now + timedelta(hours=hours),
         max_tier=tier,
+        confirmed_tiers=frozenset(confirmed),
+        dangerous_ops_phrase=(
+            DANGEROUS_OPS_PHRASE
+            if (accept_interception and Tier.MITM in confirmed)
+            else ""
+        ),
     )
     get_scope_gate().set_engagement(eng)
     path = save_engagement(eng)

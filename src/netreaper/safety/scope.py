@@ -271,6 +271,23 @@ class ScopeGate:
                 "deny-by-default: no active engagement; set one with an "
                 "authorised scope before running against a target"
             )
+        self._check_engagement_usable(eng, tier)
+
+        # SEC-001 §3. A ceiling says what this engagement MAY reach; it is not a
+        # confirmation that this particular action was intended. requires_confirmation
+        # was accepted and then ignored everywhere, so it enforced nothing at all.
+        self._require_confirmation(eng, tier, requires_confirmation)
+
+        if not targets:
+            raise TargetValidationError(
+                "deny-by-default: this action has no identifiable in-scope target"
+            )
+
+        for target in targets:
+            self._check_target(target, eng, tier)
+
+    def _check_engagement_usable(self, eng: Engagement, tier: Tier) -> None:
+        """Expiry, tamper-evidence and the ceiling. Every gated path runs these."""
         if not eng.is_active():
             raise TargetValidationError(
                 "engagement has expired; re-authorise before continuing"
@@ -285,19 +302,6 @@ class ScopeGate:
                 f"tier {tier.name} exceeds this engagement's ceiling "
                 f"({eng.max_tier.name}); raise the engagement's max_tier to authorise it"
             )
-
-        # SEC-001 §3. A ceiling says what this engagement MAY reach; it is not a
-        # confirmation that this particular action was intended. requires_confirmation
-        # was accepted and then ignored everywhere, so it enforced nothing at all.
-        self._require_confirmation(eng, tier, requires_confirmation)
-
-        if not targets:
-            raise TargetValidationError(
-                "deny-by-default: this action has no identifiable in-scope target"
-            )
-
-        for target in targets:
-            self._check_target(target, eng, tier)
 
     def require_confirmation(
         self, *, tier: Tier = Tier.PASSIVE, requires_confirmation: bool = False
@@ -315,6 +319,11 @@ class ScopeGate:
                 "deny-by-default: no active engagement; a step declared "
                 "destructive or needing confirmation cannot run without one"
             )
+        # These three ran in authorize() and were skipped here, so an EXPIRED
+        # engagement passed, a TAMPERED one passed, and one whose ceiling was
+        # SINGLE_TARGET happily confirmed MITM. A shortcut past the gate's
+        # preconditions is a hole in the gate.
+        self._check_engagement_usable(eng, tier)
         self._require_confirmation(eng, tier, requires_confirmation)
 
     def _require_confirmation(
@@ -326,8 +335,9 @@ class ScopeGate:
         T3 (BROADCAST) and above need the tier pre-confirmed; there is no prompt
         fallback, because a mass/broadcast action must never be answerable by
         whatever happens to be on stdin. T2 and anything flagged
-        ``requires_confirmation`` need the tier pre-confirmed too, except that an
-        interactive operator is allowed to have answered for it.
+        ``requires_confirmation`` need the tier pre-confirmed too. Nothing here
+        prompts, so an attached terminal grants nothing: the earlier "an
+        operator could have been asked" carve-out was auto-confirmation.
         """
         needs = requires_confirmation or tier >= Tier.SINGLE_TARGET
         if not needs:
