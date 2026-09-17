@@ -250,6 +250,16 @@ class ExportManager:
             "head": trail.head,
             "memory_verified": trail.verify(),
             "file_verified": trail.verify_file(),
+            # The trail is process-wide and carries no session id, so this is
+            # NOT filtered to session_id: if one process served two sessions,
+            # both appear here. Labelled rather than quietly filtered, because
+            # silently dropping entries from a tamper-evident record is worse
+            # than showing too many, and adding a session field would change the
+            # hashed body and invalidate every trail already on disk. Entries do
+            # carry the engagement's consent hash, which is the honest key to
+            # segment on once sessions and engagements are linked.
+            "scope": "process-wide; not filtered by session_id",
+            "session_id": session_id,
         }
 
         if self.loot:

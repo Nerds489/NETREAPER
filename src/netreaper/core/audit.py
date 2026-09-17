@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -95,6 +96,42 @@ def redact_argv(argv: list[str] | tuple[str, ...]) -> list[str]:
 GENESIS = "0" * 64
 
 
+def redact_text(text: str, tool: str = "") -> str:
+    """Mask credential values inside a free-text field.
+
+    ``detail`` carries ``str(exc)[:200]`` from the seam, and an exception can
+    quote the command that failed, so redacting argv alone still let a password
+    reach the log. Tokenises on whitespace and applies the same per-tool rules.
+    Imperfect for quoted arguments containing spaces; it covers the realistic
+    case, which is a command line echoed into an error message.
+    """
+    if not text:
+        return text
+    secret = SECRET_FLAGS_BY_TOOL.get(tool, frozenset()) | SECRET_FLAGS_ANY_TOOL
+    # Split on ANY whitespace but keep the separators, so a newline- or
+    # tab-separated command (stderr folded into an exception message) cannot
+    # slip a secret past a space-only tokeniser, and the text still reads as
+    # it was written.
+    out: list[str] = []
+    redact_next = False
+    for tok in re.split(r"(\s+)", text):
+        if not tok or tok.isspace():
+            out.append(tok)
+            continue
+        if redact_next:
+            out.append(REDACTED)
+            redact_next = False
+            continue
+        head = tok.split("=", 1)[0]
+        if "=" in tok and head in secret:
+            out.append(f"{head}={REDACTED}")
+            continue
+        out.append(tok)
+        if tok in secret:
+            redact_next = True
+    return "".join(out)
+
+
 def _canonical(body: dict[str, object]) -> str:
     """Deterministic serialisation of an entry body (stable key order)."""
     return json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)
@@ -144,14 +181,30 @@ class AuditTrail:
         try:
             if not self._path or not self._path.exists():
                 return
-            last = None
-            with self._path.open("r", encoding="utf-8") as fh:
-                for line in fh:
-                    if line.strip():
-                        last = line
-            if last is None:
+            # Walk back to the last line that actually parses. A process killed
+            # mid-append leaves a torn final line; abandoning the chain for it
+            # was worse than the crash, because the next session then started a
+            # second chain from GENESIS in the same file and the whole thing
+            # stopped verifying for good.
+            lines = [
+                ln for ln in self._path.read_text(encoding="utf-8").splitlines()
+                if ln.strip()
+            ]
+            tail = None
+            torn = 0
+            for ln in reversed(lines):
+                try:
+                    tail = json.loads(ln)
+                    break
+                except ValueError:
+                    torn += 1
+            if tail is None:
                 return
-            tail = json.loads(last)
+            if torn:
+                logger.warning(
+                    "audit trail had %d torn line(s) at the tail; resuming from the "
+                    "last intact entry", torn
+                )
             self._head = self._start_prev = str(tail["entry_hash"])
             self._seq = self._start_seq = int(tail["seq"]) + 1
         except (OSError, ValueError, KeyError, TypeError) as e:
@@ -185,6 +238,8 @@ class AuditTrail:
             # permanent hash-chained log.
             argv_l = redact_argv(argv)
             targets_l = list(targets)
+            # detail is free text from an exception and can quote the command
+            detail = redact_text(detail, tool)
             body = {
                 "seq": seq,
                 "at": at,
@@ -250,20 +305,29 @@ class AuditTrail:
         expected_seq = 0
         try:
             with self._path.open("r", encoding="utf-8") as fh:
-                for line in fh:
-                    if not line.strip():
-                        continue
+                lines = [ln for ln in fh if ln.strip()]
+            last = len(lines) - 1
+            for idx, line in enumerate(lines):
+                try:
                     body = json.loads(line)
-                    entry_hash = body.pop("entry_hash", None)
-                    if body.get("seq") != expected_seq or body.get("prev_hash") != prev:
-                        return False
-                    if (
-                        hashlib.sha256((prev + _canonical(body)).encode()).hexdigest()
-                        != entry_hash
-                    ):
-                        return False
-                    prev = str(entry_hash)
-                    expected_seq += 1
+                except ValueError:
+                    # Only a torn FINAL line is survivable: a process killed
+                    # mid-append. Anything earlier means the middle of the chain
+                    # is damaged, which is not something to wave through.
+                    if idx == last:
+                        logger.warning("audit trail has a torn final line")
+                        break
+                    return False
+                entry_hash = body.pop("entry_hash", None)
+                if body.get("seq") != expected_seq or body.get("prev_hash") != prev:
+                    return False
+                if (
+                    hashlib.sha256((prev + _canonical(body)).encode()).hexdigest()
+                    != entry_hash
+                ):
+                    return False
+                prev = str(entry_hash)
+                expected_seq += 1
         except (OSError, ValueError) as e:
             logger.warning("audit trail file could not be verified: %s", e)
             return False

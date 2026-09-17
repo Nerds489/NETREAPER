@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from netreaper.chaining.manifest import ManifestRegistry, Plan, manifest_registry
 from netreaper.chaining.models import ChainDefinition, ChainStep
 from netreaper.core.exceptions import PluginError
+from netreaper.safety.scope import Tier, get_scope_gate
 
 StepRunner = Callable[[ChainStep, str, dict[str, object]], Awaitable[dict[str, object]]]
 
@@ -65,6 +66,34 @@ def manifest_step_runner(
             raise PluginError(
                 f"no runner wired for {m.name!r}; the manifest is planning-only"
             )
+        # #46 item 2: the manifest is the single source of truth for what a step
+        # costs, but destructive/requires_confirmation only ever drove a
+        # "[confirm]" badge in Plan.render. The leaf adapter decided its own tier
+        # independently, so a manifest could declare an action destructive and
+        # needing confirmation while the tool underneath ran it ungated, with
+        # nothing forcing the two to agree.
+        #
+        # Enforce the declaration here, where the manifest and the dispatch meet.
+        # The leaf still gates itself at the seam; this is the earlier, coarser
+        # check that makes the manifest's own words binding.
+        if m.destructive or m.requires_confirmation:
+            tier = Tier.SINGLE_TARGET if m.destructive else Tier.PASSIVE
+            gate = get_scope_gate()
+            if target:
+                gate.authorize(
+                    [target],
+                    tier=tier,
+                    destructive=m.destructive,
+                    requires_confirmation=m.requires_confirmation,
+                )
+            else:
+                # A plan step often carries no target of its own: the chain
+                # threads it through the shared state and the leaf gates the
+                # real one at the spawn seam. Settle the confirmation here
+                # anyway, because that part does not depend on the target.
+                gate.require_confirmation(
+                    tier=tier, requires_confirmation=m.requires_confirmation
+                )
         return await m.runner(state, target)
 
     return _run
