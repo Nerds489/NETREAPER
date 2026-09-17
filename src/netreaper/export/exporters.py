@@ -572,7 +572,15 @@ class PdfExporter(Exporter):
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 )
-                await proc.wait()
+                # A renderer that never exits used to hang the export with no
+                # timeout and no teardown. Bound it and kill the process rather
+                # than waiting on a hung child.
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=120)
+                except TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+                    raise
 
                 if proc.returncode == 0:
                     html_path.unlink()

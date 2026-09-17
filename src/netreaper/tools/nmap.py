@@ -11,6 +11,31 @@ from pydantic import BaseModel
 from netreaper.plugins.base import Capability, PluginMetadata, PluginType
 from netreaper.tools.base import BaseToolWrapper
 
+_DOCTYPE_RE = re.compile(rb"<!DOCTYPE", re.IGNORECASE)
+
+
+def _parse_scan_xml(path: Path) -> "ET.Element":
+    """Parse an nmap XML result, refusing any document that declares a DTD.
+
+    ElementTree does not resolve *external* entities, so this is not XXE file
+    disclosure. It does expand internal ones, and this output is a file on disk
+    that is written by one call and re-read by another, so a crafted or tampered
+    result can expand to exhaust memory (billion laughs).
+
+    nmap never emits a DOCTYPE, so refusing one costs nothing and removes the
+    class without adding a defusedxml dependency. Checked on the bytes rather
+    than through a parser handler, because XMLParser exposes its underlying
+    expat parser under different names across Python versions and a handler
+    that silently fails to attach is worse than no defence at all.
+    """
+    raw = path.read_bytes()
+    if _DOCTYPE_RE.search(raw):
+        raise ValueError(
+            f"{path} declares a DTD; nmap does not emit one, so this file was "
+            f"not produced by the scan it claims to be"
+        )
+    return ET.fromstring(raw)
+
 
 class NmapConfig(BaseModel):
     """Nmap-specific configuration."""
@@ -139,9 +164,16 @@ class NmapTool(BaseToolWrapper):
                 self._output_file.unlink()
 
     def _parse_xml_output(self) -> dict[str, Any]:
-        """Parse nmap XML output file."""
-        tree = ET.parse(self._output_file)
-        root = tree.getroot()
+        """Parse nmap XML output file.
+
+        Parsed with DTDs refused. ElementTree does not resolve *external*
+        entities, so this is not XXE file disclosure, but it does expand
+        internal ones, and nmap's output is a file on disk that is re-read
+        later: a crafted or tampered scan result could expand to exhaust memory
+        (billion laughs). nmap itself never emits a DOCTYPE, so refusing one
+        costs nothing and removes the class. No new dependency needed for it.
+        """
+        root = _parse_scan_xml(self._output_file)
 
         hosts = []
 

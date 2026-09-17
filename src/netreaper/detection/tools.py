@@ -11,6 +11,8 @@ from typing import Self
 
 from netreaper.core.exceptions import ToolNotFoundError
 from netreaper.core.logging import get_logger
+from netreaper.safety.scope import Tier, get_scope_gate
+from netreaper.core.audit import get_audit_trail
 
 logger = get_logger(__name__)
 
@@ -1119,6 +1121,18 @@ class ToolRegistry:
         callback: callable | None = None,
     ) -> tuple[bool, str]:
         """Run an install command and verify success."""
+        # A root package install is a destructive host action. It streams its
+        # output line by line, which the seam's blocking run() cannot host, so
+        # the spawn stays here, but the authorisation and the audit line do not:
+        # this used to modify the system as root with nothing recorded anywhere.
+        get_scope_gate().authorize(
+            (), tier=Tier.PASSIVE, destructive=True, host_action=True
+        )
+        get_audit_trail().record(
+            outcome="executed", tool=cmd[0], argv=list(cmd), targets=[],
+            tier="PASSIVE", destructive=True, host_action=True,
+            detail=f"root package install: {tool_name}",
+        )
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,

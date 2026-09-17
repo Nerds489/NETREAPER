@@ -164,9 +164,19 @@ class Engagement:
     # T4 (MITM) additionally requires this exact phrase, typed deliberately. A
     # ceiling and a tick-box are not enough for evil-twin/interception work.
     dangerous_ops_phrase: str = ""
-    # A tamper-evident fingerprint of the authorising fields (plan §5.2),
-    # computed at construction. verify_consent() detects a later mutation of the
-    # scope/operator/expiry so an altered authorisation record is caught.
+    # A fingerprint of the authorising fields (plan §5.2), computed at
+    # construction. verify_consent() recomputes it, so a later mutation of the
+    # scope, operator or expiry no longer matches and is rejected.
+    #
+    # UNKEYED, and the limit matters. There is no secret in the digest, so
+    # anyone who can write the engagement file can alter a field and recompute
+    # the hash to match: this detects accidental corruption and casual editing,
+    # not a determined adversary, and least of all the operator themselves.
+    # core/audit.py states the same limit for the same reason. Real
+    # tamper-evidence against the operator needs an out-of-band key or a remote
+    # anchor, which is a design decision rather than a patch. The file is
+    # written 0600 (engagement_store) so the practical bar is write access to
+    # the operator's own account.
     consent_hash: str = field(init=False, default="")
 
     def __post_init__(self) -> None:

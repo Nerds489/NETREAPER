@@ -24,7 +24,9 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import os
 import re
+import stat
 import threading
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
@@ -283,6 +285,22 @@ def _file_lock(path: Path) -> Iterator[None]:
             fh.close()
 
 
+def _harden(path: Path) -> None:
+    """Create ``path`` if absent and make it owner-only.
+
+    os.open with O_CREAT and mode 0600 gets the permissions right at creation,
+    which a chmod after the fact cannot: a chmod leaves a window in which the
+    file exists with whatever the umask allowed.
+    """
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600)
+        os.close(fd)
+        if stat.S_IMODE(path.stat().st_mode) & 0o077:
+            path.chmod(0o600)  # pre-existing file from an older version
+    except OSError as e:  # pragma: no cover - permissions are best effort
+        logger.debug("could not harden %s: %s", path, e)
+
+
 class AuditTrail:
     """Append-only, hash-chained audit log. Thread-safe."""
 
@@ -511,6 +529,13 @@ class AuditTrail:
             return
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
+            # The trail names every target, every operator and every command
+            # line of an engagement. engagement_store already writes its record
+            # 0600; this inherited the process umask, so the same material was
+            # 0644 and readable by every account on the box. Set the mode before
+            # the first append rather than after, so there is no window where
+            # the file exists world-readable.
+            _harden(self._path)
             with self._path.open("a", encoding="utf-8") as fh:
                 fh.write(_canonical(asdict(entry)) + "\n")
         except OSError as e:

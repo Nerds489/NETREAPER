@@ -7,8 +7,8 @@ teardown and hash-chained audit line. These helpers sit on a live attack path
 (``wireless.advanced`` calls :func:`change_mac`), so a direct spawn here would
 leave a hole in the trail exactly where it matters most.
 """
-import random
 import re
+import secrets
 from pathlib import Path
 
 from netreaper.automation.handlers._host import run_host
@@ -29,14 +29,14 @@ VENDOR_OUIS = {
 def generate_mac(vendor: str = "random") -> str:
     """Generate a MAC address."""
     if vendor in VENDOR_OUIS and VENDOR_OUIS[vendor]:
-        oui = random.choice(VENDOR_OUIS[vendor])
-        suffix = ":".join(f"{random.randint(0, 255):02x}" for _ in range(3))
+        oui = secrets.choice(VENDOR_OUIS[vendor])
+        suffix = ":".join(f"{secrets.randbelow(256):02x}" for _ in range(3))
         return f"{oui}:{suffix}"
     else:
         # Fully random (ensure locally administered bit)
-        first_byte = random.randint(0, 255) | 0x02  # Set locally administered bit
+        first_byte = secrets.randbelow(256) | 0x02  # Set locally administered bit
         first_byte &= 0xFE  # Clear multicast bit
-        rest = [random.randint(0, 255) for _ in range(5)]
+        rest = [secrets.randbelow(256) for _ in range(5)]
         return ":".join(f"{b:02x}" for b in [first_byte] + rest)
 
 
