@@ -10,7 +10,7 @@ from netreaper.safety.engagement_store import (
     load_engagement,
     save_engagement,
 )
-from netreaper.safety.scope import Engagement, Scope, Tier
+from netreaper.safety.scope import Engagement, Scope, Tier, DANGEROUS_OPS_PHRASE
 
 
 def _eng() -> Engagement:
@@ -23,6 +23,7 @@ def _eng() -> Engagement:
         started_at=now,
         expires_at=now + timedelta(hours=2),
         max_tier=Tier.MITM,
+            confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE,
     )
 
 
@@ -74,6 +75,7 @@ def test_expired_record_loads_but_is_inactive(tmp_path):
         operator="op", authorization_ref="R", scope=Scope(essids={"X"}),
         started_at=now - timedelta(hours=3), expires_at=now - timedelta(hours=1),
         max_tier=Tier.MITM,
+            confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE,
     )
     p = tmp_path / "engagement.json"
     save_engagement(past, path=p)

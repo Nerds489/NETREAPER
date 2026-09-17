@@ -13,7 +13,8 @@ def _gate():
     g = get_scope_gate()
     g.set_engagement(
         Engagement(operator="t", authorization_ref="T",
-                   scope=Scope(cidrs=["169.254.0.0/16", "10.0.0.0/8"]), max_tier=Tier.BROADCAST)
+                   scope=Scope(cidrs=["169.254.0.0/16", "10.0.0.0/8"]), max_tier=Tier.BROADCAST,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST}))
     )
     yield g
     g.clear_engagement()
