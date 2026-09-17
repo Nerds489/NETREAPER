@@ -46,6 +46,11 @@ def _to_dict(eng: Engagement) -> dict[str, object]:
         "started_at": eng.started_at.isoformat(),
         "expires_at": eng.expires_at.isoformat(),
         "max_tier": int(eng.max_tier),
+        # The confirmation grants are part of the authorisation, so they have to
+        # survive the round trip; without them a reloaded engagement would lose
+        # its consent and its hash would no longer verify.
+        "confirmed_tiers": sorted(int(x) for x in eng.confirmed_tiers),
+        "dangerous_ops_phrase": eng.dangerous_ops_phrase,
         "consent_hash": eng.consent_hash,
     }
 
@@ -70,6 +75,10 @@ def _from_dict(data: dict[str, Any]) -> Engagement:
         started_at=datetime.fromisoformat(data["started_at"]),
         expires_at=datetime.fromisoformat(data["expires_at"]),
         max_tier=Tier(int(data["max_tier"])),
+        confirmed_tiers=frozenset(
+            Tier(int(x)) for x in data.get("confirmed_tiers", [])
+        ),
+        dangerous_ops_phrase=str(data.get("dangerous_ops_phrase", "")),
     )
 
 

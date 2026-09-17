@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 from netreaper.cli import app
 from netreaper.safety import engagement_store
-from netreaper.safety.scope import get_scope_gate
+from netreaper.safety.scope import get_scope_gate, DANGEROUS_OPS_PHRASE
 
 runner = CliRunner()
 
@@ -83,7 +83,8 @@ def test_status_reports_expired_and_exits_1():
     save_engagement(
         Engagement(operator="me", authorization_ref="R", scope=Scope(essids={"X"}),
                    started_at=now - timedelta(hours=3),
-                   expires_at=now - timedelta(hours=1), max_tier=Tier.MITM),
+                   expires_at=now - timedelta(hours=1), max_tier=Tier.MITM,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE),
         path=engagement_store.engagement_file_path(),
     )
     r = runner.invoke(app, ["engage", "status"])

@@ -30,7 +30,8 @@ def _ready(t):
 async def test_aireplay_gates_bssid_not_interface():
     get_scope_gate().set_engagement(
         Engagement(operator="t", authorization_ref="T",
-                   scope=Scope(hostnames={"wlan0mon"}), max_tier=Tier.BROADCAST)
+                   scope=Scope(hostnames={"wlan0mon"}), max_tier=Tier.BROADCAST,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST}))
     )
     with pytest.raises(TargetValidationError):
         await _ready(AireplayTool()).execute(
@@ -43,7 +44,8 @@ async def test_aireplay_gates_bssid_not_interface():
 @pytest.mark.asyncio
 async def test_aireplay_in_scope_ap_allowed():
     get_scope_gate().set_engagement(
-        Engagement(operator="t", authorization_ref="T", scope=Scope(bssids={"DE:AD:BE:EF:00:00"}))
+        Engagement(operator="t", authorization_ref="T", scope=Scope(bssids={"DE:AD:BE:EF:00:00"}),
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET}))
     )
     r = await _ready(AireplayTool()).execute(
         "wlan0mon",
@@ -57,7 +59,8 @@ async def test_aireplay_in_scope_ap_allowed():
 @pytest.mark.asyncio
 async def test_broadcast_denied_under_single_target_ceiling():
     get_scope_gate().set_engagement(
-        Engagement(operator="t", authorization_ref="T", scope=Scope(bssids={"DE:AD:BE:EF:00:00"}))
+        Engagement(operator="t", authorization_ref="T", scope=Scope(bssids={"DE:AD:BE:EF:00:00"}),
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET}))
     )  # default max_tier == SINGLE_TARGET
     with pytest.raises(TargetValidationError):
         await _ready(AireplayTool()).execute(

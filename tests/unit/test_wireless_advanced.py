@@ -9,7 +9,7 @@ import pytest
 
 from netreaper.core.exceptions import TargetValidationError
 from netreaper.core.process import ProcessResult
-from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
+from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate, DANGEROUS_OPS_PHRASE
 from netreaper.wireless import advanced
 from netreaper.wireless.advanced import (
     ArpSpoof,
@@ -44,6 +44,7 @@ def _mitm_engagement(*cidrs: str) -> None:
             authorization_ref="T",
             scope=Scope(cidrs=list(cidrs)),
             max_tier=Tier.MITM,
+            confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE,
         )
     )
 
@@ -56,6 +57,7 @@ def _mitm_essid(*essids: str) -> None:
             authorization_ref="T",
             scope=Scope(essids=set(essids)),
             max_tier=Tier.MITM,
+            confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE,
         )
     )
 

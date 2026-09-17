@@ -16,6 +16,7 @@ from netreaper.safety.scope import (
     ScopeGate,
     Tier,
     get_scope_gate,
+    DANGEROUS_OPS_PHRASE,
 )
 from netreaper.tools.aireplay import AireplayTool
 from netreaper.tools.airodump import AirodumpTool
@@ -32,7 +33,8 @@ def _arm_global_gate():
     """
     get_scope_gate().set_engagement(
         Engagement(operator="t", authorization_ref="T",
-                   scope=Scope(essids={"N"}), max_tier=Tier.MITM)
+                   scope=Scope(essids={"N"}), max_tier=Tier.MITM,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE)
     )
     yield
     get_scope_gate().clear_engagement()

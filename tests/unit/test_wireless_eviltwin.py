@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 from netreaper.core.exceptions import TargetValidationError
-from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate
+from netreaper.safety.scope import Engagement, Scope, Tier, get_scope_gate, DANGEROUS_OPS_PHRASE
 from netreaper.wireless.eviltwin import (
     EvilTwin,
     channel_hw_mode,
@@ -23,7 +23,8 @@ def _arm_gate():
     """Evil-twin is a gated MITM action; authorise the cloned SSID for each test."""
     get_scope_gate().set_engagement(
         Engagement(operator="t", authorization_ref="T",
-                   scope=Scope(essids={"HomeNet"}), max_tier=Tier.MITM)
+                   scope=Scope(essids={"HomeNet"}), max_tier=Tier.MITM,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE)
     )
     yield
     get_scope_gate().clear_engagement()
@@ -173,7 +174,8 @@ def test_start_denied_when_essid_out_of_scope(tmp_path):
     # Engagement active, but the cloned SSID is not in scope -> denied.
     get_scope_gate().set_engagement(
         Engagement(operator="t", authorization_ref="T",
-                   scope=Scope(essids={"OtherNet"}), max_tier=Tier.MITM)
+                   scope=Scope(essids={"OtherNet"}), max_tier=Tier.MITM,
+                   confirmed_tiers=frozenset({Tier.SINGLE_TARGET, Tier.BROADCAST, Tier.MITM}), dangerous_ops_phrase=DANGEROUS_OPS_PHRASE)
     )
     fake = FakeRunner()
     et = EvilTwin(runner=fake)
