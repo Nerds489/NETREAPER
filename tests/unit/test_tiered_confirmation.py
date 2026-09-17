@@ -119,7 +119,9 @@ def test_single_target_allowed_with_a_grant():
 def test_requires_confirmation_now_actually_blocks():
     """The whole point of #46: this flag was accepted and ignored everywhere."""
     g = _gate(max_tier=Tier.MITM)
-    with pytest.raises(TargetValidationError):
+    # match= matters: a bare raises() passed even when the check broke for an
+    # unrelated reason, so it proved only "something threw".
+    with pytest.raises(TargetValidationError, match="requires confirmation"):
         g.authorize([TARGET], tier=Tier.ACTIVE_SCAN, requires_confirmation=True)
 
 

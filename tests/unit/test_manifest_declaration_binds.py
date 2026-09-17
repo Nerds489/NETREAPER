@@ -82,7 +82,7 @@ def test_an_out_of_scope_target_is_refused_even_with_the_grant():
     get_scope_gate().set_engagement(
         _eng(confirmed_tiers=frozenset({Tier.SINGLE_TARGET}))
     )
-    with pytest.raises(TargetValidationError):
+    with pytest.raises(TargetValidationError, match="not in the engagement scope"):
         _run(_registry(destructive=True, requires_confirmation=True), target="8.8.8.8")
 
 

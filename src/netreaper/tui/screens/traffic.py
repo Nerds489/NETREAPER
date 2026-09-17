@@ -4,15 +4,43 @@ import asyncio
 import shutil
 import tempfile
 from pathlib import Path
+
 from textual.app import ComposeResult
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
-from textual.screen import Screen
-from textual.widgets import Static, Button, Input, DataTable, ListView, ListItem, Label, Select
 from textual.binding import Binding
+from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
+from textual.screen import Screen
+from textual.widgets import (
+    Button,
+    DataTable,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    Select,
+    Static,
+)
 
-from netreaper.tui.widgets.tool_output import ToolOutput
+from netreaper.core.logging import get_logger
+from netreaper.core.process import get_process_runner
+from netreaper.safety.scope import Tier, get_scope_gate
 from netreaper.tui.helpers.preflight_runner import PreflightRunner
+from netreaper.tui.widgets.tool_output import ToolOutput
 
+
+logger = get_logger(__name__)
+
+
+async def _authorise_capture(interface: str) -> None:
+    """Authorise a packet capture on one of our own interfaces.
+
+    host_action: there is no network target to scope-check, an interface is
+    ours. It is still gated and audited, because a credential sniffer on a
+    shared medium collects other people's traffic.
+    """
+    get_scope_gate().authorize(
+        (), tier=Tier.PASSIVE, destructive=False, host_action=True
+    )
+    logger.info("packet capture authorised on %s", interface)
 
 class TrafficScreen(Screen):
     """Packet capture and network traffic analysis."""
@@ -193,6 +221,14 @@ class TrafficScreen(Screen):
             cmd.extend(filter_expr.split())
         cmd.extend(["-w", self.capture_file])
 
+        # Gate BEFORE spawning. These are long-running streams (tcpdump/tshark
+        # run until killed), which the seam's blocking run() cannot host, so the
+        # spawn stays here but the authorisation and audit line do not:
+        # sniffing
+        # third-party traffic off an interface is a capability, not plumbing.
+        # Previously this ran with no engagement and no audit at all.
+        await _authorise_capture(interface)
+
         self.capture_process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -218,6 +254,14 @@ class TrafficScreen(Screen):
         cmd = ["tshark", "-i", interface, "-l"]
         if filter_expr:
             cmd.extend(["-f", filter_expr])
+
+        # Gate BEFORE spawning. These are long-running streams (tcpdump/tshark
+        # run until killed), which the seam's blocking run() cannot host, so the
+        # spawn stays here but the authorisation and audit line do not:
+        # sniffing
+        # third-party traffic off an interface is a capability, not plumbing.
+        # Previously this ran with no engagement and no audit at all.
+        await _authorise_capture(interface)
 
         self.capture_process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -280,6 +324,14 @@ class TrafficScreen(Screen):
         interface = self._get_interface()
         self._write_output("Opening Wireshark...")
 
+        # Gate BEFORE spawning. These are long-running streams (tcpdump/tshark
+        # run until killed), which the seam's blocking run() cannot host, so the
+        # spawn stays here but the authorisation and audit line do not:
+        # sniffing
+        # third-party traffic off an interface is a capability, not plumbing.
+        # Previously this ran with no engagement and no audit at all.
+        await _authorise_capture(interface)
+
         await asyncio.create_subprocess_exec(
             "wireshark", "-i", interface, "-k",
             stdout=asyncio.subprocess.DEVNULL,
@@ -309,6 +361,14 @@ class TrafficScreen(Screen):
 
         interface = self._get_interface()
         self._write_output(f"Sniffing HTTP on {interface}...")
+
+        # Gate BEFORE spawning. These are long-running streams (tcpdump/tshark
+        # run until killed), which the seam's blocking run() cannot host, so the
+        # spawn stays here but the authorisation and audit line do not:
+        # sniffing
+        # third-party traffic off an interface is a capability, not plumbing.
+        # Previously this ran with no engagement and no audit at all.
+        await _authorise_capture(interface)
 
         self.capture_process = await asyncio.create_subprocess_exec(
             "tcpdump", "-i", interface, "-A", "-s0",
@@ -342,6 +402,14 @@ class TrafficScreen(Screen):
 
         interface = self._get_interface()
         self._write_output(f"Sniffing DNS on {interface}...")
+
+        # Gate BEFORE spawning. These are long-running streams (tcpdump/tshark
+        # run until killed), which the seam's blocking run() cannot host, so the
+        # spawn stays here but the authorisation and audit line do not:
+        # sniffing
+        # third-party traffic off an interface is a capability, not plumbing.
+        # Previously this ran with no engagement and no audit at all.
+        await _authorise_capture(interface)
 
         self.capture_process = await asyncio.create_subprocess_exec(
             "tcpdump", "-i", interface, "-l", "-nn",
@@ -385,6 +453,14 @@ class TrafficScreen(Screen):
         interface = self._get_interface()
 
         # Capture on common credential ports
+        # Gate BEFORE spawning. These are long-running streams (tcpdump/tshark
+        # run until killed), which the seam's blocking run() cannot host, so the
+        # spawn stays here but the authorisation and audit line do not:
+        # sniffing
+        # third-party traffic off an interface is a capability, not plumbing.
+        # Previously this ran with no engagement and no audit at all.
+        await _authorise_capture(interface)
+
         self.capture_process = await asyncio.create_subprocess_exec(
             "tcpdump", "-i", interface, "-A", "-s0",
             "tcp", "port", "21", "or", "port", "23", "or",
@@ -425,13 +501,16 @@ class TrafficScreen(Screen):
 
         self._write_output(f"Analyzing {self.capture_file}...")
 
-        # Get protocol statistics
-        proc = await asyncio.create_subprocess_exec(
-            "tshark", "-r", self.capture_file, "-q", "-z", "io,phs",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        # Reading a capture file we already hold: bounded, local, no interface
+        # and no live traffic, so it goes through the seam properly rather than
+        # pretending to be a capture. (My first pass inserted a capture gate
+        # here mechanically, referencing an `interface` that does not exist in
+        # this scope.)
+        res = await get_process_runner().run(
+            ["tshark", "-r", self.capture_file, "-q", "-z", "io,phs"],
+            host_action=True, tier=Tier.PASSIVE, timeout=120,
         )
-        stdout, _ = await proc.communicate()
+        stdout = res.stdout.encode()
 
         for line in stdout.decode().split("\n"):
             if line.strip():

@@ -21,13 +21,20 @@ is logged and the entry is kept in memory).
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
 import threading
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+try:  # POSIX only; Windows degrades to single-writer
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None  # type: ignore[assignment]
 
 from netreaper.core.constants import NETREAPER_LOG_DIR
 from netreaper.core.logging import get_logger
@@ -103,6 +110,31 @@ def redact_url_creds(value: str) -> str:
     user, colon, _pw = userinfo.partition(":")
     masked = f"{user}:{REDACTED}" if colon else REDACTED
     return f"{scheme}://{masked}@{host}" if sep else f"{masked}@{host}"
+
+
+# Credentials as tools REPORT them, which is not flag-shaped at all. hydra
+# prints "login: root   password: hunter2", aircrack-ng prints
+# "KEY FOUND! [ abcd ]", reaver prints "WPA PSK: ..." and "WPS PIN: ...".
+# Flag-based redaction cannot see any of it, so a success line leaked the one
+# thing worth protecting: the credential the tool just recovered.
+_OUTPUT_SECRET_RE = re.compile(
+    r"(?i)\b(pass(?:word|phrase|wd)?|psk|wpa[\s_-]?psk|pmk|wps[\s_-]?pin|pin|key|"
+    r"secret|token)\b(\s*[:=]\s*)(\S+)"
+)
+_KEY_FOUND_RE = re.compile(r"(?i)(KEY FOUND!\s*\[)([^\]]*)(\])")
+
+
+def redact_output(text: str) -> str:
+    """Mask credentials in a tool's own output lines.
+
+    Keeps the label so the trail still shows that a credential was recovered,
+    and keeps everything else on the line (host, port, service, login), because
+    that is the finding. Only the secret itself goes.
+    """
+    if not text:
+        return text
+    out = _OUTPUT_SECRET_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}{REDACTED}", text)
+    return _KEY_FOUND_RE.sub(lambda m: f"{m.group(1)} {REDACTED} {m.group(3)}", out)
 
 
 def redact_targets(targets: list[str] | tuple[str, ...]) -> list[str]:
@@ -209,6 +241,48 @@ class AuditEntry:
     entry_hash: str
 
 
+def _lock_for(path: Path | None) -> contextlib.AbstractContextManager[None]:
+    """No path means in-memory only (tests): nothing to serialise."""
+    return _file_lock(path) if path is not None else contextlib.nullcontext()
+
+
+@contextlib.contextmanager
+def _file_lock(path: Path) -> Iterator[None]:
+    """Exclusive advisory lock over the trail file, across PROCESSES.
+
+    record()'s threading.Lock is per INSTANCE, and get_audit_trail() builds a
+    new instance per process, so two concurrent netreaper processes had zero
+    mutual exclusion over one hash-chained file. Measured: 200 records from two
+    writers produced 100 duplicate seq numbers, verify_file() permanently False,
+    and a third process resuming later adopted one chain and silently discarded
+    the other 200 recorded actions.
+
+    A hash chain cannot tolerate interleaved writers, so the read-head-and-append
+    critical section is serialised here. Advisory locks are POSIX; on a platform
+    without fcntl this degrades to the previous single-writer assumption rather
+    than failing, because an audit write must never block or crash a spawn.
+    """
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    fh = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fh = lock_path.open("a+")
+        if fcntl is not None:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        yield
+    except OSError as e:
+        logger.warning("audit file lock unavailable (%s); proceeding unlocked", e)
+        yield
+    finally:
+        if fh is not None:
+            try:
+                if fcntl is not None:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            fh.close()
+
+
 class AuditTrail:
     """Append-only, hash-chained audit log. Thread-safe."""
 
@@ -225,8 +299,34 @@ class AuditTrail:
         # verify_file() walks the whole file as one chain.
         self._start_seq = 0
         self._start_prev = GENESIS
+        # resume=False is an explicit opt-out, used to reproduce the old
+        # fork-the-chain behaviour in tests. It must also suppress the
+        # per-append head sync, or the flag silently means nothing.
+        self._resume = resume
         if path is not None and resume:
             self._resume_from_file()
+
+    def _sync_head_from_file(self) -> None:
+        """Adopt the on-disk head/seq. Cheap, and correct under the lock."""
+        try:
+            if not self._path or not self._path.exists():
+                return
+            for line in reversed(
+                [
+                    x
+                    for x in self._path.read_text(encoding="utf-8").splitlines()
+                    if x.strip()
+                ]
+            ):
+                try:
+                    tail = json.loads(line)
+                except ValueError:
+                    continue
+                self._head = str(tail["entry_hash"])
+                self._seq = int(tail["seq"]) + 1
+                return
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            logger.warning("could not read the audit head before appending: %s", e)
 
     def _resume_from_file(self) -> None:
         """Adopt the on-disk chain head so this process continues it."""
@@ -295,7 +395,11 @@ class AuditTrail:
         detail: str = "",
     ) -> AuditEntry:
         """Append one entry, hash-linked to the current chain head."""
-        with self._lock:
+        with self._lock, _lock_for(self._path):
+            # Re-read the real head under the lock. Trusting the in-memory head
+            # was what let two processes both write seq N.
+            if self._path is not None and self._resume:
+                self._sync_head_from_file()
             seq = self._seq
             prev = self._head
             at = datetime.now(UTC).isoformat()

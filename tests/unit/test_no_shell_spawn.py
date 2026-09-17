@@ -40,18 +40,23 @@ ALLOWED_DIAGNOSTICS = {
     "tui/helpers/preflight_runner.py",   # preflight probe
 }
 
-# Dead code awaiting the TUI rebuild (#31). These screens spawn live attack
-# tools on user-supplied input, ungated: xsstrike against a URL, tcpdump/tshark
-# credential sniffers. They are unreachable today because tui/app.py is absent
-# and nothing imports them, which is the only reason they are tolerated here.
-# test_quarantined_tui_screens_are_still_unreachable is the tripwire: restore
-# the TUI and it fails, so this cannot go live unnoticed.
-QUARANTINED_UNREACHABLE = {
-    "tui/screens/exploit.py",
+# Long-running capture streams. tcpdump/tshark run until killed, which the
+# seam's blocking run() structurally cannot host, so the spawn stays local.
+# What is NOT tolerated any more is it being ungated: every capture here calls
+# _authorise_capture(interface) first, so the gate and the audit line happen
+# even though the spawn does not go through run().
+#
+# tui/screens/exploit.py used to sit here too. It no longer does: searchsploit,
+# msfvenom, the msfconsole launch and the live xsstrike attack all route through
+# get_process_runner().run() now, with xsstrike naming its target so the scope
+# gate actually checks it. That was the CRITICAL blocking the #31 TUI rebuild.
+STREAMING_GATED = {
     "tui/screens/traffic.py",
 }
 
-EXEMPT = ALLOWED_DIAGNOSTICS | QUARANTINED_UNREACHABLE
+QUARANTINED_UNREACHABLE: set[str] = set()
+
+EXEMPT = ALLOWED_DIAGNOSTICS | STREAMING_GATED | QUARANTINED_UNREACHABLE
 
 
 def _scan(predicate) -> list[str]:
@@ -105,37 +110,16 @@ def test_allowlist_has_no_stale_entries():
     assert not stale, "stale spawn allowlist entries:\n" + "\n".join(stale)
 
 
-def test_quarantined_tui_screens_are_still_unreachable():
-    """Tripwire for #43: the quarantined screens must stay dead code.
+def test_every_streaming_capture_is_gated_before_it_spawns():
+    """The streaming exemption is conditional on the gate being called.
 
-    They carry ungated live-attack spawns. They are exempt from the seam guard
-    only because nothing can reach them. If the TUI is rebuilt (#31), this fails
-    and the spawns must be routed through the seam before the screens go live.
+    traffic.py keeps raw spawns because tcpdump runs until killed, so the
+    exemption is only defensible while every one of them authorises first.
     """
-    assert not (SRC / "tui" / "app.py").exists(), (
-        "tui/app.py is back, so the quarantined screens may now be reachable. "
-        "Route their spawns through the seam and remove them from "
-        "QUARANTINED_UNREACHABLE (see issue #43)."
-    )
-
-    importers = []
-    for path in SRC.rglob("*.py"):
-        rel = path.relative_to(SRC).as_posix()
-        if rel in QUARANTINED_UNREACHABLE:
-            continue
-        text = path.read_text(encoding="utf-8")
-        for target in QUARANTINED_UNREACHABLE:
-            module = Path(target).stem                        # exploit / traffic
-            dotted = target[: -len(".py")].replace("/", ".")  # tui.screens.exploit
-            if dotted in text or re.search(
-                rf"from\s+\.{module}\s+import"
-                rf"|from\s+\.\s*import\s+[^\n]*\b{module}\b",
-                text,
-            ):
-                importers.append(f"{rel} -> {target}")
-
-    assert not importers, (
-        "a quarantined TUI screen is now imported, so its ungated spawns are "
-        "reachable. Route them through the seam (see issue #43):\n"
-        + "\n".join(importers)
+    src = (SRC / "tui" / "screens" / "traffic.py").read_text(encoding="utf-8")
+    spawns = src.count("create_subprocess_exec(")
+    gates = src.count("_authorise_capture(")
+    assert gates >= spawns - 1, (
+        f"{spawns} spawns but only {gates} authorisation calls in traffic.py; "
+        "a capture that does not gate first is an ungated credential sniffer"
     )

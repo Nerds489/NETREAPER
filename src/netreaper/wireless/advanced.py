@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from netreaper.automation.handlers._host import run_host
+from netreaper.core.cleanup import register_cleanup
 from netreaper.core.constants import NETREAPER_CONFIG_DIR
 from netreaper.core.logging import get_logger
 from netreaper.core.process import ProcessRunner, get_process_runner
@@ -342,6 +343,7 @@ class WPA3Downgrade:
         config_dir: Path | None = None,
     ) -> DowngradeState:
         """Write the WPA2-only config and start hostapd (daemonised, pidfile)."""
+        register_cleanup(self.stop, priority=10)  # survives SIGTERM, not just Ctrl-C
         if self.state is not None and self.state.dirty:
             raise RuntimeError("downgrade AP has unreconciled state; call stop() first")
         iface = require_interface(interface)
@@ -449,6 +451,7 @@ class ArpSpoof:
 
     async def start(self, interface: str, gateway: str, target: str) -> ArpSpoofState:
         """Enable forwarding and launch both poison streams (gated, MITM tier)."""
+        register_cleanup(self.stop, priority=10)  # survives SIGTERM, not just Ctrl-C
         if self.state is not None and self.state.dirty:
             raise RuntimeError("ARP spoof has unreconciled state; call stop() first")
         iface = require_interface(interface)
