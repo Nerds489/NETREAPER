@@ -16,11 +16,11 @@ from .constants import (
 from .exceptions import (
     ConfigurationError,
     NetworkError,
-    PermissionError,
+    NetreaperPermissionError,
     PluginError,
     SubprocessError,
     TargetValidationError,
-    TimeoutError,
+    NetreaperTimeoutError,
     ToolNotFoundError,
     NetreaperError,
 )
@@ -43,10 +43,10 @@ __all__ = [
     "NetreaperError",
     "ConfigurationError",
     "ToolNotFoundError",
-    "PermissionError",
+    "NetreaperPermissionError",
     "TargetValidationError",
     "NetworkError",
-    "TimeoutError",
+    "NetreaperTimeoutError",
     "PluginError",
     "SubprocessError",
     # Logging

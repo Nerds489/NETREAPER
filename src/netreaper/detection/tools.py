@@ -1191,7 +1191,11 @@ class ToolRegistry:
 
             success, msg = await self.install_tool(
                 name,
-                callback=lambda line: callback(name, line) if callback else None,
+                # name bound by default argument, not captured by closure: the
+                # lambda would otherwise share one cell with every iteration and
+                # report the last tool's name if it ever outlived its own loop
+                # pass. It does not today; this keeps it true if that changes.
+                callback=lambda line, name=name: callback(name, line) if callback else None,
             )
             results[name] = (success, msg)
 

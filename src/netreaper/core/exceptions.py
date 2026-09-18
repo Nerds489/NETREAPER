@@ -39,16 +39,27 @@ class SubprocessError(NetreaperError):
         self.stderr = stderr
 
 
-class TimeoutError(NetreaperError):
-    """An operation exceeded its time budget."""
+class NetreaperTimeoutError(NetreaperError):
+    """An operation exceeded its time budget.
+
+    Named with the prefix because `TimeoutError` shadows the builtin, and since
+    Python 3.11 `asyncio.TimeoutError` IS the builtin. A module that did
+    `from netreaper.core import TimeoutError` and then `except TimeoutError`
+    would silently stop catching asyncio timeouts while looking correct. Never
+    raised anywhere in src, so the rename costs nothing.
+    """
 
 
 class NetworkError(NetreaperError):
     """A network operation failed."""
 
 
-class PermissionError(NetreaperError):
-    """The operation requires privileges the process does not hold."""
+class NetreaperPermissionError(NetreaperError):
+    """The operation requires privileges the process does not hold.
+
+    Prefixed for the same reason as NetreaperTimeoutError: the bare name
+    shadows the builtin that `os.killpg` and friends actually raise.
+    """
 
 
 class PluginError(NetreaperError):

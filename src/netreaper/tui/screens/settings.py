@@ -774,7 +774,7 @@ class SettingsScreen(Screen):
                 else:
                     self._write_output(f"[red]Failed to set API key for {service_name}[/]")
             else:
-                self._write_output(f"[yellow]Please enter a valid API key[/]")
+                self._write_output("[yellow]Please enter a valid API key[/]")
 
         except Exception as e:
             self._write_output(f"[red]Error setting API key: {e}[/]")

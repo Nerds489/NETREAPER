@@ -465,7 +465,7 @@ class CredentialsScreen(Screen):
 
             options["hash_file"] = target
 
-            self._write_output(f"[cyan]Running hashcat...[/]")
+            self._write_output("[cyan]Running hashcat...[/]")
             self._update_progress("Running", 0, "--", 0, 0)
 
             result = await tool.execute(target, options)

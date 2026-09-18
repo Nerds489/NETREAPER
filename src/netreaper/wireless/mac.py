@@ -125,7 +125,7 @@ async def change_mac(
         logger.info("MAC changed: %s %s -> %s", interface, original_mac, new_mac)
         return new_mac
 
-    except Exception as e:
+    except Exception:
         # Try to restore original MAC
         if original_mac:
             try:
