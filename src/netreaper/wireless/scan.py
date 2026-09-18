@@ -81,20 +81,20 @@ def essid_from_airodump_row(row: list[str]) -> str:
     return ",".join(tail).strip()
 
 
-def parse_airodump_csv(text: str) -> ScanResult:
-    """Parse an airodump-ng CSV dump (AP section, blank line, client section)."""
-    # Normalise newlines and split the two sections on the blank line between them.
-    blocks = [b for b in text.replace("\r\n", "\n").split("\n\n") if b.strip()]
-    result = ScanResult()
-    if not blocks:
-        return result
+def _rows_after_header(block: str):
+    """The CSV rows of one airodump section, its header line dropped."""
+    lines = block.strip().split("\n")
+    return csv.reader(StringIO("\n".join(lines[1:])))
 
-    # AP section
-    ap_lines = blocks[0].strip().split("\n")
-    for row in csv.reader(StringIO("\n".join(ap_lines[1:]))):
+
+def _access_points_from(block: str) -> list[AccessPoint]:
+    """The AP section. A row with fewer than 14 fields is a partial write, not
+    an AP: airodump rewrites this file every second while it runs."""
+    found = []
+    for row in _rows_after_header(block):
         if len(row) < 14 or not row[0].strip():
             continue
-        result.access_points.append(
+        found.append(
             AccessPoint(
                 bssid=row[0].strip(),
                 first_seen=row[1].strip(),
@@ -108,23 +108,40 @@ def parse_airodump_csv(text: str) -> ScanResult:
                 essid=essid_from_airodump_row(row),
             )
         )
+    return found
 
-    # Client section (if present)
-    if len(blocks) > 1:
-        cl_lines = blocks[1].strip().split("\n")
-        for row in csv.reader(StringIO("\n".join(cl_lines[1:]))):
-            if len(row) < 6 or not row[0].strip():
-                continue
-            probes = [p.strip() for p in row[6:] if p.strip()] if len(row) > 6 else []
-            result.clients.append(
-                Client(
-                    mac=row[0].strip(),
-                    power=_int(row[3]),
-                    packets=_int(row[4]) or 0,
-                    associated_bssid=row[5].strip(),
-                    probed_essids=probes,
-                )
+
+def _clients_from(block: str) -> list[Client]:
+    """The station section. Probed ESSIDs are every field from 6 on, because a
+    station can probe for any number of networks and airodump just keeps going."""
+    found = []
+    for row in _rows_after_header(block):
+        if len(row) < 6 or not row[0].strip():
+            continue
+        probes = [p.strip() for p in row[6:] if p.strip()] if len(row) > 6 else []
+        found.append(
+            Client(
+                mac=row[0].strip(),
+                power=_int(row[3]),
+                packets=_int(row[4]) or 0,
+                associated_bssid=row[5].strip(),
+                probed_essids=probes,
             )
+        )
+    return found
+
+
+def parse_airodump_csv(text: str) -> ScanResult:
+    """Parse an airodump-ng CSV dump (AP section, blank line, client section)."""
+    # Normalise newlines and split the two sections on the blank line between them.
+    blocks = [b for b in text.replace("\r\n", "\n").split("\n\n") if b.strip()]
+    result = ScanResult()
+    if not blocks:
+        return result
+
+    result.access_points.extend(_access_points_from(blocks[0]))
+    if len(blocks) > 1:
+        result.clients.extend(_clients_from(blocks[1]))
     return result
 
 

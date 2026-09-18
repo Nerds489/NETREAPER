@@ -139,22 +139,31 @@ def _pmkid_from_m1(keyframe: bytes) -> str | None:
     return None
 
 
+# The 4-way handshake as a truth table rather than as control flow, because
+# that is what it is. Each row is (ack, mic, install, secure) -> message, with
+# None meaning the bit is not part of that message's signature. Read in order,
+# first match wins, which is the order the original `if` ladder had.
+_MESSAGE_SIGNATURES: tuple[tuple[tuple[bool | None, ...], int], ...] = (
+    ((True, False, None, None), 1),   # M1: AP -> STA, carries ANonce
+    ((False, True, False, False), 2),  # M2: STA -> AP, carries SNonce + MIC
+    ((True, True, True, True), 3),     # M3: AP -> STA
+    ((False, True, False, True), 4),   # M4: STA -> AP
+)
+
+
 def _classify(key_info: int) -> int | None:
     """Map an EAPOL-Key Key-Information field to a 4-way message number (1-4)."""
     if not key_info & _KI_PAIRWISE:
         return None  # group-key handshake, not the pairwise 4-way
-    ack = bool(key_info & _KI_ACK)
-    mic = bool(key_info & _KI_MIC)
-    install = bool(key_info & _KI_INSTALL)
-    secure = bool(key_info & _KI_SECURE)
-    if ack and not mic:
-        return 1  # M1: AP -> STA, carries ANonce
-    if mic and not ack and not secure and not install:
-        return 2  # M2: STA -> AP, carries SNonce + MIC
-    if ack and mic and install and secure:
-        return 3  # M3: AP -> STA
-    if mic and not ack and secure and not install:
-        return 4  # M4: STA -> AP
+    bits = (
+        bool(key_info & _KI_ACK),
+        bool(key_info & _KI_MIC),
+        bool(key_info & _KI_INSTALL),
+        bool(key_info & _KI_SECURE),
+    )
+    for signature, message in _MESSAGE_SIGNATURES:
+        if all(w is None or w == b for w, b in zip(signature, bits, strict=True)):
+            return message
     return None
 
 
@@ -177,18 +186,17 @@ def _strip_link_header(linktype: int, pkt: bytes) -> bytes | None:
     return None
 
 
-def _parse_dot11(data: bytes) -> _Frame | None:
-    """Extract (bssid, client, message) from one 802.11 data frame, or None."""
-    if len(data) < 24:
-        return None
-    fc = data[0] | (data[1] << 8)
-    if (fc >> 2) & 0x3 != 2:  # frame type must be Data
-        return None
+def _dot11_header_length(fc: int) -> int:
+    """Where the payload starts, given the Frame Control field.
+
+    24 bytes of MAC header, plus the optional fields whose presence is encoded
+    in fc: a fourth address on a WDS frame, QoS Control on a QoS subtype, and
+    HT Control when the Order bit is set.
+    """
     to_ds = bool(fc & 0x0100)
     from_ds = bool(fc & 0x0200)
     subtype = (fc >> 4) & 0xF
 
-    addr1, addr2, addr3 = data[4:10], data[10:16], data[16:22]
     offset = 24
     if to_ds and from_ds:  # 4-address WDS frame
         offset += 6
@@ -196,7 +204,11 @@ def _parse_dot11(data: bytes) -> _Frame | None:
         offset += 2
     if fc & 0x8000:  # Order bit set: 4-byte HT Control field
         offset += 4
+    return offset
 
+
+def _eapol_keyframe(data: bytes, offset: int) -> bytes | None:
+    """The EAPOL-Key frame behind the SNAP header at ``offset``, or None."""
     snap = data[offset : offset + 8]
     if len(snap) < 8 or snap[0] != 0xAA or snap[1] != 0xAA or snap[2] != 0x03:
         return None
@@ -214,24 +226,47 @@ def _parse_dot11(data: bytes) -> _Frame | None:
     # A too-short declared length must not drop an otherwise-valid frame: fall back
     # to the unbounded body so key_info can still be read and the frame classified.
     keyframe = bounded if len(bounded) >= 3 else body[4:]
-    if len(keyframe) < 3:
+    return keyframe if len(keyframe) >= 3 else None
+
+
+def _address_roles(fc: int, addr1: bytes, addr2: bytes, addr3: bytes):
+    """Which of the three addresses is the AP and which is the station.
+
+    The DS bits say who sent the frame in which direction, and that is the only
+    thing that decides it. Getting this backwards silently attributes a
+    handshake to the wrong BSSID.
+    """
+    to_ds = bool(fc & 0x0100)
+    from_ds = bool(fc & 0x0200)
+    if from_ds and not to_ds:
+        return addr2, addr1  # AP -> STA
+    if to_ds and not from_ds:
+        return addr1, addr2  # STA -> AP
+    if not to_ds and not from_ds:
+        return addr3, addr2  # IBSS: addr3 is the BSSID
+    return addr1, addr2  # WDS: best effort
+
+
+def _parse_dot11(data: bytes) -> _Frame | None:
+    """Extract (bssid, client, message) from one 802.11 data frame, or None."""
+    if len(data) < 24:
         return None
-    key_info = (keyframe[1] << 8) | keyframe[2]
-    msg = _classify(key_info)
+    fc = data[0] | (data[1] << 8)
+    if (fc >> 2) & 0x3 != 2:  # frame type must be Data
+        return None
+
+    keyframe = _eapol_keyframe(data, _dot11_header_length(fc))
+    if keyframe is None:
+        return None
+
+    msg = _classify((keyframe[1] << 8) | keyframe[2])
     if msg is None:
         return None
 
     # Message 1 (AP -> STA) may carry the PMKID in its Key Data KDEs.
     pmkid = _pmkid_from_m1(keyframe) if msg == 1 else None
 
-    if from_ds and not to_ds:
-        bssid, client = addr2, addr1  # AP -> STA
-    elif to_ds and not from_ds:
-        bssid, client = addr1, addr2  # STA -> AP
-    elif not to_ds and not from_ds:
-        bssid, client = addr3, addr2  # IBSS: addr3 is the BSSID
-    else:
-        bssid, client = addr1, addr2  # WDS: best effort
+    bssid, client = _address_roles(fc, data[4:10], data[10:16], data[16:22])
     return _Frame(_mac(bssid), _mac(client), msg, pmkid)
 
 

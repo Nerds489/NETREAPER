@@ -54,6 +54,26 @@ refused:
   PYL-W0125 constant conditional, 2 occurrences. Correct, and the reason it is
        correct is worth keeping: pinned by
        test_every_screen_menu_entry_names_an_action_that_exists.
+
+THE MAIN-BRANCH REPORT (265 findings at 08e3607) is mostly the same classes
+seen before this branch fixed them. What remains after it, and the one thing
+refused outright:
+
+  PY-R1000 on ProcessRunner.run, 15 branches. REFUSED. It is the single gated
+       spawn seam: every subprocess in the framework goes through it, and the
+       gate call, the audit record and the spawn are one sequence on purpose.
+       Splitting it produces a helper that can be called without the gate,
+       which is the exact defect class this repository keeps producing -- a
+       path to the dangerous thing that does not go past the check. 15 is also
+       below the band DeepSource reports as high risk, every instance of which
+       was 16 or more. Pinned by tests/unit/test_no_shell_spawn.py, which
+       already requires every spawn site to pair with a gate call.
+
+  PY-A6006 (configuring loggers is security sensitive), 2 occurrences. An
+       advisory "look at this" rule, and it has been looked at: core/logging.py
+       configures the application's own logger, writes under NETREAPER_LOG_DIR,
+       and the credential redaction that matters is in core/audit.py and is
+       covered by tests/unit/test_audit_redaction.py.
 """
 from __future__ import annotations
 

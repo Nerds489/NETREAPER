@@ -73,51 +73,68 @@ def _parse_path(path: str) -> list[dict[str, Any]]:
     return segments
 
 
+def _resolve_key(data: Any, segment: dict[str, Any], remaining: list) -> Any:
+    if not isinstance(data, dict):
+        return None
+    return _resolve_segments(data.get(segment["value"]), remaining)
+
+
+def _resolve_index(data: Any, segment: dict[str, Any], remaining: list) -> Any:
+    if not isinstance(data, (list, tuple)):
+        return None
+    try:
+        value = data[segment["value"]]
+    except IndexError:
+        return None
+    return _resolve_segments(value, remaining)
+
+
+def _resolve_wildcard(data: Any, _segment: dict[str, Any], remaining: list) -> Any:
+    """Every element, with one flattening rule that is easy to miss.
+
+    A list result is spliced in rather than nested, but only when there are
+    further segments after the wildcard. With nothing remaining, a list element
+    stays a list element. Changing that silently flattens the caller's data.
+    """
+    if not isinstance(data, (list, tuple)):
+        return None
+    results: list[Any] = []
+    for item in data:
+        result = _resolve_segments(item, remaining)
+        if result is None:
+            continue
+        if isinstance(result, list) and remaining:
+            results.extend(result)
+        else:
+            results.append(result)
+    return results or None
+
+
+def _resolve_filter(data: Any, segment: dict[str, Any], remaining: list) -> Any:
+    if not isinstance(data, (list, tuple)):
+        return None
+    filtered = _apply_filter(data, segment["expr"])
+    return _resolve_segments(filtered, remaining) if remaining else filtered
+
+
+# Dispatch by segment type. Defined after the resolvers so a name that stops
+# existing is an error at import rather than a path that silently returns None.
+_SEGMENT_RESOLVERS = {
+    "key": _resolve_key,
+    "index": _resolve_index,
+    "wildcard": _resolve_wildcard,
+    "filter": _resolve_filter,
+}
+
+
 def _resolve_segments(data: Any, segments: list[dict[str, Any]]) -> Any:
     """Recursively resolve path segments."""
     if not segments:
         return data
-
-    segment = segments[0]
-    remaining = segments[1:]
-
-    if segment["type"] == "key":
-        if isinstance(data, dict):
-            value = data.get(segment["value"])
-            return _resolve_segments(value, remaining)
+    resolver = _SEGMENT_RESOLVERS.get(segments[0]["type"])
+    if resolver is None:
         return None
-
-    elif segment["type"] == "index":
-        if isinstance(data, (list, tuple)):
-            try:
-                value = data[segment["value"]]
-                return _resolve_segments(value, remaining)
-            except IndexError:
-                return None
-        return None
-
-    elif segment["type"] == "wildcard":
-        if isinstance(data, (list, tuple)):
-            results = []
-            for item in data:
-                result = _resolve_segments(item, remaining)
-                if result is not None:
-                    if isinstance(result, list) and remaining:
-                        results.extend(result)
-                    else:
-                        results.append(result)
-            return results if results else None
-        return None
-
-    elif segment["type"] == "filter":
-        if isinstance(data, (list, tuple)):
-            filtered = _apply_filter(data, segment["expr"])
-            if remaining:
-                return _resolve_segments(filtered, remaining)
-            return filtered
-        return None
-
-    return None
+    return resolver(data, segments[0], segments[1:])
 
 
 def _apply_filter(data: list, expr: str) -> list:

@@ -123,22 +123,7 @@ class WhatWebTool(BaseToolWrapper):
                 techs = []
 
                 for plugin_name, plugin_data in plugins.items():
-                    tech = {"name": plugin_name}
-
-                    if isinstance(plugin_data, dict):
-                        # Version info
-                        if "version" in plugin_data:
-                            versions = plugin_data["version"]
-                            if versions:
-                                tech["version"] = versions[0] if isinstance(versions, list) else versions
-
-                        # String patterns found
-                        if "string" in plugin_data:
-                            strings = plugin_data["string"]
-                            if strings:
-                                tech["details"] = strings[0] if isinstance(strings, list) else strings
-
-                    techs.append(tech)
+                    techs.append(self._technology(plugin_name, plugin_data))
                     results["plugins_detected"].append(plugin_name)
 
                 target_info["technologies"] = techs
@@ -163,6 +148,24 @@ class WhatWebTool(BaseToolWrapper):
         }
 
         return results
+
+    @staticmethod
+    def _technology(plugin_name: str, plugin_data: Any) -> dict[str, Any]:
+        """One whatweb plugin hit.
+
+        Both fields arrive as a list of one in practice and as a bare value
+        occasionally, and an empty list means "matched, nothing to report", so
+        the key is left off rather than set to an empty value.
+        """
+        tech: dict[str, Any] = {"name": plugin_name}
+        if not isinstance(plugin_data, dict):
+            return tech
+
+        for source_key, out_key in (("version", "version"), ("string", "details")):
+            value = plugin_data.get(source_key)
+            if value:
+                tech[out_key] = value[0] if isinstance(value, list) else value
+        return tech
 
     def _parse_text_output(self, output: str) -> dict[str, Any]:
         """Fallback text output parsing."""

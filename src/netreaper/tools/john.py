@@ -97,56 +97,20 @@ class JohnTool(BaseToolWrapper):
                 - restore: Restore session
                 - fork: Number of processes
         """
-        cmd = []
-
-        # Show mode (display cracked)
+        # The two short-circuit modes. Both RETURN: --show and --restore are
+        # whole invocations of their own, not flags to add to a crack run.
         if options.get("show"):
-            cmd.append("--show")
+            cmd = ["--show"]
             if options.get("format"):
-                cmd.extend(["--format=" + options["format"]])
+                cmd.append("--format=" + options["format"])
             cmd.append(target)
             return cmd
 
-        # Restore session
         if options.get("restore"):
             session = options.get("session", self.john_config.session_name)
-            cmd.extend(["--restore=" + session])
-            return cmd
+            return ["--restore=" + session]
 
-        # Wordlist mode
-        wordlist = options.get("wordlist")
-        if wordlist:
-            cmd.append("--wordlist=" + str(wordlist))
-
-        # Format
-        format_type = options.get("format")
-        if format_type:
-            cmd.append("--format=" + format_type)
-
-        # Rules
-        rules = options.get("rules")
-        if rules:
-            if rules is True:
-                cmd.append("--rules")
-            else:
-                cmd.append("--rules=" + rules)
-
-        # Incremental mode
-        incremental = options.get("incremental")
-        if incremental:
-            if incremental is True:
-                cmd.append("--incremental")
-            else:
-                cmd.append("--incremental=" + incremental)
-
-        # Mask mode
-        mask = options.get("mask")
-        if mask:
-            cmd.append("--mask=" + mask)
-
-        # Single crack mode
-        if options.get("single"):
-            cmd.append("--single")
+        cmd = self._attack_mode_args(options)
 
         # Session name
         session = options.get("session", self.john_config.session_name)
@@ -171,6 +135,37 @@ class JohnTool(BaseToolWrapper):
         cmd.append(target)
 
         return cmd
+
+    @staticmethod
+    def _attack_mode_args(options: dict[str, Any]) -> list[str]:
+        """Wordlist, format, rules, incremental and mask.
+
+        `rules` and `incremental` take either True (the flag bare, john's own
+        default) or a string (the named ruleset or charset). That distinction is
+        the reason these are not in the simple table below them.
+        """
+        args: list[str] = []
+
+        wordlist = options.get("wordlist")
+        if wordlist:
+            args.append("--wordlist=" + str(wordlist))
+
+        format_type = options.get("format")
+        if format_type:
+            args.append("--format=" + format_type)
+
+        for key, flag in (("rules", "--rules"), ("incremental", "--incremental")):
+            value = options.get(key)
+            if value:
+                args.append(flag if value is True else f"{flag}={value}")
+
+        mask = options.get("mask")
+        if mask:
+            args.append("--mask=" + mask)
+
+        if options.get("single"):
+            args.append("--single")
+        return args
 
     def parse_output(self, output: str) -> dict[str, Any]:
         """Parse john output."""
