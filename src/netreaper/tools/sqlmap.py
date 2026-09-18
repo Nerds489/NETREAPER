@@ -74,231 +74,228 @@ class SqlmapTool(BaseToolWrapper):
         self._temp_dir: TemporaryDirectory | None = None
         self._output_dir: Path | None = None
 
+    # Argument tables. Every entry is (option key, flag); the config object
+    # supplies the default for the always-emitted ones. Table-driven because
+    # the shape of thirty flags is data, not control flow, and it was 25 branches
+    # of control flow.
+    _TUNING: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("level", "--level"),
+        ("risk", "--risk"),
+        ("threads", "--threads"),
+        ("timeout", "--timeout"),
+        ("retries", "--retries"),
+    )
+    _REQUEST: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("param", "-p"),
+        ("data", "--data"),
+        ("cookie", "--cookie"),
+    )
+    _ENUM_BARE: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("dbs", "--dbs"),
+        ("tables", "--tables"),
+        ("columns", "--columns"),
+        ("dump", "--dump"),
+        ("dump_all", "--dump-all"),
+    )
+    _ENUM_VALUE: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("database", "-D"),
+        ("table", "-T"),
+        ("column", "-C"),
+    )
+
     def build_command(self, target: str, options: dict[str, Any]) -> list[str]:
         """Build sqlmap command."""
-        cmd = []
+        cmd = ["-u", target]
+        cmd += self._tuning_args(options)
+        cmd += self._request_args(options)
+        cmd += self._enumeration_args(options)
 
-        # Target URL
-        cmd.extend(["-u", target])
-
-        # Level and risk
-        level = options.get("level", self.sqlmap_config.level)
-        cmd.extend(["--level", str(level)])
-
-        risk = options.get("risk", self.sqlmap_config.risk)
-        cmd.extend(["--risk", str(risk)])
-
-        # Threads
-        threads = options.get("threads", self.sqlmap_config.threads)
-        cmd.extend(["--threads", str(threads)])
-
-        # Timeout
-        timeout = options.get("timeout", self.sqlmap_config.timeout)
-        cmd.extend(["--timeout", str(timeout)])
-
-        # Retries
-        retries = options.get("retries", self.sqlmap_config.retries)
-        cmd.extend(["--retries", str(retries)])
-
-        # Delay between requests
-        delay = options.get("delay", self.sqlmap_config.delay)
-        if delay > 0:
-            cmd.extend(["--delay", str(delay)])
-
-        # Technique filter
-        technique = options.get("technique", self.sqlmap_config.technique)
-        cmd.extend(["--technique", technique])
-
-        # Tamper scripts
-        tamper = options.get("tamper", self.sqlmap_config.tamper)
-        if tamper:
-            cmd.extend(["--tamper", ",".join(tamper)])
-
-        # Specific parameter to test
-        param = options.get("param")
-        if param:
-            cmd.extend(["-p", param])
-
-        # POST data
-        data = options.get("data")
-        if data:
-            cmd.extend(["--data", data])
-
-        # Cookie
-        cookie = options.get("cookie")
-        if cookie:
-            cmd.extend(["--cookie", cookie])
-
-        # Headers
-        headers = options.get("headers")
-        if headers:
-            for header in headers:
-                cmd.extend(["-H", header])
-
-        # Database type hint
-        dbms = options.get("dbms")
-        if dbms:
-            cmd.extend(["--dbms", dbms])
-
-        # Enumeration options
-        if options.get("dbs"):
-            cmd.append("--dbs")
-        if options.get("tables"):
-            cmd.append("--tables")
-        if options.get("columns"):
-            cmd.append("--columns")
-        if options.get("dump"):
-            cmd.append("--dump")
-        if options.get("dump_all"):
-            cmd.append("--dump-all")
-
-        # Specific database/table
-        if options.get("database"):
-            cmd.extend(["-D", options["database"]])
-        if options.get("table"):
-            cmd.extend(["-T", options["table"]])
-        if options.get("column"):
-            cmd.extend(["-C", options["column"]])
-
-        # OS shell
-        if options.get("os_shell"):
-            cmd.append("--os-shell")
-        if options.get("os_cmd"):
-            cmd.extend(["--os-cmd", options["os_cmd"]])
-
-        # Batch mode (non-interactive)
         if options.get("batch", self.sqlmap_config.batch):
             cmd.append("--batch")
 
-        # Output directory
+        # Deliberately not inside a helper called `_args`: this allocates a
+        # temporary directory whose lifetime is the tool instance, and
+        # parse_output reads it back. A side effect that outlives the call
+        # belongs where it can be seen.
         self._temp_dir = TemporaryDirectory()
         self._output_dir = Path(self._temp_dir.name)
-        cmd.extend(["--output-dir", str(self._output_dir)])
+        cmd += ["--output-dir", str(self._output_dir)]
 
-        # Flush session
+        cmd += self._session_args(options)
+        return cmd
+
+    def _tuning_args(self, options: dict[str, Any]) -> list[str]:
+        """Detection depth, concurrency and the technique filter."""
+        cfg = self.sqlmap_config
+        args: list[str] = []
+        for key, flag in self._TUNING:
+            args += [flag, str(options.get(key, getattr(cfg, key)))]
+
+        delay = options.get("delay", cfg.delay)
+        if delay > 0:
+            args += ["--delay", str(delay)]
+
+        args += ["--technique", options.get("technique", cfg.technique)]
+
+        tamper = options.get("tamper", cfg.tamper)
+        if tamper:
+            args += ["--tamper", ",".join(tamper)]
+        return args
+
+    def _request_args(self, options: dict[str, Any]) -> list[str]:
+        """What to send: parameter under test, body, cookie, headers, DBMS hint."""
+        args: list[str] = []
+        for key, flag in self._REQUEST:
+            value = options.get(key)
+            if value:
+                args += [flag, value]
+
+        for header in options.get("headers") or ():
+            args += ["-H", header]
+
+        dbms = options.get("dbms")
+        if dbms:
+            args += ["--dbms", dbms]
+        return args
+
+    def _enumeration_args(self, options: dict[str, Any]) -> list[str]:
+        """What to pull out once an injection point is confirmed."""
+        args = [flag for key, flag in self._ENUM_BARE if options.get(key)]
+        for key, flag in self._ENUM_VALUE:
+            if options.get(key):
+                args += [flag, options[key]]
+
+        if options.get("os_shell"):
+            args.append("--os-shell")
+        os_cmd = options.get("os_cmd")
+        if os_cmd:
+            args += ["--os-cmd", os_cmd]
+        return args
+
+    def _session_args(self, options: dict[str, Any]) -> list[str]:
+        """Session handling and crawl behaviour, emitted after --output-dir."""
+        args: list[str] = []
         if options.get("flush_session"):
-            cmd.append("--flush-session")
-
-        # Forms parsing
+            args.append("--flush-session")
         if options.get("forms"):
-            cmd.append("--forms")
+            args.append("--forms")
 
-        # Crawl depth
         crawl = options.get("crawl")
         if crawl:
-            cmd.extend(["--crawl", str(crawl)])
+            args += ["--crawl", str(crawl)]
 
-        # Random agent
         if options.get("random_agent"):
-            cmd.append("--random-agent")
+            args.append("--random-agent")
 
-        # Proxy
         proxy = options.get("proxy")
         if proxy:
-            cmd.extend(["--proxy", proxy])
+            args += ["--proxy", proxy]
+        return args
 
-        return cmd
+    # ── output ───────────────────────────────────────────────────────────────
+
+    _INJECTION_RE: ClassVar = re.compile(r"Parameter:\s+(\S+)\s+\(([^)]+)\)")
+    _TABLE_CELL_RE: ClassVar = re.compile(r"\|\s+(\S+)\s+\|")
+    # (result key, pattern). Each is searched independently, so the fact that
+    # the "operating system" pattern also matches inside the web-server line is
+    # the pre-existing behaviour and is preserved.
+    _SINGLE_FIELDS: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("dbms", r"back-end DBMS:\s+(.+)"),
+        ("os", r"operating system:\s+(.+)"),
+        ("web_server", r"web server operating system:\s+(.+)"),
+    )
+    _SUCCESS_INDICATORS: ClassVar[tuple[str, ...]] = (
+        "injectable",
+        "vulnerability",
+        "exploitable",
+        "confirmed",
+    )
 
     def parse_output(self, output: str) -> dict[str, Any]:
         """Parse sqlmap output."""
-        results = {
-            "vulnerable": False,
-            "injection_points": [],
-            "databases": [],
-            "tables": [],
+        injection_points = self._parse_injection_points(output)
+        lowered = output.lower()
+        results: dict[str, Any] = {
+            "vulnerable": bool(injection_points)
+            or any(i in lowered for i in self._SUCCESS_INDICATORS),
+            "injection_points": injection_points,
+            "databases": self._parse_databases(output),
+            "tables": self._parse_tables(output),
             "columns": [],
-            "data": [],
+            "data": self._collect_dumped_csv(lowered),
             "dbms": None,
             "os": None,
             "web_server": None,
         }
 
-        # Parse injection points
-        injection_pattern = re.compile(
-            r"Parameter:\s+(\S+)\s+\(([^)]+)\)"
-        )
-        for match in injection_pattern.finditer(output):
-            results["injection_points"].append({
-                "parameter": match.group(1),
-                "type": match.group(2),
-            })
-            results["vulnerable"] = True
+        for key, pattern in self._SINGLE_FIELDS:
+            match = re.search(pattern, output)
+            if match:
+                results[key] = match.group(1).strip()
 
-        # Parse DBMS info
-        dbms_match = re.search(r"back-end DBMS:\s+(.+)", output)
-        if dbms_match:
-            results["dbms"] = dbms_match.group(1).strip()
-
-        # Parse OS info
-        os_match = re.search(r"operating system:\s+(.+)", output)
-        if os_match:
-            results["os"] = os_match.group(1).strip()
-
-        # Parse web server
-        server_match = re.search(r"web server operating system:\s+(.+)", output)
-        if server_match:
-            results["web_server"] = server_match.group(1).strip()
-
-        # Parse databases
-        db_section = re.search(r"available databases.*?:\s*\n((?:\[\*\].+\n)+)", output)
-        if db_section:
-            for line in db_section.group(1).splitlines():
-                db_match = re.search(r"\[\*\]\s+(.+)", line)
-                if db_match:
-                    results["databases"].append(db_match.group(1).strip())
-
-        # Parse tables
-        table_pattern = re.compile(r"\|\s+(\S+)\s+\|")
-        in_table_section = False
-        for line in output.splitlines():
-            if "Table" in line and "entries" not in line.lower():
-                in_table_section = True
-            elif in_table_section:
-                table_match = table_pattern.search(line)
-                if table_match and table_match.group(1) not in ["+", "-"]:
-                    results["tables"].append(table_match.group(1))
-                elif line.strip() == "":
-                    in_table_section = False
-
-        # Parse dumped data
-        # Look for CSV data in the output dir
-        if (
-            ("dumped to" in output.lower() or "entries" in output.lower())
-            and self._output_dir
-            and self._output_dir.exists()
-        ):
-            for csv_file in self._output_dir.rglob("*.csv"):
-                try:
-                    with open(csv_file) as f:
-                        content = f.read()
-                        results["data"].append({
-                            "file": csv_file.name,
-                            "content": content[:5000],  # Limit size
-                        })
-                except OSError as e:
-                    logger.warning('Could not read sqlmap output file %s: %s', csv_file.name, e)
-
-        # Check for various success indicators
-        success_indicators = [
-            "injectable",
-            "vulnerability",
-            "exploitable",
-            "confirmed",
-        ]
-        for indicator in success_indicators:
-            if indicator in output.lower():
-                results["vulnerable"] = True
-                break
-
-        # Summary
         results["summary"] = {
             "vulnerable": results["vulnerable"],
             "injection_points": len(results["injection_points"]),
             "databases_found": len(results["databases"]),
             "tables_found": len(results["tables"]),
         }
-
         return results
+
+    def _parse_injection_points(self, output: str) -> list[dict[str, str]]:
+        return [
+            {"parameter": m.group(1), "type": m.group(2)}
+            for m in self._INJECTION_RE.finditer(output)
+        ]
+
+    @staticmethod
+    def _parse_databases(output: str) -> list[str]:
+        section = re.search(r"available databases.*?:\s*\n((?:\[\*\].+\n)+)", output)
+        if not section:
+            return []
+        found = []
+        for line in section.group(1).splitlines():
+            match = re.search(r"\[\*\]\s+(.+)", line)
+            if match:
+                found.append(match.group(1).strip())
+        return found
+
+    def _parse_tables(self, output: str) -> list[str]:
+        """Scan the banner-delimited table listing.
+
+        Order-dependent and left that way: the section opens on the first line
+        containing "Table" that is not an entries count, and closes on the first
+        blank line after it. Changing which test runs first changes the result.
+        """
+        tables: list[str] = []
+        in_section = False
+        for line in output.splitlines():
+            if "Table" in line and "entries" not in line.lower():
+                in_section = True
+            elif in_section:
+                match = self._TABLE_CELL_RE.search(line)
+                if match and match.group(1) not in ["+", "-"]:
+                    tables.append(match.group(1))
+                elif line.strip() == "":
+                    in_section = False
+        return tables
+
+    def _collect_dumped_csv(self, lowered_output: str) -> list[dict[str, str]]:
+        if not (
+            ("dumped to" in lowered_output or "entries" in lowered_output)
+            and self._output_dir
+            and self._output_dir.exists()
+        ):
+            return []
+        data = []
+        for csv_file in self._output_dir.rglob("*.csv"):
+            try:
+                with open(csv_file) as f:
+                    data.append({"file": csv_file.name, "content": f.read()[:5000]})
+            except OSError as e:
+                logger.warning(
+                    'Could not read sqlmap output file %s: %s', csv_file.name, e
+                )
+        return data
 
     async def cleanup(self) -> None:
         """Clean up resources."""

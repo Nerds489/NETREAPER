@@ -95,94 +95,96 @@ class HydraTool(BaseToolWrapper):
                 - http_path: Path for HTTP attacks
                 - http_form: Form parameters for http-post-form
         """
-        cmd = []
+        cmd = self._credential_args(options)
 
-        # Username options
+        # Threads and timeout are always emitted, and they bracket the
+        # connection flags, so they stay here rather than moving into a helper
+        # that would then have to promise not to reorder them.
+        cmd += ["-t", str(options.get("threads", self.hydra_config.default_threads))]
+        cmd += self._connection_args(options)
+        cmd += ["-w", str(options.get("timeout", self.hydra_config.timeout))]
+
+        output_file = options.get("output_file")
+        if output_file:
+            cmd += ["-o", str(output_file)]
+
+        cmd.append(target)
+        cmd += self._service_args(options)
+        return cmd
+
+    @staticmethod
+    def _credential_args(options: dict[str, Any]) -> list[str]:
+        """Who to try. Exactly one of the user forms and one of the pass forms
+        is usual, but hydra accepts the combinations and so does this."""
+        args: list[str] = []
         username = options.get("username")
         if username:
-            cmd.extend(["-l", username])
+            args += ["-l", username]
 
         user_list = options.get("user_list")
         if user_list:
-            cmd.extend(["-L", str(user_list)])
+            args += ["-L", str(user_list)]
 
-        # Password options
         password = options.get("password")
         if password:
-            cmd.extend(["-p", password])
+            args += ["-p", password]
 
         pass_list = options.get("pass_list")
         if pass_list:
-            cmd.extend(["-P", str(pass_list)])
+            args += ["-P", str(pass_list)]
 
-        # Colon-separated file (user:pass)
         colon_file = options.get("colon_file")
         if colon_file:
-            cmd.extend(["-C", str(colon_file)])
+            args += ["-C", str(colon_file)]
+        return args
 
-        # Threads
-        threads = options.get("threads", self.hydra_config.default_threads)
-        cmd.extend(["-t", str(threads)])
-
-        # Port
+    def _connection_args(self, options: dict[str, Any]) -> list[str]:
+        """How to reach it, and when to stop."""
+        args: list[str] = []
         port = options.get("port")
         if port:
-            cmd.extend(["-s", str(port)])
+            args += ["-s", str(port)]
 
-        # SSL
         if options.get("ssl"):
-            cmd.append("-S")
+            args.append("-S")
 
-        # Virtual host
         vhost = options.get("vhost")
         if vhost:
-            cmd.extend(["-V", vhost])
+            args += ["-V", vhost]
 
-        # Exit on first found
         if options.get("exit_first", self.hydra_config.exit_on_first):
-            cmd.append("-f")
+            args.append("-f")
 
-        # Loop around users
         if options.get("loop_users"):
-            cmd.append("-u")
+            args.append("-u")
 
-        # Verbose
         if options.get("verbose", self.hydra_config.verbose):
-            cmd.append("-v")
+            args.append("-v")
 
-        # Wait time
         wait = options.get("wait")
         if wait:
-            cmd.extend(["-W", str(wait)])
+            args += ["-W", str(wait)]
+        return args
 
-        # Timeout
-        timeout = options.get("timeout", self.hydra_config.timeout)
-        cmd.extend(["-w", str(timeout)])
+    @staticmethod
+    def _service_args(options: dict[str, Any]) -> list[str]:
+        """The service module, and the one extra positional the HTTP ones take.
 
-        # Output file
-        output_file = options.get("output_file")
-        if output_file:
-            cmd.extend(["-o", str(output_file)])
-
-        # Target
-        cmd.append(target)
-
-        # Service with optional parameters
+        Order matters and is preserved: a form spec wins over a path, and a
+        non-HTTP service takes neither even when one was passed.
+        """
         service = options.get("service", "ssh")
-        http_path = options.get("http_path")
+        if not service.startswith("http"):
+            return [service]
+
         http_form = options.get("http_form")
+        if http_form:
+            return [service, http_form]
 
-        if service.startswith("http") and http_form:
-            # HTTP form attack: http-post-form "/path:user=^USER^&pass=^PASS^:F=error"
-            cmd.append(f"{service}")
-            cmd.append(http_form)
-        elif service.startswith("http") and http_path:
-            cmd.append(f"{service}")
-            cmd.append(http_path)
-        else:
-            cmd.append(service)
-
-        return cmd
+        http_path = options.get("http_path")
+        if http_path:
+            return [service, http_path]
+        return [service]
 
     def parse_output(self, output: str) -> dict[str, Any]:
         """Parse hydra output."""

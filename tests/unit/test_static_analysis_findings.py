@@ -715,3 +715,21 @@ def test_the_audit_trail_singleton_stays_injectable():
         )
     finally:
         audit_mod._TRAIL = original
+
+
+def test_the_aireplay_attack_dispatch_table_names_methods_that_exist():
+    """PY-R1000 at aireplay.py:128, refactored to a table. Same class of defect
+    as the screen menus above: a table entry naming something that is not there.
+
+    Looked up with [] rather than getattr's default on purpose, so a stale name
+    raises instead of quietly falling through to --deauth, which would send a
+    deauth where a chopchop was asked for.
+    """
+    from netreaper.tools.aireplay import AireplayTool
+
+    missing = [
+        f"{mode.name} -> {name}"
+        for mode, name in AireplayTool.ATTACK_BUILDERS.items()
+        if not callable(getattr(AireplayTool, name, None))
+    ]
+    assert not missing, "attack builders that do not exist:\n  " + "\n  ".join(missing)

@@ -118,6 +118,21 @@ class AireplayTool(BaseToolWrapper):
         AttackMode.TEST: "--test",
     }
 
+    # Attack modes with a builder of their own, by method name. A table rather
+    # than an if/elif ladder, and looked up with [] rather than getattr's
+    # default, so a name that stops resolving is an error instead of a silent
+    # fall-through to --deauth. Pinned by a test.
+    ATTACK_BUILDERS: ClassVar[dict["AttackMode", str]] = {
+        AttackMode.DEAUTH: "_build_deauth_command",
+        AttackMode.FAKEAUTH: "_build_fakeauth_command",
+        AttackMode.ARPREPLAY: "_build_arpreplay_command",
+        AttackMode.CHOPCHOP: "_build_chopchop_command",
+        AttackMode.FRAGMENT: "_build_fragment_command",
+        AttackMode.CAFFE_LATTE: "_build_caffe_latte_command",
+        AttackMode.INTERACTIVE: "_build_interactive_command",
+        AttackMode.TEST: "_build_test_command",
+    }
+
     def _bssid_flag(self, attack: "AttackMode") -> str:
         return "-b" if attack in self.FILTER_BSSID_ATTACKS else "-a"
 
@@ -144,54 +159,46 @@ class AireplayTool(BaseToolWrapper):
         """
         require_interface(target)  # reject a bad/flag-like interface before argv
 
-        cmd = []
-
-        # Get attack mode
         attack = options.get("attack", AttackMode.DEAUTH)
         if isinstance(attack, str):
             attack = AttackMode(attack)
 
-        # Attack-specific command building
-        if attack == AttackMode.DEAUTH:
-            cmd.extend(self._build_deauth_command(options))
-        elif attack == AttackMode.FAKEAUTH:
-            cmd.extend(self._build_fakeauth_command(options))
-        elif attack == AttackMode.ARPREPLAY:
-            cmd.extend(self._build_arpreplay_command(options))
-        elif attack == AttackMode.CHOPCHOP:
-            cmd.extend(self._build_chopchop_command(options))
-        elif attack == AttackMode.FRAGMENT:
-            cmd.extend(self._build_fragment_command(options))
-        elif attack == AttackMode.CAFFE_LATTE:
-            cmd.extend(self._build_caffe_latte_command(options))
-        elif attack == AttackMode.INTERACTIVE:
-            cmd.extend(self._build_interactive_command(options))
-        elif attack == AttackMode.TEST:
-            cmd.extend(self._build_test_command(options))
-        else:
-            # Generic attack flag. Only the valued ones get a number after them.
-            flag = self.ATTACK_FLAGS.get(attack, "--deauth")
-            if attack in self.VALUED_ATTACK_FLAGS:
-                count = options.get("count", self.aireplay_config.default_deauth_count)
-                cmd.extend([flag, str(count)])
-            else:
-                cmd.append(flag)
+        cmd = self._attack_args(attack, options)
+        cmd += self._common_args(attack, options)
+        cmd.append(target)  # the interface is always last
+        return cmd
 
-        # Common options
+    def _attack_args(self, attack: "AttackMode", options: dict[str, Any]) -> list[str]:
+        """The attack selector and whatever that one attack needs with it."""
+        builder = self.ATTACK_BUILDERS.get(attack)
+        if builder is not None:
+            return list(getattr(self, builder)(options))
+
+        # Generic attack flag. Only the valued ones get a number after them.
+        flag = self.ATTACK_FLAGS.get(attack, "--deauth")
+        if attack in self.VALUED_ATTACK_FLAGS:
+            count = options.get("count", self.aireplay_config.default_deauth_count)
+            return [flag, str(count)]
+        return [flag]
+
+    def _common_args(self, attack: "AttackMode", options: dict[str, Any]) -> list[str]:
+        """Options every attack mode accepts, in the order aireplay-ng expects."""
+        args: list[str] = []
+
         # Target AP BSSID, named with the flag this attack actually reads.
         bssid = options.get("bssid")
         if bssid:
-            cmd.extend([self._bssid_flag(attack), bssid])
+            args += [self._bssid_flag(attack), bssid]
 
         # Target client MAC
         client = options.get("client")
         if client:
-            cmd.extend(["-c", client])
+            args += ["-c", client]
 
         # Source MAC (spoof)
         source = options.get("source")
         if source:
-            cmd.extend(["-h", source])
+            args += ["-h", source]
 
         # Ignore a negative-one channel report from the driver.
         #
@@ -210,17 +217,13 @@ class AireplayTool(BaseToolWrapper):
             "ignore_negative_ack",
             options.get("ignore_negative", self.aireplay_config.ignore_negative_ack),
         ):
-            cmd.append("--ignore-negative-one")
+            args.append("--ignore-negative-one")
 
         # Read from file
         read_file = options.get("read_file")
         if read_file:
-            cmd.extend(["-r", str(read_file)])
-
-        # Interface (target)
-        cmd.append(target)
-
-        return cmd
+            args += ["-r", str(read_file)]
+        return args
 
     def _build_deauth_command(self, options: dict[str, Any]) -> list[str]:
         """Build deauthentication attack command."""
