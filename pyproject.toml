@@ -24,7 +24,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "textual>=0.47.0",
+    # Upper bound and a realistic floor. The declared floor was >=0.47.0 while
+    # the app is written and tested against 8.x: the command-palette Provider,
+    # push_screen_wait and the settable `theme` attribute are not all present in
+    # 0.47, so an install that honoured the old floor could not have run the TUI.
+    "textual>=8.0,<9",
     "rich>=13.7.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
@@ -32,7 +36,10 @@ dependencies = [
     "pyee>=11.0.0",
     "transitions>=0.9.0",
     "typer>=0.9.0",
-    "cryptography>=41.0.0",
+    # >=41.0.0 with no ceiling resolved to 50.0.1 here: nine major versions
+    # past the declared floor, on the one dependency that is actually
+    # security-critical. Capped like mypy below, for the same reason.
+    "cryptography>=41.0.0,<51",
     "keyring>=24.3.0",
     "tomli-w>=1.0.0",
 ]
