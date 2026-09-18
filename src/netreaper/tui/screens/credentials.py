@@ -8,11 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import (
     Button,
-    Checkbox,
     DataTable,
     Input,
     Label,
@@ -300,7 +299,7 @@ class CredentialsScreen(Screen):
             self.app.notify(f"Password cracked: {password}", severity="information")
 
         except Exception as e:
-            logger.warning(f"Failed to process cracked credential: {e}")
+            logger.warning("Failed to process cracked credential: %s", e)
 
     def _refresh_cracked_table(self) -> None:
         """Refresh the cracked passwords table."""
@@ -340,7 +339,7 @@ class CredentialsScreen(Screen):
                 potfile_widget.update("[dim]Potfile not found[/]")
 
         except Exception as e:
-            logger.warning(f"Failed to load potfile: {e}")
+            logger.warning("Failed to load potfile: %s", e)
 
     def _write_output(self, message: str) -> None:
         """Write message to output panel."""

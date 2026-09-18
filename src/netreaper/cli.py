@@ -1405,7 +1405,7 @@ def can_dump(
     ),
 ):
     """Read and decode a CAN bus. Read-only: this cannot transmit."""
-    from pathlib import Path as _P
+
 
     from netreaper.automotive import CanIdDatabase, decode_capture
     from netreaper.tools.canutils import CanUtilsTool
@@ -1422,7 +1422,7 @@ def can_dump(
         for fid in sorted(cap.unique_ids):
             console.print(f"  {fid}")
         return
-    db = CanIdDatabase.load(_P(database))
+    db = CanIdDatabase.load(Path(database))
     table = Table(title=f"Decoded ({len(db)} known ids)")
     for col in ("CAN ID", "Signal", "Data"):
         table.add_column(col)

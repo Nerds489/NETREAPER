@@ -9,7 +9,6 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.screen import Screen
 from textual.widgets import (
     Button,
-    Checkbox,
     Input,
     Label,
     ListItem,
@@ -202,7 +201,8 @@ class SettingsScreen(Screen):
         elif category == "Actions":
             self._compose_actions(panel)
 
-    def _compose_general_settings(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_general_settings(panel: ScrollableContainer) -> None:
         """Compose general settings form."""
         settings = get_settings()
 
@@ -257,7 +257,8 @@ class SettingsScreen(Screen):
 
         panel.mount(Button("Save Settings", id="save-button", variant="primary"))
 
-    def _compose_logging_settings(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_logging_settings(panel: ScrollableContainer) -> None:
         """Compose logging settings form."""
         settings = get_settings()
 
@@ -317,7 +318,8 @@ class SettingsScreen(Screen):
 
         panel.mount(Button("Save Settings", id="save-button", variant="primary"))
 
-    def _compose_wireless_settings(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_wireless_settings(panel: ScrollableContainer) -> None:
         """Compose wireless settings form."""
         settings = get_settings()
 
@@ -379,7 +381,8 @@ class SettingsScreen(Screen):
 
         panel.mount(Button("Save Settings", id="save-button", variant="primary"))
 
-    def _compose_scanning_settings(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_scanning_settings(panel: ScrollableContainer) -> None:
         """Compose scanning settings form."""
         settings = get_settings()
 
@@ -431,7 +434,8 @@ class SettingsScreen(Screen):
 
         panel.mount(Button("Save Settings", id="save-button", variant="primary"))
 
-    def _compose_credentials_settings(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_credentials_settings(panel: ScrollableContainer) -> None:
         """Compose credentials settings form."""
         settings = get_settings()
 
@@ -471,7 +475,8 @@ class SettingsScreen(Screen):
 
         panel.mount(Button("Save Settings", id="save-button", variant="primary"))
 
-    def _compose_safety_settings(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_safety_settings(panel: ScrollableContainer) -> None:
         """Compose safety settings form."""
         settings = get_settings()
 
@@ -526,7 +531,8 @@ class SettingsScreen(Screen):
 
         panel.mount(Button("Save Settings", id="save-button", variant="primary"))
 
-    def _compose_api_key_settings(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_api_key_settings(panel: ScrollableContainer) -> None:
         """Compose API key settings form."""
         panel.mount(Label("[dim]Configure API keys for external services[/]", classes="settings-description"))
 
@@ -566,7 +572,8 @@ class SettingsScreen(Screen):
             )
             panel.mount(row)
 
-    def _compose_path_settings(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_path_settings(panel: ScrollableContainer) -> None:
         """Compose path settings form."""
         settings = get_settings()
 
@@ -594,7 +601,8 @@ class SettingsScreen(Screen):
 
         panel.mount(Button("Save Settings", id="save-button", variant="primary"))
 
-    def _compose_actions(self, panel: ScrollableContainer) -> None:
+    @staticmethod
+    def _compose_actions(panel: ScrollableContainer) -> None:
         """Compose actions panel."""
         panel.mount(Label("[dim]Import, export, and reset actions[/]", classes="settings-description"))
 

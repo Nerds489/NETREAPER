@@ -146,7 +146,7 @@ class NetreaperEventBus(AsyncIOEventEmitter):
             # wrote every credential to a plaintext file in the same directory
             # as the audit trail, with none of the audit's protections.
             safe = _redact_event(data)
-            logger.debug(f"Event: {event_name} - {safe}")
+            logger.debug("Event: %s - %s", event_name, safe)
 
             # Store the redacted copy: the history feeds the UI and any dump of it.
             self._event_history.append((event_name, safe))

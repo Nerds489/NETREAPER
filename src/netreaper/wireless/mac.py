@@ -61,7 +61,7 @@ async def get_current_mac(interface: str) -> str | None:
         if address_path.exists():
             return address_path.read_text().strip()
     except Exception as e:
-        logger.debug(f"Failed to read MAC from sysfs for {interface}: {e}")
+        logger.debug("Failed to read MAC from sysfs for %s: %s", interface, e)
 
     # Fallback to the ip command, through the gated seam.
     try:
@@ -73,7 +73,7 @@ async def get_current_mac(interface: str) -> str | None:
         if match:
             return match.group(1)
     except Exception as e:
-        logger.debug(f"Failed to get MAC via ip command for {interface}: {e}")
+        logger.debug("Failed to get MAC via ip command for %s: %s", interface, e)
 
     return None
 
@@ -89,7 +89,7 @@ async def get_permanent_mac(interface: str) -> str | None:
         if match:
             return match.group(1)
     except Exception as e:
-        logger.debug(f"Failed to get permanent MAC for {interface}: {e}")
+        logger.debug("Failed to get permanent MAC for %s: %s", interface, e)
 
     return None
 
@@ -122,7 +122,7 @@ async def change_mac(
         # Bring interface up
         await _run_ip_command(["link", "set", interface, "up"])
 
-        logger.info(f"MAC changed: {interface} {original_mac} -> {new_mac}")
+        logger.info("MAC changed: %s %s -> %s", interface, original_mac, new_mac)
         return new_mac
 
     except Exception as e:
@@ -132,7 +132,7 @@ async def change_mac(
                 await _run_ip_command(["link", "set", interface, "address", original_mac])
                 await _run_ip_command(["link", "set", interface, "up"])
             except Exception as restore_err:
-                logger.warning(f"Failed to restore original MAC on {interface}: {restore_err}")
+                logger.warning("Failed to restore original MAC on %s: %s", interface, restore_err)
         raise
 
 
@@ -141,7 +141,7 @@ async def restore_mac(interface: str) -> str | None:
     permanent_mac = await get_permanent_mac(interface)
     if permanent_mac:
         await change_mac(interface, permanent_mac)
-        logger.info(f"MAC restored: {interface} -> {permanent_mac}")
+        logger.info("MAC restored: %s -> %s", interface, permanent_mac)
         return permanent_mac
     return None
 

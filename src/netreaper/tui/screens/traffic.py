@@ -2,13 +2,12 @@
 
 import asyncio
 import os
-import shutil
 import tempfile
 from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
+from textual.containers import ScrollableContainer, Vertical
 from textual.screen import Screen
 from textual.widgets import (
     Button,

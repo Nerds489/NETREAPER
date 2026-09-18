@@ -1,6 +1,5 @@
 """Subfinder subdomain discovery wrapper."""
 import json
-import re
 from typing import Any, ClassVar
 
 from pydantic import BaseModel

@@ -37,12 +37,12 @@ class PluginLifecycleManager:
         plugin_id = id(plugin)
         old_state = self._states.get(plugin_id, PluginState.UNINITIALIZED)
         self._states[plugin_id] = state
-        logger.debug(f"Plugin {plugin.name} state: {old_state.value} -> {state.value}")
+        logger.debug('Plugin %s state: %s -> %s', plugin.name, old_state.value, state.value)
 
     async def initialize_plugin(self, plugin: BasePlugin) -> bool:
         """Initialize a plugin with state management."""
         if self.get_state(plugin) != PluginState.UNINITIALIZED:
-            logger.warning(f"Plugin {plugin.name} already initialized")
+            logger.warning('Plugin %s already initialized', plugin.name)
             return True
 
         self.set_state(plugin, PluginState.INITIALIZING)
@@ -52,7 +52,7 @@ class PluginLifecycleManager:
             self.set_state(plugin, PluginState.READY)
             return True
         except Exception as e:
-            logger.error(f"Plugin initialization failed: {e}")
+            logger.error("Plugin initialization failed: %s", e)
             self.set_state(plugin, PluginState.ERROR)
             self._record_error(plugin, str(e))
             return False
@@ -77,7 +77,7 @@ class PluginLifecycleManager:
             self.set_state(plugin, PluginState.READY)
             return result
         except Exception as e:
-            logger.error(f"Plugin execution failed: {e}")
+            logger.error("Plugin execution failed: %s", e)
             self.set_state(plugin, PluginState.ERROR)
             self._record_error(plugin, str(e))
             raise
@@ -89,7 +89,7 @@ class PluginLifecycleManager:
         try:
             await plugin.cleanup()
         except Exception as e:
-            logger.error(f"Plugin cleanup failed: {e}")
+            logger.error("Plugin cleanup failed: %s", e)
             self._record_error(plugin, str(e))
         finally:
             self.set_state(plugin, PluginState.TERMINATED)

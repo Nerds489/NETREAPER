@@ -80,7 +80,7 @@ def detect_distro() -> DistroFamily:
             return DistroFamily.ARCH
 
     except Exception as e:
-        logger.warning(f"Failed to detect distro: {e}")
+        logger.warning("Failed to detect distro: %s", e)
 
     return DistroFamily.UNKNOWN
 
@@ -925,7 +925,8 @@ class ToolRegistry:
     # Category Methods
     # --------------------------------------------------------------------------
 
-    def get_categories(self) -> list[ToolCategory]:
+    @staticmethod
+    def get_categories() -> list[ToolCategory]:
         """Get all tool categories."""
         return list(ToolCategory)
 
@@ -1076,18 +1077,18 @@ class ToolRegistry:
         # Try package manager first
         cmd = self.get_install_command(tool_name)
         if cmd:
-            logger.info(f"Installing {tool_name} via package manager: {' '.join(cmd)}")
+            logger.info('Installing %s via package manager: %s', tool_name, ' '.join(cmd))
             success, msg = await self._run_install_cmd(cmd, tool_name, callback)
             if success:
                 return success, msg
             # Package manager failed, try pip fallback if available
-            logger.warning(f"Package manager install failed for {tool_name}, trying pip...")
+            logger.warning("Package manager install failed for %s, trying pip...", tool_name)
 
         # Try pip installation if pip_package is defined
         if defn and defn.pip_package:
             pip_cmd = await self._get_pip_install_command(defn.pip_package)
             if pip_cmd:
-                logger.info(f"Installing {tool_name} via pip: {' '.join(pip_cmd)}")
+                logger.info('Installing %s via pip: %s', tool_name, ' '.join(pip_cmd))
                 success, msg = await self._run_install_cmd(pip_cmd, tool_name, callback)
                 if success:
                     return success, msg
@@ -1097,7 +1098,8 @@ class ToolRegistry:
             return False, f"Manual install required: {defn.url}"
         return False, f"No package available for {tool_name} on {self.distro.value}"
 
-    async def _get_pip_install_command(self, package: str) -> list[str] | None:
+    @staticmethod
+    async def _get_pip_install_command(package: str) -> list[str] | None:
         """Get pip/pipx install command for a package.
 
         Prefers pipx for CLI tools (isolated environments), falls back to pip.
@@ -1148,7 +1150,7 @@ class ToolRegistry:
                 decoded = line.decode().strip()
                 if callback:
                     callback(decoded)
-                logger.debug(f"Install output: {decoded}")
+                logger.debug("Install output: %s", decoded)
 
             await process.wait()
 
@@ -1159,13 +1161,13 @@ class ToolRegistry:
             info = self.check(tool_name)
 
             if info.available:
-                logger.info(f"Successfully installed {tool_name}")
+                logger.info("Successfully installed %s", tool_name)
                 return True, f"Successfully installed {tool_name}"
             else:
                 return False, f"Installation completed but {tool_name} not found in PATH"
 
         except Exception as e:
-            logger.error(f"Failed to install {tool_name}: {e}")
+            logger.error("Failed to install %s: %s", tool_name, e)
             return False, f"Installation failed: {e}"
 
     async def install_tools(

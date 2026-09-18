@@ -83,7 +83,10 @@ class CanIdDatabase:
                     db._load_delimited(p, make)
                 db.files_loaded += 1
                 logger.debug("loaded %d ids from %s", len(db.entries) - before, p.name)
-            except (OSError, ValueError, UnicodeDecodeError) as e:
+            # UnicodeDecodeError is a subclass of ValueError, so listing both
+            # catches nothing extra and misleads the reader into thinking a
+            # decode error is handled separately from a parse error.
+            except (OSError, ValueError) as e:
                 # One malformed file must not lose the whole database.
                 logger.warning("skipping CAN id file %s: %s", p, e)
         if db.unparsed_rows:

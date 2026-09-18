@@ -85,7 +85,7 @@ class BaseToolWrapper(ToolPlugin):
             )
         self._tool_path = Path(self._tool_path)
         self._initialized = True
-        logger.debug(f"Tool initialized: {self.TOOL_BINARY} at {self._tool_path}")
+        logger.debug('Tool initialized: %s at %s', self.TOOL_BINARY, self._tool_path)
 
     @abstractmethod
     def build_command(self, target: str, options: dict[str, Any]) -> list[str]:
@@ -157,7 +157,8 @@ class BaseToolWrapper(ToolPlugin):
         )
         return PluginResult(success=result.returncode == 0, data=parsed)
 
-    def _classify_line(self, line: str) -> str:
+    @staticmethod
+    def _classify_line(line: str) -> str:
         """Classify output line for display styling."""
         line_lower = line.lower()
 

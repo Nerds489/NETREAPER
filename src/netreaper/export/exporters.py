@@ -440,7 +440,8 @@ class HtmlExporter(Exporter):
             "version": __version__,
         }
 
-    def _build_table(self, data: list, headers: list, keys: list) -> str:
+    @staticmethod
+    def _build_table(data: list, headers: list, keys: list) -> str:
         """Build an HTML table from data."""
         if not data:
             return "<p>No data available.</p>"
@@ -459,7 +460,8 @@ class HtmlExporter(Exporter):
             {''.join(rows)}
         </table>"""
 
-    def _build_findings(self, loot: list) -> str:
+    @staticmethod
+    def _build_findings(loot: list) -> str:
         """Build findings section HTML."""
         if not loot:
             return "<p>No findings recorded.</p>"
@@ -476,7 +478,8 @@ class HtmlExporter(Exporter):
 
         return "\n".join(items)
 
-    def _build_timeline(self, audit: list) -> str:
+    @staticmethod
+    def _build_timeline(audit: list) -> str:
         """Build activity timeline HTML."""
         if not audit:
             return "<p>No activity logged.</p>"
@@ -495,7 +498,8 @@ class HtmlExporter(Exporter):
 
         return "\n".join(items)
 
-    def _calculate_duration(self, session: dict) -> str:
+    @staticmethod
+    def _calculate_duration(session: dict) -> str:
         """Calculate session duration."""
         try:
             start_str = session.get("created_at", "")
@@ -638,7 +642,8 @@ class MarkdownExporter(Exporter):
                 error=str(e)
             )
 
-    def _generate_markdown(self, data: dict) -> str:
+    @staticmethod
+    def _generate_markdown(data: dict) -> str:
         """Generate Markdown report content."""
         from netreaper import __version__
 

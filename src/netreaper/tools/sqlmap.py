@@ -273,7 +273,7 @@ class SqlmapTool(BaseToolWrapper):
                                 "content": content[:5000],  # Limit size
                             })
                     except OSError as e:
-                        logger.warning(f"Could not read sqlmap output file {csv_file.name}: {e}")
+                        logger.warning('Could not read sqlmap output file %s: %s', csv_file.name, e)
 
         # Check for various success indicators
         success_indicators = [

@@ -172,7 +172,8 @@ class GobusterTool(BaseToolWrapper):
 
         return results
 
-    def _parse_text_line(self, line: str, results: dict[str, Any]) -> None:
+    @staticmethod
+    def _parse_text_line(line: str, results: dict[str, Any]) -> None:
         """Fallback text parsing for non-JSON output."""
         if line.startswith("=") or not line:
             return

@@ -227,7 +227,8 @@ class AireplayTool(BaseToolWrapper):
         count = options.get("count", self.aireplay_config.default_deauth_count)
         return ["--deauth", str(count)]
 
-    def _build_fakeauth_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_fakeauth_command(options: dict[str, Any]) -> list[str]:
         """Build fake authentication attack command."""
         cmd = []
 
@@ -277,7 +278,8 @@ class AireplayTool(BaseToolWrapper):
 
         return cmd
 
-    def _build_chopchop_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_chopchop_command(options: dict[str, Any]) -> list[str]:
         """Build KoreK chopchop attack command."""
         cmd = ["--chopchop"]
 
@@ -288,7 +290,8 @@ class AireplayTool(BaseToolWrapper):
 
         return cmd
 
-    def _build_fragment_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_fragment_command(options: dict[str, Any]) -> list[str]:
         """Build fragmentation attack command."""
         cmd = ["--fragment"]
 
@@ -298,7 +301,8 @@ class AireplayTool(BaseToolWrapper):
 
         return cmd
 
-    def _build_caffe_latte_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_caffe_latte_command(options: dict[str, Any]) -> list[str]:
         """Build Caffe-Latte attack command."""
         # -N was passed here as a packet count. There is no -N in aireplay-ng:
         # not in the short-option string, not in long_options[], no case 'N' in
@@ -306,7 +310,8 @@ class AireplayTool(BaseToolWrapper):
         # caffe-latte never ran once. --caffe-latte itself takes no argument.
         return ["--caffe-latte"]
 
-    def _build_interactive_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_interactive_command(options: dict[str, Any]) -> list[str]:
         """Build interactive packet replay command."""
         cmd = ["--interactive"]
 
@@ -321,7 +326,8 @@ class AireplayTool(BaseToolWrapper):
 
         return cmd
 
-    def _build_test_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_test_command(options: dict[str, Any]) -> list[str]:
         """Build injection test command."""
         cmd = ["--test"]
 

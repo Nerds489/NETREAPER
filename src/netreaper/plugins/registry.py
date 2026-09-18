@@ -43,7 +43,7 @@ class PluginRegistry:
             for name, plugin_class in plugins.items():
                 self._register(name, group, plugin_class)
 
-        logger.info(f"Registry initialized with {len(self._registry)} plugins")
+        logger.info('Registry initialized with %s plugins', len(self._registry))
 
     def _register(
         self, name: str, group: str, plugin_class: Type[BasePlugin]

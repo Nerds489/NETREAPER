@@ -235,7 +235,7 @@ class ExportManager:
                     "SELECT * FROM sessions WHERE id = ?", (session_id,)
                 ) or {}
             except Exception as e:
-                logger.debug(f"Failed to fetch session {session_id}: {e}")
+                logger.debug("Failed to fetch session %s: %s", session_id, e)
                 session = {"id": session_id, "name": f"Session {session_id}"}
 
             try:
@@ -243,14 +243,14 @@ class ExportManager:
                     "SELECT * FROM targets WHERE session_id = ?", (session_id,)
                 ) or []
             except Exception as e:
-                logger.debug(f"Failed to fetch targets for session {session_id}: {e}")
+                logger.debug("Failed to fetch targets for session %s: %s", session_id, e)
 
             try:
                 tool_runs = await self.db.fetch_all(
                     "SELECT * FROM tool_executions WHERE session_id = ?", (session_id,)
                 ) or []
             except Exception as e:
-                logger.debug(f"Failed to fetch tool executions for session {session_id}: {e}")
+                logger.debug("Failed to fetch tool executions for session %s: %s", session_id, e)
 
             try:
                 audit = await self.db.fetch_all(
@@ -258,7 +258,7 @@ class ExportManager:
                     (session_id,)
                 ) or []
             except Exception as e:
-                logger.debug(f"Failed to fetch audit log for session {session_id}: {e}")
+                logger.debug("Failed to fetch audit log for session %s: %s", session_id, e)
 
         # The hash-chained trail is the real record of what was spawned, denied,
         # dry-run or errored against which targets, and until now it reached no
@@ -288,7 +288,7 @@ class ExportManager:
             try:
                 loot = await self.loot.list_by_session(session_id) or []
             except Exception as e:
-                logger.debug(f"Failed to fetch loot for session {session_id}: {e}")
+                logger.debug("Failed to fetch loot for session %s: %s", session_id, e)
 
         return {
             "session": session,
@@ -301,7 +301,8 @@ class ExportManager:
             "generated_at": datetime.now().isoformat(),
         }
 
-    def _flatten_for_csv(self, data: dict) -> list[dict]:
+    @staticmethod
+    def _flatten_for_csv(data: dict) -> list[dict]:
         """Flatten hierarchical data for CSV export.
 
         Args:

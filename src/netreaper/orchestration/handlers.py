@@ -12,9 +12,7 @@ async def on_vulnerability_found(data: dict) -> None:
     title = data.get("title", "Unknown vulnerability")
     target = data.get("target", "")
 
-    logger.warning(
-        f"Vulnerability found: [{severity.upper()}] {vuln_id} - {title} on {target}"
-    )
+    logger.warning('Vulnerability found: [%s] %s - %s on %s', severity.upper(), vuln_id, title, target)
 
     # Store in database
     from netreaper.db.engine import get_db
@@ -34,7 +32,7 @@ async def on_credential_cracked(data: dict) -> None:
     cred_type = data.get("type", "unknown")
     target = data.get("target", "")
 
-    logger.info(f"Credential cracked: {cred_type} for {target}")
+    logger.info("Credential cracked: %s for %s", cred_type, target)
 
     # Store encrypted in loot table
     from netreaper.loot.storage import loot_storage
@@ -52,7 +50,7 @@ async def on_handshake_captured(data: dict) -> None:
     essid = data.get("essid", "")
     file_path = data.get("file", "")
 
-    logger.info(f"Handshake captured: {essid} ({bssid}) -> {file_path}")
+    logger.info("Handshake captured: %s (%s) -> %s", essid, bssid, file_path)
 
     # Through LootStorage, like on_credential_cracked above. This used to raw
     # INSERT into loot, putting a plain file path straight into the column named

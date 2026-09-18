@@ -1,7 +1,6 @@
 """Input validation functions for security and safety."""
 import ipaddress
 import re
-from typing import Any
 
 
 def validate_ip(ip: str) -> str:

@@ -83,7 +83,8 @@ class Scope:
     essids: set[str] = field(default_factory=set)
     deny: list[str] = field(default_factory=list)  # explicit out-of-scope IPs/CIDRs
 
-    def _in_nets(self, ip: str, nets: list[str]) -> bool:
+    @staticmethod
+    def _in_nets(ip: str, nets: list[str]) -> bool:
         try:
             addr = ipaddress.ip_address(ip)
         except ValueError:
@@ -296,7 +297,8 @@ class ScopeGate:
         for target in targets:
             self._check_target(target, eng, tier)
 
-    def _check_engagement_usable(self, eng: Engagement, tier: Tier) -> None:
+    @staticmethod
+    def _check_engagement_usable(eng: Engagement, tier: Tier) -> None:
         """Expiry, tamper-evidence and the ceiling. Every gated path runs these."""
         if not eng.is_active():
             raise TargetValidationError(
@@ -336,8 +338,9 @@ class ScopeGate:
         self._check_engagement_usable(eng, tier)
         self._require_confirmation(eng, tier, requires_confirmation)
 
+    @staticmethod
     def _require_confirmation(
-        self, eng: Engagement, tier: Tier, requires_confirmation: bool
+        eng: Engagement, tier: Tier, requires_confirmation: bool
     ) -> None:
         """Enforce the per-tier confirmation rules. Raises, or returns silently.
 
@@ -394,65 +397,102 @@ class ScopeGate:
             f"the engagement's confirmed_tiers to authorise it up front"
         )
 
-    def _check_target(self, target: str, eng: Engagement, tier: Tier) -> None:
+    @staticmethod
+    def _check_target(target: str, eng: Engagement, tier: Tier) -> None:
+        """Is this one target in scope? Dispatch by the shape of the string.
+
+        Was a single 60-line function with a cyclomatic complexity of 19, which
+        DeepSource rates "high risk". For most functions that is a style
+        metric. For this one it is not: this is the gate's target check, the
+        narrowest point in the whole safety spine, and the 200::1 vs 200::1/128
+        bypass found earlier lived in one of these branches precisely because
+        there were too many of them to hold in your head at once.
+
+        Split by target shape, in the same order, with every message preserved
+        verbatim so the behaviour is identical. Each helper now does one thing
+        and can be read on its own.
+        """
         t = target.strip()
+        _refuse_mass_target(t)
 
-        # Broadcast / everything targets are refused at EVERY tier, including
-        # BROADCAST and MITM. This comment used to read "only at BROADCAST+
-        # tier, never implicitly", which described an allowance the code has
-        # never had and invited a future reader to "fix" the code to match it.
-        # Nothing in src passes these: a broadcast deauth is T3 but still names
-        # the AP's BSSID (tools/aireplay.py), and the MITM paths name an ESSID.
-        # A tier is a blast-radius ceiling, not a licence to stop naming a
-        # target, so if a mass action ever needs one it needs its own grammar.
-        if t.upper() == _BROADCAST_MAC or t in {"0.0.0.0/0", "::/0"}:
-            raise TargetValidationError(
-                f"refusing broadcast/everything target {t!r}: out of scope by default"
-            )
-
-        # Wireless identifiers
         if _looks_like_mac(t):
-            if not eng.scope.allows_bssid(t):
-                raise TargetValidationError(f"BSSID {t} is not in the engagement scope")
+            _check_bssid_in_scope(t, eng)
             return
 
-        # IP / CIDR
         if _looks_like_ip(t):
-            if "/" in t:  # a network/range target
-                try:
-                    net = ipaddress.ip_network(t, strict=False)
-                except ValueError as e:
-                    raise TargetValidationError(f"{t!r} is not a valid network/CIDR: {e}") from e
-                # Refuse ANY CIDR (any width) that overlaps a protected range.
-                # Both checks, because they encode the same policy in two
-                # forms: the explicit range list, and the address properties
-                # that the bare-IP branch already used. Without the second,
-                # 200::1 was refused and 200::1/128 was allowed.
-                if is_protected_network(net) or any(
-                    net.overlaps(pn) for pn in _PROTECTED_NETS if pn.version == net.version
-                ):
-                    raise TargetValidationError(
-                        f"{t} overlaps a protected/reserved range and must not be targeted"
-                    )
-                if net.num_addresses == 1:
-                    if not eng.scope.allows_ip(str(net.network_address)):
-                        raise TargetValidationError(f"{t} is not in the engagement scope")
-                    return
-                if not eng.scope.allows_network(t):
-                    raise TargetValidationError(f"{t} is not within the engagement scope")
-                return
-            if is_protected_ip(t):
-                raise TargetValidationError(
-                    f"{t} is a protected/reserved address and must not be targeted"
-                )
-            if not eng.scope.allows_ip(t):
-                raise TargetValidationError(f"{t} is not in the engagement scope")
+            if "/" in t:
+                _check_network_in_scope(t, eng)
+            else:
+                _check_ip_in_scope(t, eng)
             return
 
-        # Hostname / ESSID fallthrough
-        if eng.scope.allows_hostname(t) or eng.scope.allows_essid(t):
-            return
-        raise TargetValidationError(f"target {t!r} is not in the engagement scope")
+        _check_name_in_scope(t, eng)
+
+
+def _refuse_mass_target(t: str) -> None:
+    """Broadcast / everything targets, refused at EVERY tier including MITM.
+
+    The comment here used to read "only at BROADCAST+ tier, never implicitly",
+    which described an allowance the code has never had and invited a future
+    reader to "fix" the code to match it. Nothing in src passes these: a
+    broadcast deauth is T3 but still names the AP's BSSID (tools/aireplay.py),
+    and the MITM paths name an ESSID. A tier is a blast-radius ceiling, not a
+    licence to stop naming a target, so if a mass action ever needs one it
+    needs its own grammar.
+    """
+    if t.upper() == _BROADCAST_MAC or t in {"0.0.0.0/0", "::/0"}:
+        raise TargetValidationError(
+            f"refusing broadcast/everything target {t!r}: out of scope by default"
+        )
+
+
+def _check_bssid_in_scope(t: str, eng: Engagement) -> None:
+    if not eng.scope.allows_bssid(t):
+        raise TargetValidationError(f"BSSID {t} is not in the engagement scope")
+
+
+def _check_network_in_scope(t: str, eng: Engagement) -> None:
+    """A CIDR target. Protected-range overlap is checked two ways on purpose."""
+    try:
+        net = ipaddress.ip_network(t, strict=False)
+    except ValueError as e:
+        raise TargetValidationError(f"{t!r} is not a valid network/CIDR: {e}") from e
+
+    # Refuse ANY CIDR (any width) that overlaps a protected range. Both checks,
+    # because they encode the same policy in two forms: the explicit range
+    # list, and the address properties that the bare-IP branch already used.
+    # Without the second, 200::1 was refused and 200::1/128 was allowed.
+    if is_protected_network(net) or any(
+        net.overlaps(pn) for pn in _PROTECTED_NETS if pn.version == net.version
+    ):
+        raise TargetValidationError(
+            f"{t} overlaps a protected/reserved range and must not be targeted"
+        )
+
+    # A /32 or /128 is one address; scope it as an address, not as a network.
+    if net.num_addresses == 1:
+        if not eng.scope.allows_ip(str(net.network_address)):
+            raise TargetValidationError(f"{t} is not in the engagement scope")
+        return
+
+    if not eng.scope.allows_network(t):
+        raise TargetValidationError(f"{t} is not within the engagement scope")
+
+
+def _check_ip_in_scope(t: str, eng: Engagement) -> None:
+    if is_protected_ip(t):
+        raise TargetValidationError(
+            f"{t} is a protected/reserved address and must not be targeted"
+        )
+    if not eng.scope.allows_ip(t):
+        raise TargetValidationError(f"{t} is not in the engagement scope")
+
+
+def _check_name_in_scope(t: str, eng: Engagement) -> None:
+    """Hostname / ESSID fallthrough: anything that is not a MAC or an address."""
+    if eng.scope.allows_hostname(t) or eng.scope.allows_essid(t):
+        return
+    raise TargetValidationError(f"target {t!r} is not in the engagement scope")
 
 
 def _looks_like_mac(s: str) -> bool:

@@ -221,6 +221,7 @@ class PreflightRunner:
         Returns:
             Monitor interface name or None if failed
         """
+        from netreaper.automation.handlers.iface import AutoIfaceHandler
         from netreaper.automation.handlers.monitor import AutoMonHandler
         from netreaper.tui.modals.preflight_modal import ConfirmModal
 
@@ -230,10 +231,15 @@ class PreflightRunner:
             if not interface:
                 return None
 
-        # Check if already in monitor mode
-        handler = AutoMonHandler(interface)
-        if await handler._is_monitor_mode(interface):
+        # Check if already in monitor mode. This used to call
+        # AutoMonHandler._is_monitor_mode, which does not exist on that class:
+        # the method lives on AutoIfaceHandler, so this raised AttributeError
+        # every time the path ran. Never noticed because preflight_runner sits
+        # at 10% coverage and ensure_interface() had no test.
+        if await AutoIfaceHandler().is_monitor_mode(interface):
             return interface
+
+        handler = AutoMonHandler(interface)
 
         # Ask user to confirm
         confirm = await self.app.push_screen_wait(

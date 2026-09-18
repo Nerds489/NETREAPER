@@ -66,7 +66,7 @@ class SessionManager:
             "name": name,
         })
 
-        logger.info(f"Created session: {name} ({session_id})")
+        logger.info("Created session: %s (%s)", name, session_id)
         return session
 
     async def get(self, session_id: str) -> Session | None:
@@ -213,13 +213,13 @@ class SessionManager:
 
         deleted = cursor.rowcount > 0
         if deleted:
-            logger.info(f"Deleted session: {session_id}")
+            logger.info("Deleted session: %s", session_id)
 
         return deleted
 
+    @staticmethod
     async def add_target(
-        self,
-        session_id: str,
+                session_id: str,
         target_type: str,
         value: str,
         metadata: dict[str, Any] | None = None,
@@ -241,12 +241,12 @@ class SessionManager:
             )
             return cursor.lastrowid
         except Exception as e:
-            logger.warning(f"Failed to add target: {e}")
+            logger.warning("Failed to add target: %s", e)
             return None
 
+    @staticmethod
     async def log_tool_execution(
-        self,
-        session_id: str,
+                session_id: str,
         tool_name: str,
         command: str,
         status: str = "running",
@@ -268,12 +268,12 @@ class SessionManager:
             )
             return cursor.lastrowid
         except Exception as e:
-            logger.warning(f"Failed to log tool execution: {e}")
+            logger.warning("Failed to log tool execution: %s", e)
             return None
 
+    @staticmethod
     async def update_tool_execution(
-        self,
-        execution_id: int,
+                execution_id: int,
         status: str,
         exit_code: int | None = None,
         summary: str | None = None,
@@ -290,7 +290,8 @@ class SessionManager:
             (status, exit_code, summary, execution_id),
         )
 
-    async def _get_summary(self, session_id: str) -> SessionSummary:
+    @staticmethod
+    async def _get_summary(session_id: str) -> SessionSummary:
         """Get summary statistics for a session."""
         db = await get_db()
 

@@ -2,7 +2,6 @@
 
 import re
 import ipaddress
-from typing import Any
 
 from netreaper.automation.labels import AUTO_REGISTRY
 
