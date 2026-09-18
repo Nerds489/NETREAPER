@@ -293,9 +293,6 @@ class APIKeyManager:
                 keyring.delete_password(KEYRING_SERVICE, key_name)
                 logger.info("Deleted API key for %s", service.value)
             except Exception as e:
-                logger.debug("Key may not exist: %s", e)
-                logger.info('Deleted API key for %s', service.value)
-            except Exception as e:
                 # keyring raises PasswordDeleteError both for "no such entry"
                 # and for a backend that would not cooperate. Only the first is
                 # a success, and only the caller can tell them apart from the

@@ -76,11 +76,7 @@ class AutoCleanupHandler:
                 raise  # a scope-gate denial is never swallowed
             except Exception as e:
                 logger.warning("Cleanup action failed: %s: %s", action.name, e)
-                logger.debug('Cleanup action completed: %s', action.name)
-            except TargetValidationError:
-                raise  # a scope-gate denial is never swallowed
-            except Exception as e:
-                logger.warning('Cleanup action failed: %s: %s', action.name, e)
+                logger.debug("Cleanup action completed: %s", action.name)
                 success = False
 
         return success

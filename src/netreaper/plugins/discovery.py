@@ -74,11 +74,6 @@ class PluginDiscovery:
                     logger.warning("Invalid plugin: %s", ep.name)
             except Exception as e:
                 logger.error("Failed to load plugin %s: %s", ep.name, e)
-                    logger.debug('Discovered plugin: %s from %s', ep.name, group)
-                else:
-                    logger.warning('Invalid plugin: %s', ep.name)
-            except Exception as e:
-                logger.error('Failed to load plugin %s: %s', ep.name, e)
 
         return plugins
 

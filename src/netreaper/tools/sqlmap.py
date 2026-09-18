@@ -187,19 +187,8 @@ class SqlmapTool(BaseToolWrapper):
 
         if options.get("random_agent"):
             args.append("--random-agent")
-
-        proxy = options.get("proxy")
-        if proxy:
-            args += ["--proxy", proxy]
-        return args
-
-    # ── output ───────────────────────────────────────────────────────────────
-
     _INJECTION_RE: ClassVar = re.compile(r"Parameter:\s+(\S+)\s+\(([^)]+)\)")
     _TABLE_CELL_RE: ClassVar = re.compile(r"\|\s+(\S+)\s+\|")
-    # (result key, pattern). Each is searched independently, so the fact that
-    # the "operating system" pattern also matches inside the web-server line is
-    # the pre-existing behaviour and is preserved.
     _SINGLE_FIELDS: ClassVar[tuple[tuple[str, str], ...]] = (
         ("dbms", r"back-end DBMS:\s+(.+)"),
         ("os", r"operating system:\s+(.+)"),
@@ -214,8 +203,9 @@ class SqlmapTool(BaseToolWrapper):
 
     def parse_output(self, output: str) -> dict[str, Any]:
         """Parse sqlmap output."""
-        injection_points = self._parse_injection_points(output)
         lowered = output.lower()
+        injection_points = self._parse_injection_points(output)
+        injection_points.extend(self._find_injection_points_with_regex(output))
         results: dict[str, Any] = {
             "vulnerable": bool(injection_points)
             or any(i in lowered for i in self._SUCCESS_INDICATORS),
@@ -224,20 +214,22 @@ class SqlmapTool(BaseToolWrapper):
             "tables": self._parse_tables(output),
             "columns": [],
             "data": self._collect_dumped_csv(lowered),
-            "dbms": None,
-            "os": None,
-            "web_server": None,
         }
+        results.update(self._extract_single_fields(output))
+        return results
 
-        # Parse injection points
-        injection_pattern = re.compile(
-            r"Parameter:\s+(\S+)\s+\(([^)]+)\)"
-        )
-        for match in injection_pattern.finditer(output):
-            results["injection_points"].append({
-                "parameter": match.group(1),
-                "type": match.group(2),
-            })
+    def _extract_single_fields(self, output: str) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+        for key, pattern in self._SINGLE_FIELDS:
+            match = re.search(pattern, output)
+            fields[key] = match.group(1) if match else None
+        return fields
+
+    def _find_injection_points_with_regex(self, output: str) -> list[dict[str, str]]:
+        points: list[dict[str, str]] = []
+        for match in self._INJECTION_RE.finditer(output):
+            points.append({"parameter": match.group(1), "type": match.group(2)})
+        return points
             results["vulnerable"] = True
 
         # Parse DBMS info

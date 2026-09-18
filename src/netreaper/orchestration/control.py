@@ -210,7 +210,6 @@ class ExecutionController:
             logger.error("Failed to terminate process %s: %s", running.process_id, e)
             logger.error('Failed to terminate process %s: %s', running.process_id, e)
             return False
-
     async def _on_stop_all(self, data: dict) -> None:
         """Handle stop all event from event bus."""
         await self.stop_all()
@@ -234,7 +233,6 @@ class ExecutionController:
                 "duration": (datetime.now() - p.started_at).total_seconds(),
             }
             for p in self._processes.values()
-        ]
         ]
 
     def is_tool_running(self, tool_name: str) -> bool:
