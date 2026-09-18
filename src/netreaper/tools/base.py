@@ -11,7 +11,6 @@ from typing import Any, ClassVar
 
 from netreaper.core.exceptions import (
     SubprocessError,
-    TargetValidationError,
     ToolNotFoundError,
 )
 from netreaper.core.logging import get_logger
@@ -85,17 +84,17 @@ class BaseToolWrapper(ToolPlugin):
             )
         self._tool_path = Path(self._tool_path)
         self._initialized = True
-        logger.debug(f"Tool initialized: {self.TOOL_BINARY} at {self._tool_path}")
+        logger.debug('Tool initialized: %s at %s', self.TOOL_BINARY, self._tool_path)
 
     @abstractmethod
     def build_command(self, target: str, options: dict[str, Any]) -> list[str]:
         """Build command line arguments for the tool."""
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def parse_output(self, output: str) -> dict[str, Any]:
         """Parse tool output into structured data."""
-        ...
+        raise NotImplementedError
 
     async def execute(self, target: str, options: dict[str, Any]) -> PluginResult:
         """Execute the tool through the gated ProcessRunner and return results.
@@ -129,9 +128,13 @@ class BaseToolWrapper(ToolPlugin):
                 timeout=options.get("timeout", self.config.timeout),
                 dry_run=options.get("dry_run", False),
             )
-        except TargetValidationError:
-            # never swallow a scope-gate denial
-            raise
+        # No `except TargetValidationError: raise` here, deliberately. The
+        # handler below is narrow and TargetValidationError is not a subclass of
+        # either, so a scope-gate denial propagates on its own and the re-raise
+        # was dead code. test_static_analysis_findings pins that handler narrow;
+        # if it ever widens to `except Exception`, the re-raise must come back.
+        # chaining/executor.py and automation/handlers/cleanup.py DO need theirs,
+        # because `except Exception` follows them there.
         except (SubprocessError, ToolNotFoundError) as e:
             logger.error("Tool execution failed: %s", e)
             return PluginResult(success=False, data={}, errors=[str(e)])
@@ -157,7 +160,8 @@ class BaseToolWrapper(ToolPlugin):
         )
         return PluginResult(success=result.returncode == 0, data=parsed)
 
-    def _classify_line(self, line: str) -> str:
+    @staticmethod
+    def _classify_line(line: str) -> str:
         """Classify output line for display styling."""
         line_lower = line.lower()
 

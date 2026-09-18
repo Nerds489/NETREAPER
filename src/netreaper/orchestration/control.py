@@ -69,7 +69,7 @@ class ExecutionController:
                 process=process,
                 target=target,
             )
-            logger.debug(f"Registered process: {process_id} ({tool_name})")
+            logger.debug("Registered process: %s (%s)", process_id, tool_name)
 
     async def unregister(self, process_id: str) -> None:
         """Unregister a subprocess (typically when it completes).
@@ -80,7 +80,7 @@ class ExecutionController:
         async with self._lock:
             if process_id in self._processes:
                 del self._processes[process_id]
-                logger.debug(f"Unregistered process: {process_id}")
+                logger.debug("Unregistered process: %s", process_id)
 
     async def cancel(self, process_id: str, timeout: float = 5.0) -> bool:
         """Cancel a specific running process.
@@ -125,7 +125,7 @@ class ExecutionController:
             async with self._lock:
                 processes_to_stop = list(self._processes.values())
 
-            logger.info(f"Stopping {len(processes_to_stop)} processes")
+            logger.info('Stopping %s processes', len(processes_to_stop))
 
             for running in processes_to_stop:
                 try:
@@ -147,10 +147,7 @@ class ExecutionController:
                 },
             )
 
-            logger.info(
-                f"Stop all completed: {results['cancelled']} cancelled, "
-                f"{results['failed']} failed"
-            )
+            logger.info('Stop all completed: %s cancelled, %s failed', results['cancelled'], results['failed'])
 
         finally:
             self._stop_all_in_progress = False
@@ -182,12 +179,10 @@ class ExecutionController:
 
             try:
                 await asyncio.wait_for(process.wait(), timeout=timeout)
-                logger.debug(f"Process {running.process_id} terminated gracefully")
+                logger.debug('Process %s terminated gracefully', running.process_id)
             except asyncio.TimeoutError:
                 # Force kill if timeout
-                logger.warning(
-                    f"Process {running.process_id} did not terminate, killing"
-                )
+                logger.warning('Process %s did not terminate, killing', running.process_id)
                 process.kill()
                 await process.wait()
 
@@ -206,7 +201,7 @@ class ExecutionController:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to terminate process {running.process_id}: {e}")
+            logger.error('Failed to terminate process %s: %s', running.process_id, e)
             return False
 
     async def _on_stop_all(self, data: dict) -> None:

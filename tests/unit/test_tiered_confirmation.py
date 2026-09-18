@@ -104,7 +104,8 @@ def test_single_target_refused_without_a_grant_whatever_is_on_stdin(monkeypatch)
     """
     for interactive in (True, False):
         monkeypatch.setattr(
-            "netreaper.safety.scope.is_non_interactive", lambda: not interactive
+            "netreaper.safety.scope.is_non_interactive",
+            lambda _i=interactive: not _i,  # bound now, not at call time
         )
         g = _gate(max_tier=Tier.SINGLE_TARGET)
         with pytest.raises(TargetValidationError, match="requires confirmation"):

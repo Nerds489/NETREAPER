@@ -59,7 +59,8 @@ class AutoKeysHandler:
         """Check if we can configure this key."""
         return self.service in API_KEYS
 
-    async def fix(self) -> bool:
+    @staticmethod
+    async def fix() -> bool:
         """Store the API key.
 
         Note: This returns False because actual key entry

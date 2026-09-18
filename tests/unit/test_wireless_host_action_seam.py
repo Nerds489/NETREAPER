@@ -121,7 +121,12 @@ def test_set_channel_routes_through_the_seam(monkeypatch):
     hopper = channels_mod.ChannelHopper("wlan0mon")
 
     assert asyncio.run(hopper.set_channel(6)) is True
-    assert host.cmd_strings() == ["iw wlan0mon set channel 6"]
+    # Was pinned as "iw wlan0mon set channel 6", which is not valid iw syntax:
+    # without the `dev` command group, iw parses the interface name as a
+    # top-level command and errors, so the channel never changed. This test was
+    # written to prove the call ROUTES through the seam and captured the argv
+    # verbatim on the way, which pinned the bug rather than catching it.
+    assert host.cmd_strings() == ["iw dev wlan0mon set channel 6"]
     assert host.calls[0][1].get("destructive") is True
     assert hopper._current_channel == 6
 

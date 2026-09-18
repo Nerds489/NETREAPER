@@ -1,6 +1,5 @@
 """Encrypted storage for captured credentials and sensitive data."""
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +84,7 @@ class LootStorage:
         )
 
         loot_id = cursor.lastrowid
-        logger.info(f"Stored loot #{loot_id}: {loot_type}")
+        logger.info("Stored loot #%s: %s", loot_id, loot_type)
         return loot_id
 
     async def retrieve(self, loot_id: int) -> dict[str, Any] | None:
@@ -109,7 +108,8 @@ class LootStorage:
             "metadata": json.loads(row["metadata"]) if row["metadata"] else None,
         }
 
-    async def list_by_session(self, session_id: str) -> list[dict]:
+    @staticmethod
+    async def list_by_session(session_id: str) -> list[dict]:
         """List all loot for a session (without decrypting)."""
         db = await get_db()
         rows = await db.fetch_all(
@@ -128,7 +128,8 @@ class LootStorage:
             for row in rows
         ]
 
-    async def list_by_type(self, loot_type: str) -> list[dict]:
+    @staticmethod
+    async def list_by_type(loot_type: str) -> list[dict]:
         """List all loot of a specific type."""
         db = await get_db()
         rows = await db.fetch_all(
@@ -147,7 +148,8 @@ class LootStorage:
                 results.append(item)
         return results
 
-    async def delete(self, loot_id: int) -> bool:
+    @staticmethod
+    async def delete(loot_id: int) -> bool:
         """Delete a loot entry."""
         db = await get_db()
         cursor = await db.execute("DELETE FROM loot WHERE id = ?", (loot_id,))

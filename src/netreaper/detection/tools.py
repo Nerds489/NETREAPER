@@ -11,6 +11,8 @@ from typing import Self
 
 from netreaper.core.exceptions import ToolNotFoundError
 from netreaper.core.logging import get_logger
+from netreaper.safety.scope import Tier, get_scope_gate
+from netreaper.core.audit import get_audit_trail
 
 logger = get_logger(__name__)
 
@@ -51,34 +53,43 @@ class PackageManager(str, Enum):
     UNKNOWN = "unknown"
 
 
+# (family, substrings to look for in a lower-cased /etc/os-release). ORDER
+# MATTERS and is the original order: Ubuntu and Kali both carry "debian" in
+# ID_LIKE, so the Debian family is tested first and wins, and the Fedora test
+# comes before the RHEL one for the same reason in reverse.
+_OS_RELEASE_MARKERS: tuple[tuple[DistroFamily, tuple[str, ...]], ...] = (
+    (DistroFamily.DEBIAN, ("debian", "ubuntu", "kali")),
+    (DistroFamily.FEDORA, ("fedora",)),
+    (DistroFamily.REDHAT, ("rhel", "centos", "rocky")),
+    (DistroFamily.ARCH, ("arch", "manjaro")),
+    (DistroFamily.SUSE, ("suse", "opensuse")),
+)
+
+# Fallback for a system with no /etc/os-release, or one whose os-release named
+# nothing recognised. Also order-sensitive.
+_RELEASE_FILE_MARKERS: tuple[tuple[str, DistroFamily], ...] = (
+    ("/etc/debian_version", DistroFamily.DEBIAN),
+    ("/etc/redhat-release", DistroFamily.REDHAT),
+    ("/etc/arch-release", DistroFamily.ARCH),
+)
+
+
 def detect_distro() -> DistroFamily:
     """Detect the Linux distribution family."""
     try:
-        # Check /etc/os-release first
         os_release = Path("/etc/os-release")
         if os_release.exists():
             content = os_release.read_text().lower()
-            if "debian" in content or "ubuntu" in content or "kali" in content:
-                return DistroFamily.DEBIAN
-            elif "fedora" in content:
-                return DistroFamily.FEDORA
-            elif "rhel" in content or "centos" in content or "rocky" in content:
-                return DistroFamily.REDHAT
-            elif "arch" in content or "manjaro" in content:
-                return DistroFamily.ARCH
-            elif "suse" in content or "opensuse" in content:
-                return DistroFamily.SUSE
+            for family, markers in _OS_RELEASE_MARKERS:
+                if any(marker in content for marker in markers):
+                    return family
 
-        # Fallback checks
-        if Path("/etc/debian_version").exists():
-            return DistroFamily.DEBIAN
-        elif Path("/etc/redhat-release").exists():
-            return DistroFamily.REDHAT
-        elif Path("/etc/arch-release").exists():
-            return DistroFamily.ARCH
+        for path, family in _RELEASE_FILE_MARKERS:
+            if Path(path).exists():
+                return family
 
     except Exception as e:
-        logger.warning(f"Failed to detect distro: {e}")
+        logger.warning("Failed to detect distro: %s", e)
 
     return DistroFamily.UNKNOWN
 
@@ -165,6 +176,7 @@ class ToolInfo:
         try:
             result = subprocess.run(
                 [path, version_flag],
+                check=False,  # a tool that exits non-zero on --version is still installed
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -923,7 +935,8 @@ class ToolRegistry:
     # Category Methods
     # --------------------------------------------------------------------------
 
-    def get_categories(self) -> list[ToolCategory]:
+    @staticmethod
+    def get_categories() -> list[ToolCategory]:
         """Get all tool categories."""
         return list(ToolCategory)
 
@@ -1074,18 +1087,18 @@ class ToolRegistry:
         # Try package manager first
         cmd = self.get_install_command(tool_name)
         if cmd:
-            logger.info(f"Installing {tool_name} via package manager: {' '.join(cmd)}")
+            logger.info('Installing %s via package manager: %s', tool_name, ' '.join(cmd))
             success, msg = await self._run_install_cmd(cmd, tool_name, callback)
             if success:
                 return success, msg
             # Package manager failed, try pip fallback if available
-            logger.warning(f"Package manager install failed for {tool_name}, trying pip...")
+            logger.warning("Package manager install failed for %s, trying pip...", tool_name)
 
         # Try pip installation if pip_package is defined
         if defn and defn.pip_package:
             pip_cmd = await self._get_pip_install_command(defn.pip_package)
             if pip_cmd:
-                logger.info(f"Installing {tool_name} via pip: {' '.join(pip_cmd)}")
+                logger.info('Installing %s via pip: %s', tool_name, ' '.join(pip_cmd))
                 success, msg = await self._run_install_cmd(pip_cmd, tool_name, callback)
                 if success:
                     return success, msg
@@ -1095,7 +1108,8 @@ class ToolRegistry:
             return False, f"Manual install required: {defn.url}"
         return False, f"No package available for {tool_name} on {self.distro.value}"
 
-    async def _get_pip_install_command(self, package: str) -> list[str] | None:
+    @staticmethod
+    async def _get_pip_install_command(package: str) -> list[str] | None:
         """Get pip/pipx install command for a package.
 
         Prefers pipx for CLI tools (isolated environments), falls back to pip.
@@ -1119,6 +1133,18 @@ class ToolRegistry:
         callback: callable | None = None,
     ) -> tuple[bool, str]:
         """Run an install command and verify success."""
+        # A root package install is a destructive host action. It streams its
+        # output line by line, which the seam's blocking run() cannot host, so
+        # the spawn stays here, but the authorisation and the audit line do not:
+        # this used to modify the system as root with nothing recorded anywhere.
+        get_scope_gate().authorize(
+            (), tier=Tier.PASSIVE, destructive=True, host_action=True
+        )
+        get_audit_trail().record(
+            outcome="executed", tool=cmd[0], argv=list(cmd), targets=[],
+            tier="PASSIVE", destructive=True, host_action=True,
+            detail=f"root package install: {tool_name}",
+        )
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -1134,7 +1160,7 @@ class ToolRegistry:
                 decoded = line.decode().strip()
                 if callback:
                     callback(decoded)
-                logger.debug(f"Install output: {decoded}")
+                logger.debug("Install output: %s", decoded)
 
             await process.wait()
 
@@ -1145,13 +1171,13 @@ class ToolRegistry:
             info = self.check(tool_name)
 
             if info.available:
-                logger.info(f"Successfully installed {tool_name}")
+                logger.info("Successfully installed %s", tool_name)
                 return True, f"Successfully installed {tool_name}"
             else:
                 return False, f"Installation completed but {tool_name} not found in PATH"
 
         except Exception as e:
-            logger.error(f"Failed to install {tool_name}: {e}")
+            logger.error("Failed to install %s: %s", tool_name, e)
             return False, f"Installation failed: {e}"
 
     async def install_tools(
@@ -1175,7 +1201,11 @@ class ToolRegistry:
 
             success, msg = await self.install_tool(
                 name,
-                callback=lambda line: callback(name, line) if callback else None,
+                # name bound by default argument, not captured by closure: the
+                # lambda would otherwise share one cell with every iteration and
+                # report the last tool's name if it ever outlived its own loop
+                # pass. It does not today; this keeps it true if that changes.
+                callback=lambda line, name=name: callback(name, line) if callback else None,
             )
             results[name] = (success, msg)
 

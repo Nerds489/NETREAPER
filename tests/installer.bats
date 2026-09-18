@@ -12,6 +12,10 @@ setup() {
     # Note: We need to handle the set -o pipefail by disabling exit on error
     set +e
     # Only source the function definitions, not execute main
+    # shellcheck disable=SC1090  # the source IS the point: a filtered copy of
+    # the installer with its `main "$@"` line removed, so the functions can be
+    # tested without the script running itself. There is no constant path to
+    # follow, by design.
     source <(sed '/^main "\$@"/d' "$NETREAPER_INSTALL")
     set +e
 }

@@ -77,7 +77,7 @@ class AutoIfaceHandler:
 
             # Determine type
             is_wireless = (iface_path / "wireless").exists()
-            is_monitor = await self._is_monitor_mode(name)
+            is_monitor = await self.is_monitor_mode(name)
 
             if is_monitor:
                 interface_type = "monitor"
@@ -87,9 +87,12 @@ class AutoIfaceHandler:
                 interface_type = "wired"
 
             # Filter by type
-            if iface_type != "all" and interface_type != iface_type:
-                if not (iface_type == "wireless" and interface_type == "monitor"):
-                    continue
+            # A monitor interface still counts as wireless, which is the only
+            # reason this is not a plain equality test.
+            if iface_type not in ("all", interface_type) and not (
+                iface_type == "wireless" and interface_type == "monitor"
+            ):
+                continue
 
             # Get additional info
             driver = await self._get_driver(iface_path)
@@ -108,14 +111,24 @@ class AutoIfaceHandler:
 
         return interfaces
 
-    async def _is_monitor_mode(self, interface: str) -> bool:
-        """Check if interface is in monitor mode."""
+    @staticmethod
+    async def is_monitor_mode(interface: str) -> bool:
+        """Is this interface in monitor mode?
+
+        Public because a caller outside this class legitimately needs to ask.
+        It was private, and preflight_runner reached for it on the WRONG class
+        (AutoMonHandler, which has no such member), so that call raised
+        AttributeError every time it ran. DeepSource reported it as a protected
+        member accessed from outside the class; the defect underneath was worse
+        than the rule described.
+        """
         if not valid_interface_name(interface):
             return False
         result = await run_host(["iw", "dev", interface, "info"])
         return result is not None and result.ok and "type monitor" in result.stdout
 
-    async def _get_driver(self, iface_path: Path) -> str:
+    @staticmethod
+    async def _get_driver(iface_path: Path) -> str:
         """Get the driver for an interface."""
         driver_link = iface_path / "device" / "driver"
         try:
@@ -125,7 +138,8 @@ class AutoIfaceHandler:
             pass
         return "unknown"
 
-    async def _get_mac(self, iface_path: Path) -> str:
+    @staticmethod
+    async def _get_mac(iface_path: Path) -> str:
         """Get the MAC address for an interface."""
         address_file = iface_path / "address"
         try:
@@ -135,7 +149,8 @@ class AutoIfaceHandler:
             pass
         return "00:00:00:00:00:00"
 
-    async def _get_state(self, iface_path: Path) -> str:
+    @staticmethod
+    async def _get_state(iface_path: Path) -> str:
         """Get the operational state of an interface."""
         operstate_file = iface_path / "operstate"
         try:

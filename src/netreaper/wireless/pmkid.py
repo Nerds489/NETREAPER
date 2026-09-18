@@ -26,7 +26,7 @@ from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.tools.aireplay import AireplayTool
 from netreaper.tools.airodump import AirodumpTool
-from netreaper.wireless.eapol import Pmkid, pmkids_for
+from netreaper.wireless.eapol import CapturedPmkid, pmkids_for
 
 logger = get_logger(__name__)
 
@@ -163,7 +163,7 @@ class PmkidCapture:
         return Path(f"{prefix}-01.cap")
 
     @staticmethod
-    def _verify(cap_path: Path, bssid: str) -> Pmkid | None:
+    def _verify(cap_path: Path, bssid: str) -> CapturedPmkid | None:
         """Return the first PMKID for bssid in the cap, else None."""
         if not cap_path.exists():
             return None

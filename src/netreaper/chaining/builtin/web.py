@@ -5,7 +5,6 @@ from netreaper.chaining.models import (
     ChainStep,
     Condition,
     DataBinding,
-    OnErrorBehavior,
 )
 from netreaper.chaining.registry import chain_registry
 

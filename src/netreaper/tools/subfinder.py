@@ -1,6 +1,5 @@
 """Subfinder subdomain discovery wrapper."""
 import json
-import re
 from typing import Any, ClassVar
 
 from pydantic import BaseModel
@@ -82,10 +81,8 @@ class SubfinderTool(BaseToolWrapper):
 
     def build_command(self, target: str, options: dict[str, Any]) -> list[str]:
         """Build subfinder command."""
-        cmd = ["-d", target]
-
-        # JSON output for parsing
-        cmd.append("-json")
+        # -json because parse_output reads it back as JSON, not as text
+        cmd = ["-d", target, "-json"]
 
         # Threads
         threads = options.get("threads", self.subfinder_config.threads)

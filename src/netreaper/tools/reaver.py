@@ -91,8 +91,10 @@ class ReaverTool(BaseToolWrapper):
 
         # Pixie Dust attack (faster, uses implementation flaw)
         if options.get("pixiedust"):
+            # -K is declared no_argument in reaver-wps-fork-t6x; there is no
+            # "mode 1". The stray "1" was an unused positional that reaver
+            # happens to ignore, so this was wrong rather than fatal.
             cmd.append("-K")
-            cmd.append("1")  # Pixie Dust mode 1
 
         # Delay between attempts
         delay = options.get("delay", self.reaver_config.delay)
@@ -139,9 +141,59 @@ class ReaverTool(BaseToolWrapper):
 
         return cmd
 
+    # ── output ───────────────────────────────────────────────────────────────
+    #
+    # Line classifiers, IN ORDER, and the order is load-bearing. reaver's own
+    # output overlaps: "WPS PIN: 12345670" also satisfies the pixie-dust
+    # substring test, and r"PSK:" is a suffix of "WPA PSK:". The original
+    # expressed this with `continue` after each match; these tables express the
+    # same first-match-wins rule, and reordering either of them changes what
+    # comes out.
+    #
+    # (pattern, result key, coercion, extra fields to set on a match)
+    _FIELD_RULES: ClassVar[tuple] = (
+        (
+            re.compile(r'WPS PIN:\s*[\'"]?(\d{8})[\'"]?', re.IGNORECASE),
+            "pin",
+            str,
+            {"status": "success"},
+        ),
+        (
+            re.compile(r'Pin found:\s*(\d{8})', re.IGNORECASE),
+            "pin",
+            str,
+            {"status": "success"},
+        ),
+        (
+            re.compile(r'WPA PSK:\s*[\'"]?(.+?)[\'"]?\s*$', re.IGNORECASE),
+            "psk",
+            lambda v: v.strip("'\""),
+            {},
+        ),
+        (
+            re.compile(r'PSK:\s*(.+)', re.IGNORECASE),
+            "psk",
+            lambda v: v.strip("'\""),
+            {},
+        ),
+        (
+            re.compile(r'(?:ESSID|AP SSID):\s*[\'"]?(.+?)[\'"]?\s*$', re.IGNORECASE),
+            "ssid",
+            lambda v: v.strip("'\""),
+            {},
+        ),
+        (
+            re.compile(r'(\d+\.?\d*)%\s+complete', re.IGNORECASE),
+            "progress",
+            float,
+            {},
+        ),
+    )
+    _ATTEMPT_RE: ClassVar = re.compile(r'Trying pin:?\s*(\d+)', re.IGNORECASE)
+
     def parse_output(self, output: str) -> dict[str, Any]:
         """Parse reaver output."""
-        result = {
+        result: dict[str, Any] = {
             "raw_output": output,
             "pin": None,
             "psk": None,
@@ -154,80 +206,58 @@ class ReaverTool(BaseToolWrapper):
             "errors": [],
         }
 
-        lines = output.strip().split('\n')
-
-        for line in lines:
-            # WPS PIN found
-            pin_match = re.search(r'WPS PIN:\s*[\'"]?(\d{8})[\'"]?', line, re.IGNORECASE)
-            if pin_match:
-                result["pin"] = pin_match.group(1)
-                result["status"] = "success"
-                continue
-
-            # Alternative PIN format
-            alt_pin = re.search(r'Pin found:\s*(\d{8})', line, re.IGNORECASE)
-            if alt_pin:
-                result["pin"] = alt_pin.group(1)
-                result["status"] = "success"
-                continue
-
-            # WPA PSK found
-            psk_match = re.search(r'WPA PSK:\s*[\'"]?(.+?)[\'"]?\s*$', line, re.IGNORECASE)
-            if psk_match:
-                result["psk"] = psk_match.group(1).strip("'\"")
-                continue
-
-            # Alternative PSK format
-            alt_psk = re.search(r'PSK:\s*(.+)', line, re.IGNORECASE)
-            if alt_psk:
-                result["psk"] = alt_psk.group(1).strip("'\"")
-                continue
-
-            # SSID/ESSID
-            ssid_match = re.search(r'(?:ESSID|AP SSID):\s*[\'"]?(.+?)[\'"]?\s*$', line, re.IGNORECASE)
-            if ssid_match:
-                result["ssid"] = ssid_match.group(1).strip("'\"")
-                continue
-
-            # Progress/Attempts
-            progress_match = re.search(r'(\d+\.?\d*)%\s+complete', line, re.IGNORECASE)
-            if progress_match:
-                result["progress"] = float(progress_match.group(1))
-                continue
-
-            # Attempt count
-            attempt_match = re.search(r'Trying pin:?\s*(\d+)', line, re.IGNORECASE)
-            if attempt_match:
-                result["attempts"] += 1
-                continue
-
-            # Pixie Dust success
-            if "WPS pin:" in line.lower() or "pin found" in line.lower():
-                result["status"] = "success"
-                continue
-
-            # AP Locked
-            if "WARNING" in line and "locked" in line.lower():
-                result["locked"] = True
-                result["errors"].append("AP rate limiting detected")
-                continue
-
-            # Timeout
-            if "timeout" in line.lower():
-                result["errors"].append(line.strip())
-                continue
-
-            # Authentication failure
-            if "authentication" in line.lower() and "fail" in line.lower():
-                result["errors"].append(line.strip())
-                continue
-
-            # Session complete
-            if "session saved" in line.lower():
-                result["status"] = "saved"
-                continue
+        for line in output.strip().split('\n'):
+            if not self._match_field(line, result):
+                self._match_state(line, result)
 
         return result
+
+    def _match_field(self, line: str, result: dict[str, Any]) -> bool:
+        """A line that carries a value. True if it was consumed."""
+        for pattern, key, coerce, also in self._FIELD_RULES:
+            match = pattern.search(line)
+            if match:
+                result[key] = coerce(match.group(1))
+                result.update(also)
+                return True
+
+        if self._ATTEMPT_RE.search(line):
+            result["attempts"] += 1
+            return True
+        return False
+
+    @staticmethod
+    def _match_state(line: str, result: dict[str, Any]) -> None:
+        """A line that reports progress or trouble rather than a value.
+
+        "WARNING" is matched case-sensitively, as it was before: reaver emits it
+        upper-case and lowering it would start catching the word in an SSID.
+
+        THE PIXIE-DUST TEST LOST A DISJUNCT, AND IT WAS DEAD. It read
+        ``if "WPS pin:" in line.lower() or "pin found" in line.lower()``. The
+        first needle carries an upper-case "WPS" and the haystack has just been
+        lower-cased, so it could never be true; found by running the old and new
+        parsers side by side over the same corpus, not by reading it.
+
+        It is removed rather than corrected, because correcting it only ever
+        produces a false success. A real ``[+] WPS pin: 12345670`` is consumed
+        by _FIELD_RULES above, which sets both the pin and the status. The only
+        lines that reach here saying "wps pin:" are ones no pin could be
+        extracted from, and marking those "success" would hand the caller
+        status="success" with pin=None.
+        """
+        lowered = line.lower()
+        if "pin found" in lowered:
+            result["status"] = "success"
+        elif "WARNING" in line and "locked" in lowered:
+            result["locked"] = True
+            result["errors"].append("AP rate limiting detected")
+        elif "timeout" in lowered:
+            result["errors"].append(line.strip())
+        elif "authentication" in lowered and "fail" in lowered:
+            result["errors"].append(line.strip())
+        elif "session saved" in lowered:
+            result["status"] = "saved"
 
     async def wps_attack(
         self,

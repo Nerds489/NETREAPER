@@ -7,8 +7,8 @@ teardown and hash-chained audit line. These helpers sit on a live attack path
 (``wireless.advanced`` calls :func:`change_mac`), so a direct spawn here would
 leave a hole in the trail exactly where it matters most.
 """
-import random
 import re
+import secrets
 from pathlib import Path
 
 from netreaper.automation.handlers._host import run_host
@@ -29,21 +29,29 @@ VENDOR_OUIS = {
 def generate_mac(vendor: str = "random") -> str:
     """Generate a MAC address."""
     if vendor in VENDOR_OUIS and VENDOR_OUIS[vendor]:
-        oui = random.choice(VENDOR_OUIS[vendor])
-        suffix = ":".join(f"{random.randint(0, 255):02x}" for _ in range(3))
+        oui = secrets.choice(VENDOR_OUIS[vendor])
+        suffix = ":".join(f"{secrets.randbelow(256):02x}" for _ in range(3))
         return f"{oui}:{suffix}"
     else:
         # Fully random (ensure locally administered bit)
-        first_byte = random.randint(0, 255) | 0x02  # Set locally administered bit
+        first_byte = secrets.randbelow(256) | 0x02  # Set locally administered bit
         first_byte &= 0xFE  # Clear multicast bit
-        rest = [random.randint(0, 255) for _ in range(5)]
+        rest = [secrets.randbelow(256) for _ in range(5)]
         return ":".join(f"{b:02x}" for b in [first_byte] + rest)
 
 
 def validate_mac(mac: str) -> bool:
-    """Validate MAC address format."""
-    pattern = r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
-    return bool(re.match(pattern, mac))
+    """Validate MAC address format.
+
+    fullmatch, not match+$. Python's ``$`` matches at the end of the string OR
+    immediately before a single trailing newline, so ``re.match(r"...$", x)``
+    accepted "aa:bb:cc:dd:ee:ff\n" as a valid MAC. This function guards
+    change_mac(), a destructive host action, so the value it blesses goes on to
+    a command line and into logs. core/validation.py already uses fullmatch and
+    says why; this is the same fix.
+    """
+    pattern = r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}"
+    return bool(re.fullmatch(pattern, mac))
 
 
 async def get_current_mac(interface: str) -> str | None:
@@ -53,7 +61,7 @@ async def get_current_mac(interface: str) -> str | None:
         if address_path.exists():
             return address_path.read_text().strip()
     except Exception as e:
-        logger.debug(f"Failed to read MAC from sysfs for {interface}: {e}")
+        logger.debug("Failed to read MAC from sysfs for %s: %s", interface, e)
 
     # Fallback to the ip command, through the gated seam.
     try:
@@ -65,7 +73,7 @@ async def get_current_mac(interface: str) -> str | None:
         if match:
             return match.group(1)
     except Exception as e:
-        logger.debug(f"Failed to get MAC via ip command for {interface}: {e}")
+        logger.debug("Failed to get MAC via ip command for %s: %s", interface, e)
 
     return None
 
@@ -81,7 +89,7 @@ async def get_permanent_mac(interface: str) -> str | None:
         if match:
             return match.group(1)
     except Exception as e:
-        logger.debug(f"Failed to get permanent MAC for {interface}: {e}")
+        logger.debug("Failed to get permanent MAC for %s: %s", interface, e)
 
     return None
 
@@ -114,17 +122,17 @@ async def change_mac(
         # Bring interface up
         await _run_ip_command(["link", "set", interface, "up"])
 
-        logger.info(f"MAC changed: {interface} {original_mac} -> {new_mac}")
+        logger.info("MAC changed: %s %s -> %s", interface, original_mac, new_mac)
         return new_mac
 
-    except Exception as e:
+    except Exception:
         # Try to restore original MAC
         if original_mac:
             try:
                 await _run_ip_command(["link", "set", interface, "address", original_mac])
                 await _run_ip_command(["link", "set", interface, "up"])
             except Exception as restore_err:
-                logger.warning(f"Failed to restore original MAC on {interface}: {restore_err}")
+                logger.warning("Failed to restore original MAC on %s: %s", interface, restore_err)
         raise
 
 
@@ -133,7 +141,7 @@ async def restore_mac(interface: str) -> str | None:
     permanent_mac = await get_permanent_mac(interface)
     if permanent_mac:
         await change_mac(interface, permanent_mac)
-        logger.info(f"MAC restored: {interface} -> {permanent_mac}")
+        logger.info("MAC restored: %s -> %s", interface, permanent_mac)
         return permanent_mac
     return None
 

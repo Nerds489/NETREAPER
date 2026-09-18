@@ -62,7 +62,8 @@ class ChannelHopper:
         else:
             self.channels = self._get_channels_for_bands(bands or ["2.4GHz"])
 
-    def _get_channels_for_bands(self, bands: list[str]) -> list[int]:
+    @staticmethod
+    def _get_channels_for_bands(bands: list[str]) -> list[int]:
         """Get channel list for specified bands."""
         channels = []
         for band in bands:
@@ -89,7 +90,7 @@ class ChannelHopper:
 
         self._running = True
         self._task = asyncio.create_task(self._hop_loop())
-        logger.info(f"Channel hopping started on {self.interface}")
+        logger.info('Channel hopping started on %s', self.interface)
 
     async def stop(self) -> None:
         """Stop channel hopping."""
@@ -108,7 +109,12 @@ class ChannelHopper:
             # Through the gated seam: retuning our own adapter is a host action
             # with no network target, but it is still audited and torn down there.
             result = await run_host(
-                ["iw", self.interface, "set", "channel", str(channel)],
+                # `iw dev <iface> set channel N`. Without `dev`, iw tries to
+                # parse the interface name as a top-level command group and
+                # errors out, so the channel never changed. This was the only
+                # one of eight iw call sites in the tree missing it, and
+                # wireless/advanced.py does the identical operation correctly.
+                ["iw", "dev", self.interface, "set", "channel", str(channel)],
                 destructive=True,
             )
 
@@ -119,11 +125,11 @@ class ChannelHopper:
                 return True
 
             detail = result.stderr if result is not None else "tool missing or timed out"
-            logger.debug(f"Failed to set channel {channel}: {detail}")
+            logger.debug("Failed to set channel %s: %s", channel, detail)
             return False
 
         except Exception as e:
-            logger.error(f"Channel set error: {e}")
+            logger.error("Channel set error: %s", e)
             return False
 
     async def _hop_loop(self) -> None:
