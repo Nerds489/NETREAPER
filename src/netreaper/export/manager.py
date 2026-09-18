@@ -135,6 +135,8 @@ class ExportManager:
                     data = await self.loot.retrieve(item["id"])
                     decrypted.append(data)
                 except Exception as e:
+                    logger.debug("Failed to decrypt loot item %s: %s", item.get("id"), e)
+                    decrypted.append(item)
                     # This used to log at DEBUG and append the metadata-only row
                     # in place of the payload, so an export silently omitted the
                     # captured material and still reported success. An

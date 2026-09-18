@@ -33,6 +33,7 @@ class PluginDiscovery:
             self._discovered[group] = self._discover_group(group)
 
         total = sum(len(plugins) for plugins in self._discovered.values())
+        logger.info("Discovered %s plugins across %s groups", total, len(PLUGIN_GROUPS))
         logger.info('Discovered %s plugins across %s groups', total, len(PLUGIN_GROUPS))
 
         return self._discovered
@@ -68,11 +69,11 @@ class PluginDiscovery:
                         )
                         continue
                     plugins[ep.name] = plugin_class
-                    logger.debug('Discovered plugin: %s from %s', ep.name, group)
+                    logger.debug("Discovered plugin: %s from %s", ep.name, group)
                 else:
-                    logger.warning('Invalid plugin: %s', ep.name)
+                    logger.warning("Invalid plugin: %s", ep.name)
             except Exception as e:
-                logger.error('Failed to load plugin %s: %s', ep.name, e)
+                logger.error("Failed to load plugin %s: %s", ep.name, e)
 
         return plugins
 
