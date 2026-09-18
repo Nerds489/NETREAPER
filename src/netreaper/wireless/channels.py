@@ -89,7 +89,7 @@ class ChannelHopper:
 
         self._running = True
         self._task = asyncio.create_task(self._hop_loop())
-        logger.info(f"Channel hopping started on {self.interface}")
+        logger.info("Channel hopping started on %s", self.interface)
 
     async def stop(self) -> None:
         """Stop channel hopping."""
@@ -119,11 +119,11 @@ class ChannelHopper:
                 return True
 
             detail = result.stderr if result is not None else "tool missing or timed out"
-            logger.debug(f"Failed to set channel {channel}: {detail}")
+            logger.debug("Failed to set channel %s: %s", channel, detail)
             return False
 
         except Exception as e:
-            logger.error(f"Channel set error: {e}")
+            logger.error("Channel set error: %s", e)
             return False
 
     async def _hop_loop(self) -> None:

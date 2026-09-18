@@ -85,7 +85,7 @@ class LootStorage:
         )
 
         loot_id = cursor.lastrowid
-        logger.info(f"Stored loot #{loot_id}: {loot_type}")
+        logger.info("Stored loot #%s: %s", loot_id, loot_type)
         return loot_id
 
     async def retrieve(self, loot_id: int) -> dict[str, Any] | None:

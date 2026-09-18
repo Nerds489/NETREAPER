@@ -85,7 +85,7 @@ class BaseToolWrapper(ToolPlugin):
             )
         self._tool_path = Path(self._tool_path)
         self._initialized = True
-        logger.debug(f"Tool initialized: {self.TOOL_BINARY} at {self._tool_path}")
+        logger.debug("Tool initialized: %s at %s", self.TOOL_BINARY, self._tool_path)
 
     @abstractmethod
     def build_command(self, target: str, options: dict[str, Any]) -> list[str]:

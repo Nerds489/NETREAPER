@@ -66,7 +66,7 @@ class SessionManager:
             "name": name,
         })
 
-        logger.info(f"Created session: {name} ({session_id})")
+        logger.info("Created session: %s (%s)", name, session_id)
         return session
 
     async def get(self, session_id: str) -> Session | None:
@@ -213,7 +213,7 @@ class SessionManager:
 
         deleted = cursor.rowcount > 0
         if deleted:
-            logger.info(f"Deleted session: {session_id}")
+            logger.info("Deleted session: %s", session_id)
 
         return deleted
 
@@ -241,7 +241,7 @@ class SessionManager:
             )
             return cursor.lastrowid
         except Exception as e:
-            logger.warning(f"Failed to add target: {e}")
+            logger.warning("Failed to add target: %s", e)
             return None
 
     async def log_tool_execution(
@@ -268,7 +268,7 @@ class SessionManager:
             )
             return cursor.lastrowid
         except Exception as e:
-            logger.warning(f"Failed to log tool execution: {e}")
+            logger.warning("Failed to log tool execution: %s", e)
             return None
 
     async def update_tool_execution(

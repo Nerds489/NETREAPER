@@ -151,7 +151,7 @@ class AirodumpTool(BaseToolWrapper):
                 result.update(csv_result)
                 return result
             except Exception as e:
-                logger.warning(f"Failed to parse CSV file: {e}")
+                logger.warning("Failed to parse CSV file: %s", e)
 
         # Fallback to parsing terminal output
         result.update(self._parse_terminal_output(output))
@@ -228,7 +228,7 @@ class AirodumpTool(BaseToolWrapper):
                 networks.append(network)
 
             except (IndexError, ValueError) as e:
-                logger.debug(f"Failed to parse network row: {e}")
+                logger.debug("Failed to parse network row: %s", e)
                 continue
 
         return networks
@@ -270,7 +270,7 @@ class AirodumpTool(BaseToolWrapper):
                 clients.append(client)
 
             except (IndexError, ValueError) as e:
-                logger.debug(f"Failed to parse client row: {e}")
+                logger.debug("Failed to parse client row: %s", e)
                 continue
 
         return clients

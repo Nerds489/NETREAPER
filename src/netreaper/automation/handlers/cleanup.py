@@ -74,11 +74,11 @@ class AutoCleanupHandler:
                 result = action.action()
                 if asyncio.iscoroutine(result):
                     await result
-                logger.debug(f"Cleanup action completed: {action.name}")
+                logger.debug("Cleanup action completed: %s", action.name)
             except TargetValidationError:
                 raise  # a scope-gate denial is never swallowed
             except Exception as e:
-                logger.warning(f"Cleanup action failed: {action.name}: {e}")
+                logger.warning("Cleanup action failed: %s: %s", action.name, e)
                 success = False
 
         return success

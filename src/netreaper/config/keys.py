@@ -130,7 +130,7 @@ class APIKeyManager:
             self._keyring_available = not isinstance(backend, fail.Keyring)
 
             if self._keyring_available:
-                logger.debug(f"Using keyring backend: {backend.name}")
+                logger.debug("Using keyring backend: %s", backend.name)
             else:
                 logger.warning("No secure keyring backend available")
 
@@ -138,7 +138,7 @@ class APIKeyManager:
             logger.warning("keyring module not installed")
             self._keyring_available = False
         except Exception as e:
-            logger.warning(f"Keyring check failed: {e}")
+            logger.warning("Keyring check failed: %s", e)
             self._keyring_available = False
 
         return self._keyring_available
@@ -165,7 +165,7 @@ class APIKeyManager:
 
                 return keyring.get_password(KEYRING_SERVICE, key_name)
             except Exception as e:
-                logger.warning(f"Failed to get key from keyring: {e}")
+                logger.warning("Failed to get key from keyring: %s", e)
 
         # Fallback to in-memory cache
         return self._fallback_cache.get(key_name)
@@ -187,7 +187,7 @@ class APIKeyManager:
 
                 return keyring.get_password(KEYRING_SERVICE, key_name)
             except Exception as e:
-                logger.warning(f"Failed to get secret from keyring: {e}")
+                logger.warning("Failed to get secret from keyring: %s", e)
 
         return self._fallback_cache.get(key_name)
 
@@ -208,14 +208,14 @@ class APIKeyManager:
                 import keyring
 
                 keyring.set_password(KEYRING_SERVICE, key_name, key)
-                logger.info(f"Stored API key for {service.value} in keyring")
+                logger.info("Stored API key for %s in keyring", service.value)
                 return True
             except Exception as e:
-                logger.warning(f"Failed to store key in keyring: {e}")
+                logger.warning("Failed to store key in keyring: %s", e)
 
         # Fallback to in-memory cache (not persistent)
         self._fallback_cache[key_name] = key
-        logger.warning(f"Stored API key for {service.value} in memory (not persistent)")
+        logger.warning("Stored API key for %s in memory (not persistent)", service.value)
         return True
 
     def set_secret(self, service: APIService, secret: str) -> bool:
@@ -235,10 +235,10 @@ class APIKeyManager:
                 import keyring
 
                 keyring.set_password(KEYRING_SERVICE, key_name, secret)
-                logger.info(f"Stored API secret for {service.value} in keyring")
+                logger.info("Stored API secret for %s in keyring", service.value)
                 return True
             except Exception as e:
-                logger.warning(f"Failed to store secret in keyring: {e}")
+                logger.warning("Failed to store secret in keyring: %s", e)
 
         self._fallback_cache[key_name] = secret
         return True
@@ -259,9 +259,9 @@ class APIKeyManager:
                 import keyring
 
                 keyring.delete_password(KEYRING_SERVICE, key_name)
-                logger.info(f"Deleted API key for {service.value}")
+                logger.info("Deleted API key for %s", service.value)
             except Exception as e:
-                logger.debug(f"Key may not exist: {e}")
+                logger.debug("Key may not exist: %s", e)
 
         # Also clear from fallback cache
         self._fallback_cache.pop(key_name, None)

@@ -44,13 +44,13 @@ class CleanupRegistry:
 
     def _signal_handler(self, signum: int, frame: Any) -> None:
         """Handle shutdown signals."""
-        logger.info(f"Received signal {signum}, initiating cleanup...")
+        logger.info("Received signal %s, initiating cleanup...", signum)
         asyncio.get_event_loop().run_until_complete(self.cleanup())
         sys.exit(128 + signum)
 
     async def cleanup(self) -> None:
         """Execute all registered cleanup handlers."""
-        logger.info(f"Running {len(self._handlers)} cleanup handlers...")
+        logger.info("Running %s cleanup handlers...", len(self._handlers))
 
         for priority, handler in self._handlers:
             try:
@@ -58,7 +58,7 @@ class CleanupRegistry:
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as e:
-                logger.error(f"Cleanup handler failed: {e}")
+                logger.error("Cleanup handler failed: %s", e)
 
         self._handlers.clear()
         logger.info("Cleanup complete")

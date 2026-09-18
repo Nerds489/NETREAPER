@@ -135,7 +135,7 @@ class MasscanTool(BaseToolWrapper):
             try:
                 return self._parse_json_output()
             except Exception as e:
-                logger.warning(f"Failed to parse JSON output: {e}")
+                logger.warning("Failed to parse JSON output: %s", e)
             finally:
                 if self._output_file.exists():
                     self._output_file.unlink()
