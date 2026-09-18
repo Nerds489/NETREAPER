@@ -57,7 +57,30 @@ REDACTED = "***"
 SECRET_FLAGS_BY_TOOL: dict[str, frozenset[str]] = {
     "hydra": frozenset({"-p"}),
     "reaver": frozenset({"-p"}),
+    "mysql": frozenset({"-p"}),
+    "psql": frozenset({"-W"}),
+    "smbclient": frozenset({"-U", "--user"}),
+    "wpa_supplicant": frozenset({"-psk"}),
 }
+
+# Short flags that may carry their value ATTACHED, with no separator at all:
+# `mysql -phunter2`, `hydra -phunter2`. Splitting on "=" never sees these, so
+# the value walked straight into the trail.
+ATTACHED_VALUE_FLAGS = frozenset({"-p", "-P", "-w", "-k"})
+
+# `NAME=value` arguments that carry a credential in the name rather than a
+# flag: PGPASSWORD=..., MYSQL_PWD=..., API_TOKEN=... . Matched on the name so a
+# variable nobody listed is still caught.
+_SECRET_NAME_RE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*"
+    r"(PASSWORD|PASSWD|PASS|PWD|SECRET|TOKEN|APIKEY|API_KEY|PSK|PIN)$",
+    re.IGNORECASE,
+)
+
+# `-U user%password`, the smbclient/rpcclient form: the secret is the tail of an
+# argument whose head is a username, so neither the flag nor the whole value can
+# be masked without losing the finding.
+_USER_PERCENT_RE = re.compile(r"^([^%\s]+)%(.+)$", re.DOTALL)
 
 # Secret whatever the tool. Unambiguous long options, so a tool added later is
 # covered without anyone remembering to extend the map above.
@@ -160,22 +183,48 @@ def redact_argv(argv: list[str] | tuple[str, ...]) -> list[str]:
 
     out = [argv[0]]
     redact_next = False
+    prev_flag = ""
     for arg in argv[1:]:
         if redact_next:
             # Mask the consumed value, and if that value is ITSELF a secret flag
             # then stay armed: ["-p", "-p", "hunter2"] is ambiguous, so fail
             # closed and mask both rather than let the real secret walk out
             # behind a flag-shaped decoy.
-            out.append(REDACTED)
+            #
+            # `-U admin%hunter2` is the exception: the username is half the
+            # finding, so masking the whole argument throws away who was tried.
+            if (m := _USER_PERCENT_RE.match(arg)) and arg not in secret:
+                out.append(f"{m.group(1)}%{REDACTED}")
+            else:
+                out.append(REDACTED)
             redact_next = arg in secret
             continue
         head = arg.split("=", 1)[0]
         if "=" in arg and head in secret:
             out.append(f"{head}={REDACTED}")
             continue
+        # NAME=value where NAME itself names a credential (PGPASSWORD=...).
+        if "=" in arg and _SECRET_NAME_RE.match(head):
+            out.append(f"{head}={REDACTED}")
+            continue
+        # A short secret flag with its value attached: -phunter2.
+        attached = next(
+            (f for f in secret if f in ATTACHED_VALUE_FLAGS
+             and len(arg) > len(f) and arg.startswith(f)),
+            None,
+        )
+        if attached:
+            out.append(f"{attached}{REDACTED}")
+            continue
+        # user%password, where only the tail is the secret.
+        if prev_flag in secret and (m := _USER_PERCENT_RE.match(arg)):
+            out.append(f"{m.group(1)}%{REDACTED}")
+            prev_flag = arg
+            continue
         out.append(redact_url_creds(arg))
         if arg in secret:
             redact_next = True
+        prev_flag = arg
     return out
 
 # The chain root: prev_hash of the first entry. 64 zeros = "no prior entry".
@@ -209,6 +258,12 @@ def redact_text(text: str, tool: str = "") -> str:
             redact_next = tok in secret
             continue
         head = tok.split("=", 1)[0]
+        # NAME=value naming a credential (MYSQL_PWD=..., PGPASSWORD=...). The
+        # argv path grew this rule; free text needs it too, because a command
+        # echoed into an error message carries the same form.
+        if "=" in tok and _SECRET_NAME_RE.match(head):
+            out.append(f"{head}={REDACTED}")
+            continue
         if "=" in tok and head in secret:
             out.append(f"{head}={REDACTED}")
             continue
@@ -299,6 +354,47 @@ def _harden(path: Path) -> None:
             path.chmod(0o600)  # pre-existing file from an older version
     except OSError as e:  # pragma: no cover - permissions are best effort
         logger.debug("could not harden %s: %s", path, e)
+
+
+def _anchor_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".anchor")
+
+
+def _write_anchor(path: Path, count: int, head: str) -> None:
+    """Record how long the chain should be, beside the chain.
+
+    A hash chain detects any edit WITHIN the file, because every entry binds the
+    previous hash. It cannot detect the file being cut short, because a prefix of
+    a valid chain is itself a valid chain: verify_file() walked from GENESIS and
+    returned True for a truncated log, an emptied log, and a log reduced to its
+    first entry. For a trail whose purpose is that an operator cannot later deny
+    what the tool did, deleting the last few entries is the attack that matters.
+
+    This does not make the trail cryptographically tamper-proof, and nothing
+    local can: the anchor is unkeyed and sits on the same disk, so whoever can
+    truncate the log can rewrite the anchor. What it does is raise the bar from
+    one edit to two consistent ones, and make the accidental cases (a partial
+    restore, a full disk, a crash, a copy that missed the tail) loud instead of
+    silent. Real protection against the operator needs an out-of-band key or a
+    remote anchor, which is a design decision rather than a patch.
+    """
+    try:
+        anchor = _anchor_path(path)
+        _harden(anchor)
+        anchor.write_text(
+            json.dumps({"count": count, "head": head}, sort_keys=True),
+            encoding="utf-8",
+        )
+    except OSError as e:  # pragma: no cover - best effort, never blocks an append
+        logger.warning("could not update audit anchor: %s", e)
+
+
+def _read_anchor(path: Path) -> tuple[int, str] | None:
+    try:
+        raw = json.loads(_anchor_path(path).read_text(encoding="utf-8"))
+        return int(raw["count"]), str(raw["head"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
 
 class AuditTrail:
@@ -430,7 +526,13 @@ class AuditTrail:
             argv_l = redact_argv(argv)
             targets_l = redact_targets(targets)
             # detail is free text from an exception and can quote the command
-            detail = redact_text(detail, key)
+            # redact_text handles a command line quoted inside an error
+            # message. redact_output handles a tool ANNOUNCING a credential it
+            # recovered ("KEY FOUND! [ hunter2 ]", "password: hunter2",
+            # "WPA PSK: ..."). detail carries both, and only the first was
+            # applied, so every password this tool successfully cracked was
+            # written to the audit trail in the clear.
+            detail = redact_output(redact_text(detail, key))
             body = {
                 "seq": seq,
                 "at": at,
@@ -522,7 +624,36 @@ class AuditTrail:
         except (OSError, ValueError) as e:
             logger.warning("audit trail file could not be verified: %s", e)
             return False
-        return True
+
+        # The chain is internally consistent. Now: is it COMPLETE? A prefix of a
+        # valid chain verifies as a valid chain, so without this the log could be
+        # cut short, or emptied, and still pass.
+        anchor = _read_anchor(self._path)
+        if anchor is None:
+            logger.warning(
+                "audit trail has no anchor file; completeness cannot be checked "
+                "(written by a version before anchoring, or the anchor was removed)"
+            )
+            return True
+        expected_count, expected_head = anchor
+        if expected_seq == expected_count and prev == expected_head:
+            return True
+        if expected_seq == expected_count + 1:
+            # Killed between the append and the anchor update. One entry, and
+            # only one, may legitimately be ahead. Deliberately not a >= slack:
+            # that is how the streaming-capture guard came to permit two ungated
+            # spawns.
+            logger.warning("audit anchor is one entry behind; recovering")
+            _write_anchor(self._path, expected_seq, prev)
+            return True
+        logger.error(
+            "audit trail is incomplete: %d entries on disk, anchor expects %d. "
+            "The log has been truncated, restored from a partial copy, or lost "
+            "entries.",
+            expected_seq,
+            expected_count,
+        )
+        return False
 
     def _persist(self, entry: AuditEntry) -> None:
         if self._path is None:
@@ -538,6 +669,11 @@ class AuditTrail:
             _harden(self._path)
             with self._path.open("a", encoding="utf-8") as fh:
                 fh.write(_canonical(asdict(entry)) + "\n")
+            # Anchor AFTER the append, so the only inconsistency a crash can
+            # leave is an anchor one entry behind, which verify_file tolerates
+            # explicitly. Anchoring first would make a crash look like a lost
+            # entry, which is the thing being detected.
+            _write_anchor(self._path, entry.seq + 1, entry.entry_hash)
         except OSError as e:
             logger.warning("audit persist failed (%s); entry kept in memory", e)
 
