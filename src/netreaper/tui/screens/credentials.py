@@ -169,7 +169,7 @@ class CredentialsScreen(Screen):
 
             yield Label("Hash Type:")
             yield Select(
-                [(name, hash_id) for name, hash_id in HASH_TYPES],
+                list(HASH_TYPES),  # a copy: Select is free to reorder its options
                 value="22000",
                 id="select-hash-type",
                 classes="config-input",
@@ -192,7 +192,7 @@ class CredentialsScreen(Screen):
 
             yield Label("Wordlist:")
             yield Select(
-                [(name, path) for name, path in WORDLISTS],
+                list(WORDLISTS),
                 value="/usr/share/wordlists/rockyou.txt",
                 id="select-wordlist",
                 classes="config-input",
