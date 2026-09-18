@@ -53,31 +53,40 @@ class PackageManager(str, Enum):
     UNKNOWN = "unknown"
 
 
+# (family, substrings to look for in a lower-cased /etc/os-release). ORDER
+# MATTERS and is the original order: Ubuntu and Kali both carry "debian" in
+# ID_LIKE, so the Debian family is tested first and wins, and the Fedora test
+# comes before the RHEL one for the same reason in reverse.
+_OS_RELEASE_MARKERS: tuple[tuple[DistroFamily, tuple[str, ...]], ...] = (
+    (DistroFamily.DEBIAN, ("debian", "ubuntu", "kali")),
+    (DistroFamily.FEDORA, ("fedora",)),
+    (DistroFamily.REDHAT, ("rhel", "centos", "rocky")),
+    (DistroFamily.ARCH, ("arch", "manjaro")),
+    (DistroFamily.SUSE, ("suse", "opensuse")),
+)
+
+# Fallback for a system with no /etc/os-release, or one whose os-release named
+# nothing recognised. Also order-sensitive.
+_RELEASE_FILE_MARKERS: tuple[tuple[str, DistroFamily], ...] = (
+    ("/etc/debian_version", DistroFamily.DEBIAN),
+    ("/etc/redhat-release", DistroFamily.REDHAT),
+    ("/etc/arch-release", DistroFamily.ARCH),
+)
+
+
 def detect_distro() -> DistroFamily:
     """Detect the Linux distribution family."""
     try:
-        # Check /etc/os-release first
         os_release = Path("/etc/os-release")
         if os_release.exists():
             content = os_release.read_text().lower()
-            if "debian" in content or "ubuntu" in content or "kali" in content:
-                return DistroFamily.DEBIAN
-            elif "fedora" in content:
-                return DistroFamily.FEDORA
-            elif "rhel" in content or "centos" in content or "rocky" in content:
-                return DistroFamily.REDHAT
-            elif "arch" in content or "manjaro" in content:
-                return DistroFamily.ARCH
-            elif "suse" in content or "opensuse" in content:
-                return DistroFamily.SUSE
+            for family, markers in _OS_RELEASE_MARKERS:
+                if any(marker in content for marker in markers):
+                    return family
 
-        # Fallback checks
-        if Path("/etc/debian_version").exists():
-            return DistroFamily.DEBIAN
-        elif Path("/etc/redhat-release").exists():
-            return DistroFamily.REDHAT
-        elif Path("/etc/arch-release").exists():
-            return DistroFamily.ARCH
+        for path, family in _RELEASE_FILE_MARKERS:
+            if Path(path).exists():
+                return family
 
     except Exception as e:
         logger.warning("Failed to detect distro: %s", e)

@@ -733,3 +733,70 @@ def test_the_aireplay_attack_dispatch_table_names_methods_that_exist():
         if not callable(getattr(AireplayTool, name, None))
     ]
     assert not missing, "attack builders that do not exist:\n  " + "\n  ".join(missing)
+
+
+def test_no_substring_test_can_never_match_its_own_haystack():
+    """`if "WPS pin:" in line.lower()` was false for every input ever.
+
+    Found by running the old and new reaver parsers side by side over the same
+    corpus during a complexity refactor, not by reading the line, which had
+    looked correct to everyone including the reviews that passed it. The needle
+    carries an upper-case "WPS" and the haystack has just been lower-cased.
+
+    The class is small, mechanical and invisible to the eye, so it is pinned:
+    a cased literal tested against a .lower() (or .upper()) call is dead code,
+    and dead code in a parser means a branch of the tool's output is silently
+    not handled.
+    """
+    offenders = []
+    roots = [SRC, SRC.parents[1] / "tests"]
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:  # pragma: no cover
+                continue
+
+            # `lowered = line.lower()` then `"X" in lowered` is the same defect
+            # wearing a local. Resolve those names first, or the guard only
+            # catches the spelling the bug happened to use the first time.
+            folded_names: dict[str, str] = {}
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)):
+                    continue
+                case = getattr(node.value.func, "attr", None)
+                if case not in ("lower", "upper"):
+                    continue
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        folded_names[target.id] = case
+
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+                    continue
+                if not isinstance(node.ops[0], (ast.In, ast.NotIn)):
+                    continue
+                needle, haystack = node.left, node.comparators[0]
+                if not (isinstance(needle, ast.Constant) and isinstance(needle.value, str)):
+                    continue
+
+                if isinstance(haystack, ast.Call):
+                    case = getattr(haystack.func, "attr", None)
+                    shown = f"....{case}()"
+                elif isinstance(haystack, ast.Name):
+                    case = folded_names.get(haystack.id)
+                    shown = haystack.id
+                else:
+                    continue
+                if case not in ("lower", "upper"):
+                    continue
+
+                folded = needle.value.lower() if case == "lower" else needle.value.upper()
+                if folded != needle.value:
+                    offenders.append(
+                        f"{path.relative_to(root.parent)}:{node.lineno}: "
+                        f"{needle.value!r} in {shown} is never true"
+                    )
+    assert not offenders, (
+        "substring test that cannot match:\n  " + "\n  ".join(offenders)
+    )

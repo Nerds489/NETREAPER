@@ -181,93 +181,17 @@ class NmapTool(BaseToolWrapper):
     def _parse_xml_output(self) -> dict[str, Any]:
         """Parse nmap XML output file.
 
-        Parsed with DTDs refused. ElementTree does not resolve *external*
-        entities, so this is not XXE file disclosure, but it does expand
-        internal ones, and nmap's output is a file on disk that is re-read
-        later: a crafted or tampered scan result could expand to exhaust memory
-        (billion laughs). nmap itself never emits a DOCTYPE, so refusing one
-        costs nothing and removes the class. No new dependency needed for it.
+        Parsed through defusedxml, with a DTD declaration refused outright on
+        top of that. See _parse_scan_xml for why both.
         """
         root = _parse_scan_xml(self._output_file)
 
-        hosts = []
+        hosts = [
+            host
+            for host_elem in root.findall(".//host")
+            if (host := self._host_from_xml(host_elem)) is not None
+        ]
 
-        for host_elem in root.findall(".//host"):
-            # Get IP address
-            addr_elem = host_elem.find("address[@addrtype='ipv4']")
-            if addr_elem is None:
-                continue
-            ip = addr_elem.get("addr", "")
-
-            # Get hostname
-            hostname = None
-            hostname_elem = host_elem.find(".//hostname")
-            if hostname_elem is not None:
-                hostname = hostname_elem.get("name")
-
-            # Get state
-            status_elem = host_elem.find("status")
-            state = (
-                status_elem.get("state", "unknown")
-                if status_elem is not None
-                else "unknown"
-            )
-
-            # Get ports
-            ports = []
-            for port_elem in host_elem.findall(".//port"):
-                port_info = {
-                    "port": int(port_elem.get("portid", 0)),
-                    "protocol": port_elem.get("protocol", "tcp"),
-                    "state": "unknown",
-                    "service": "unknown",
-                    "version": None,
-                }
-
-                state_elem = port_elem.find("state")
-                if state_elem is not None:
-                    port_info["state"] = state_elem.get("state", "unknown")
-
-                service_elem = port_elem.find("service")
-                if service_elem is not None:
-                    port_info["service"] = service_elem.get("name", "unknown")
-                    port_info["version"] = service_elem.get("version")
-                    port_info["product"] = service_elem.get("product")
-
-                ports.append(port_info)
-
-            # Get OS matches
-            os_matches = []
-            for os_elem in host_elem.findall(".//osmatch"):
-                os_matches.append(
-                    {
-                        "name": os_elem.get("name"),
-                        "accuracy": int(os_elem.get("accuracy", 0)),
-                    }
-                )
-
-            # Get script results
-            scripts = []
-            for script_elem in host_elem.findall(".//script"):
-                scripts.append(
-                    {
-                        "id": script_elem.get("id"),
-                        "output": script_elem.get("output"),
-                    }
-                )
-
-            hosts.append(
-                {
-                    "ip": ip,
-                    "hostname": hostname,
-                    "state": state,
-                    "ports": ports,
-                    "os_matches": os_matches,
-                    "scripts": scripts,
-                }
-            )
-
-        # Get scan info
         scaninfo = root.find("scaninfo")
         run_stats = root.find("runstats/finished")
 
@@ -287,6 +211,67 @@ class NmapTool(BaseToolWrapper):
                 ),
             },
         }
+
+    @classmethod
+    def _host_from_xml(cls, host_elem) -> dict[str, Any] | None:
+        """One <host>, or None for a host with no IPv4 address.
+
+        Skipping the address-less host is the pre-existing behaviour and is
+        deliberate: everything downstream keys on "ip".
+        """
+        addr_elem = host_elem.find("address[@addrtype='ipv4']")
+        if addr_elem is None:
+            return None
+
+        hostname_elem = host_elem.find(".//hostname")
+        status_elem = host_elem.find("status")
+
+        return {
+            "ip": addr_elem.get("addr", ""),
+            "hostname": hostname_elem.get("name") if hostname_elem is not None else None,
+            "state": (
+                status_elem.get("state", "unknown")
+                if status_elem is not None
+                else "unknown"
+            ),
+            "ports": [cls._port_from_xml(e) for e in host_elem.findall(".//port")],
+            "os_matches": [
+                {"name": e.get("name"), "accuracy": int(e.get("accuracy", 0))}
+                for e in host_elem.findall(".//osmatch")
+            ],
+            "scripts": [
+                {"id": e.get("id"), "output": e.get("output")}
+                for e in host_elem.findall(".//script")
+            ],
+        }
+
+    @staticmethod
+    def _port_from_xml(port_elem) -> dict[str, Any]:
+        """One <port>.
+
+        "product" is only present when a <service> element is, which is how it
+        was before: the key is absent rather than None on a port nmap could not
+        fingerprint, and callers distinguish the two.
+        """
+        port_info: dict[str, Any] = {
+            "port": int(port_elem.get("portid", 0)),
+            "protocol": port_elem.get("protocol", "tcp"),
+            "state": "unknown",
+            "service": "unknown",
+            "version": None,
+        }
+
+        state_elem = port_elem.find("state")
+        if state_elem is not None:
+            port_info["state"] = state_elem.get("state", "unknown")
+
+        service_elem = port_elem.find("service")
+        if service_elem is not None:
+            port_info["service"] = service_elem.get("name", "unknown")
+            port_info["version"] = service_elem.get("version")
+            port_info["product"] = service_elem.get("product")
+
+        return port_info
 
     def _parse_text_output(self, output: str) -> dict[str, Any]:
         """Fallback text output parsing."""

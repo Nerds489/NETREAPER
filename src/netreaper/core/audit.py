@@ -186,46 +186,78 @@ def redact_argv(argv: list[str] | tuple[str, ...]) -> list[str]:
     prev_flag = ""
     for arg in argv[1:]:
         if redact_next:
-            # Mask the consumed value, and if that value is ITSELF a secret flag
-            # then stay armed: ["-p", "-p", "hunter2"] is ambiguous, so fail
-            # closed and mask both rather than let the real secret walk out
-            # behind a flag-shaped decoy.
-            #
-            # `-U admin%hunter2` is the exception: the username is half the
-            # finding, so masking the whole argument throws away who was tried.
-            if (m := _USER_PERCENT_RE.match(arg)) and arg not in secret:
-                out.append(f"{m.group(1)}%{REDACTED}")
-            else:
-                out.append(REDACTED)
+            out.append(_mask_consumed_value(arg, secret))
+            # If the consumed value is ITSELF a secret flag then stay armed:
+            # ["-p", "-p", "hunter2"] is ambiguous, so fail closed and mask both
+            # rather than let the real secret walk out behind a flag-shaped
+            # decoy.
             redact_next = arg in secret
             continue
-        head = arg.split("=", 1)[0]
-        if "=" in arg and head in secret:
-            out.append(f"{head}={REDACTED}")
+
+        masked, becomes_prev_flag = _mask_inline_secret(arg, secret, prev_flag)
+        if masked is not None:
+            out.append(masked)
+            # Only the user%password form updates prev_flag, as before: after
+            # `--password=x` the previous flag is whatever it already was.
+            if becomes_prev_flag:
+                prev_flag = arg
             continue
-        # NAME=value where NAME itself names a credential (PGPASSWORD=...).
-        if "=" in arg and _SECRET_NAME_RE.match(head):
-            out.append(f"{head}={REDACTED}")
-            continue
-        # A short secret flag with its value attached: -phunter2.
-        attached = next(
-            (f for f in secret if f in ATTACHED_VALUE_FLAGS
-             and len(arg) > len(f) and arg.startswith(f)),
-            None,
-        )
-        if attached:
-            out.append(f"{attached}{REDACTED}")
-            continue
-        # user%password, where only the tail is the secret.
-        if prev_flag in secret and (m := _USER_PERCENT_RE.match(arg)):
-            out.append(f"{m.group(1)}%{REDACTED}")
-            prev_flag = arg
-            continue
+
         out.append(redact_url_creds(arg))
-        if arg in secret:
-            redact_next = True
+        redact_next = arg in secret
         prev_flag = arg
     return out
+
+
+def _mask_consumed_value(arg: str, secret: frozenset[str]) -> str:
+    """The argument after a secret flag. All of it goes, with one exception.
+
+    `-U admin%hunter2` is that exception: the username is half the finding, so
+    masking the whole argument throws away who was tried.
+    """
+    if (m := _USER_PERCENT_RE.match(arg)) and arg not in secret:
+        return f"{m.group(1)}%{REDACTED}"
+    return REDACTED
+
+
+def _attached_value_flag(arg: str, secret: frozenset[str]) -> str | None:
+    """A short secret flag with its value stuck to it: ``-phunter2``."""
+    return next(
+        (
+            f
+            for f in secret
+            if f in ATTACHED_VALUE_FLAGS and len(arg) > len(f) and arg.startswith(f)
+        ),
+        None,
+    )
+
+
+def _mask_inline_secret(
+    arg: str, secret: frozenset[str], prev_flag: str
+) -> tuple[str | None, bool]:
+    """Mask a secret carried inside a single argument.
+
+    Returns (masked argument or None if this one carries no inline secret,
+    whether this argument becomes the new prev_flag).
+    """
+    head = arg.split("=", 1)[0]
+    if "=" in arg and head in secret:
+        return f"{head}={REDACTED}", False
+
+    # NAME=value where NAME itself names a credential (PGPASSWORD=...).
+    if "=" in arg and _SECRET_NAME_RE.match(head):
+        return f"{head}={REDACTED}", False
+
+    attached = _attached_value_flag(arg, secret)
+    if attached:
+        return f"{attached}{REDACTED}", False
+
+    # user%password, where only the tail is the secret.
+    if prev_flag in secret and (m := _USER_PERCENT_RE.match(arg)):
+        return f"{m.group(1)}%{REDACTED}", True
+
+    return None, False
+
 
 # The chain root: prev_hash of the first entry. 64 zeros = "no prior entry".
 GENESIS = "0" * 64
