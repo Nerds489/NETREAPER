@@ -775,8 +775,17 @@ class SettingsScreen(Screen):
         """Clear an API key."""
         try:
             service = APIService(service_name)
-            api_key_manager.delete_key(service)
-            self._write_output(f"[green]API key cleared for {service_name}[/]")
+            # The return value was discarded and green was printed
+            # unconditionally. Revocation is exactly the operation an operator
+            # must be able to trust, so say which of the two things happened.
+            if api_key_manager.delete_key(service):
+                self._write_output(f"[green]API key cleared for {service_name}[/]")
+            else:
+                self._write_output(
+                    f"[red]Could not clear the stored key for {service_name}. "
+                    f"It may still be in the system keyring: check there before "
+                    f"treating it as revoked.[/]"
+                )
             # Refresh the panel
             self._show_category("API Keys")
 

@@ -41,9 +41,17 @@ def generate_mac(vendor: str = "random") -> str:
 
 
 def validate_mac(mac: str) -> bool:
-    """Validate MAC address format."""
-    pattern = r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
-    return bool(re.match(pattern, mac))
+    """Validate MAC address format.
+
+    fullmatch, not match+$. Python's ``$`` matches at the end of the string OR
+    immediately before a single trailing newline, so ``re.match(r"...$", x)``
+    accepted "aa:bb:cc:dd:ee:ff\n" as a valid MAC. This function guards
+    change_mac(), a destructive host action, so the value it blesses goes on to
+    a command line and into logs. core/validation.py already uses fullmatch and
+    says why; this is the same fix.
+    """
+    pattern = r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}"
+    return bool(re.fullmatch(pattern, mac))
 
 
 async def get_current_mac(interface: str) -> str | None:

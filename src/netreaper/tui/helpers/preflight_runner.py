@@ -54,7 +54,12 @@ class ToolContext:
     interface: str | None = None
     target: str | None = None
     wordlist: str | None = None
-    api_key: str | None = None
+    # repr=False: core/logging.py configures RichHandler with
+    # tracebacks_show_locals=True, and a plain dataclass prints every field in
+    # any traceback that shows the frame. That would put the raw key on the
+    # console. setup_logging() has no caller today so the path is inert, but the
+    # leak should not be waiting for somebody to close that gap.
+    api_key: str | None = field(default=None, repr=False)
     capture_file: str | None = None
 
     # What was resolved

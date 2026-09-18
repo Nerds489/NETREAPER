@@ -109,6 +109,22 @@ class KeyringNotAvailableError(Exception):
     pass
 
 
+def _is_missing_entry(exc: Exception) -> bool:
+    """Was this "no such entry", or a backend that refused?
+
+    keyring raises PasswordDeleteError for both, and the two mean opposite
+    things to somebody revoking a credential: one is success, the other is the
+    key still being there. The message is the only discriminator available, so
+    treat anything that does not clearly say "not found" as a real failure and
+    fail closed.
+    """
+    text = str(exc).lower()
+    return any(
+        phrase in text
+        for phrase in ("not found", "no such", "does not exist", "no password")
+    )
+
+
 class APIKeyManager:
     """Manages API keys using system keyring."""
 
@@ -241,6 +257,11 @@ class APIKeyManager:
                 logger.warning(f"Failed to store secret in keyring: {e}")
 
         self._fallback_cache[key_name] = secret
+        # set_key warns here and this did not, so a secret silently falling back
+        # to volatile memory produced no signal anywhere at all.
+        logger.warning(
+            "Stored API secret for %s in memory (not persistent)", service.value
+        )
         return True
 
     def delete_key(self, service: APIService) -> bool:
@@ -254,6 +275,12 @@ class APIKeyManager:
         """
         key_name = self._get_key_name(service)
 
+        # This used to return True no matter what. "Not found" and "the keyring
+        # is locked / unreachable / refused" were swallowed by the same handler
+        # and reported identically, so an operator revoking a compromised key
+        # was told it was cleared while it sat in the keyring untouched. On a
+        # security tool that is the worst place for a false success.
+        ok = True
         if self._check_keyring():
             try:
                 import keyring
@@ -261,7 +288,18 @@ class APIKeyManager:
                 keyring.delete_password(KEYRING_SERVICE, key_name)
                 logger.info(f"Deleted API key for {service.value}")
             except Exception as e:
-                logger.debug(f"Key may not exist: {e}")
+                # keyring raises PasswordDeleteError both for "no such entry"
+                # and for a backend that would not cooperate. Only the first is
+                # a success, and only the caller can tell them apart from the
+                # message, so surface it rather than deciding for them.
+                if _is_missing_entry(e):
+                    logger.debug("no keyring entry for %s: %s", service.value, e)
+                else:
+                    ok = False
+                    logger.error(
+                        "could not delete the keyring entry for %s: %s. The key "
+                        "may still be stored.", service.value, e,
+                    )
 
         # Also clear from fallback cache
         self._fallback_cache.pop(key_name, None)
@@ -269,9 +307,9 @@ class APIKeyManager:
         # Also delete secret if applicable
         info = API_SERVICES.get(service)
         if info and info.has_secret:
-            self.delete_secret(service)
+            ok = self.delete_secret(service) and ok
 
-        return True
+        return ok
 
     def delete_secret(self, service: APIService) -> bool:
         """Delete API secret for a service.
@@ -284,16 +322,26 @@ class APIKeyManager:
         """
         key_name = self._get_key_name(service, is_secret=True)
 
+        ok = True
         if self._check_keyring():
             try:
                 import keyring
 
                 keyring.delete_password(KEYRING_SERVICE, key_name)
-            except Exception:
-                pass
+            except Exception as e:
+                # `except Exception: pass`, with no log at any level, and then
+                # return True. Same false success as delete_key above.
+                if _is_missing_entry(e):
+                    logger.debug("no keyring secret for %s: %s", service.value, e)
+                else:
+                    ok = False
+                    logger.error(
+                        "could not delete the keyring secret for %s: %s. The "
+                        "secret may still be stored.", service.value, e,
+                    )
 
         self._fallback_cache.pop(key_name, None)
-        return True
+        return ok
 
     def has_key(self, service: APIService) -> bool:
         """Check if an API key is set for a service.

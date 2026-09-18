@@ -126,6 +126,7 @@ class ExportManager:
         Returns:
             ExportResult object
         """
+        unreadable: list[int] = []
         if self.loot:
             loot_items = await self.loot.list_by_session(session_id)
             decrypted = []
@@ -134,14 +135,35 @@ class ExportManager:
                     data = await self.loot.retrieve(item["id"])
                     decrypted.append(data)
                 except Exception as e:
-                    logger.debug(f"Failed to decrypt loot item {item.get('id')}: {e}")
-                    decrypted.append(item)
+                    # This used to log at DEBUG and append the metadata-only row
+                    # in place of the payload, so an export silently omitted the
+                    # captured material and still reported success. An
+                    # engagement deliverable that is quietly incomplete is worse
+                    # than one that fails: nobody goes looking for what is not
+                    # there. Mark it in the file AND in the result.
+                    logger.warning(
+                        "loot item %s could not be decrypted (%s); it is listed "
+                        "in the export without its contents",
+                        item.get("id"), e,
+                    )
+                    unreadable.append(item.get("id"))
+                    decrypted.append({
+                        **item,
+                        "data": None,
+                        "export_error": f"could not be decrypted: {type(e).__name__}",
+                    })
         else:
             decrypted = []
 
         path = FileNamer.loot_export(session_id)
         exporter = JsonExporter()
-        return await exporter.export(decrypted, path)
+        result = await exporter.export(decrypted, path)
+        if unreadable and result.success:
+            result.error = (
+                f"{len(unreadable)} loot item(s) could not be decrypted and were "
+                f"exported without contents: {unreadable}"
+            )
+        return result
 
     async def export_targets(
         self,

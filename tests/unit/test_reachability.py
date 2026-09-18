@@ -78,6 +78,101 @@ def test_the_package_is_not_empty_so_this_guard_cannot_pass_vacuously():
 # unreachable wrapper appears (wire it, or add it here with a reason).
 DELIBERATELY_UNWIRED: dict[str, str] = {}
 
+# Whole modules and classes that exist, export a public surface, and are called
+# by nothing. Distinct from DELIBERATELY_UNWIRED above (tool wrappers) and from
+# KNOWN_DANGLING below (imports of modules that were never written): these were
+# written, they work, and no path reaches them.
+# Modules that exist, export a public surface, and are reached by nothing a user
+# can invoke. Distinct from DELIBERATELY_UNWIRED above (tool wrappers) and from
+# KNOWN_DANGLING below (imports of modules never written): these were written,
+# they work, and no live path arrives at them.
+#
+# Each entry declares the importers it is KNOWN to have, so "unreachable" stays
+# an assertion about a measured set rather than a claim of zero. An import is not
+# a caller: safety/protected.py imports validators, but the only function that
+# uses it (check_target_safety) has no caller of its own, so the chain still
+# terminates in dead code.
+UNREACHABLE_MODULES: dict[str, dict[str, object]] = {
+    "safety/validators.py": {
+        "importers": frozenset({"safety/protected.py"}),
+        "why": (
+            "all 10 validators are dead. THREE independent implementations of "
+            "'is this a valid IP/MAC/URL/hostname' exist in this tree: this one, "
+            "core/validation.py (alive, gates ~12 call sites) and "
+            "automation/handlers/validate.py (also dead). They disagree: "
+            "validate_cidr accepts 0.0.0.0/0 while the handler's _validate_cidr "
+            "refuses it as 'Cannot target entire internet'. The one in the "
+            "package named safety is the one nothing calls. Its trailing-newline "
+            "anchoring is fixed so wiring it later is safe; which of the three "
+            "survives is a design decision"
+        ),
+    },
+    "plugins/lifecycle.py": {
+        "importers": frozenset(),
+        "why": (
+            "PluginLifecycleManager, a state machine with error recording and "
+            "the only place a plugin load timeout could plausibly have been "
+            "enforced. Zero references in src/ or tests/. discovery.py and "
+            "registry.py never import it; the timeout is now enforced in "
+            "discovery.load_plugin instead"
+        ),
+    },
+    "chaining/paths.py": {
+        "importers": frozenset(),
+        "why": (
+            "all four public functions have no caller outside their own module. "
+            "Part of the inert DataBinding data-flow design; see "
+            "tests/unit/test_chaining_dataflow_is_inert.py"
+        ),
+    },
+}
+
+
+def _importers_of(rel: str) -> set[str]:
+    """Modules that import ``rel``, excluding package __init__ re-exports."""
+    mod = rel.removesuffix(".py").replace("/", ".")
+    found: set[str] = set()
+    for other in SRC.rglob("*.py"):
+        if other.relative_to(SRC).as_posix() in (rel, ""):
+            continue
+        if other.name == "__init__.py":
+            continue  # a re-export is not a consumer
+        for node in ast.walk(ast.parse(other.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module == f"netreaper.{mod}" or node.module.endswith(f".{mod}"):
+                    found.add(other.relative_to(SRC).as_posix())
+    return found
+
+
+def test_unreachable_modules_match_their_declared_importer_set():
+    """Each entry must still exist, and its importers must not have grown.
+
+    The register stays short and true: a module that gains a real consumer is
+    no longer unreachable and the entry must go, rather than the list absorbing
+    whatever happens to be unused this week.
+    """
+    stale = []
+    for rel, entry in sorted(UNREACHABLE_MODULES.items()):
+        path = SRC / rel
+        if not path.exists():
+            stale.append(f"{rel}: gone; drop the entry")
+            continue
+        assert len(str(entry["why"])) > 40, f"{rel} needs a real reason"
+        actual = _importers_of(rel)
+        declared = set(entry["importers"])
+        gained = sorted(actual - declared)
+        lost = sorted(declared - actual)
+        if gained:
+            stale.append(f"{rel}: newly imported by {gained}; it may be reachable now")
+        if lost:
+            stale.append(f"{rel}: no longer imported by {lost}; update the entry")
+    assert not stale, "UNREACHABLE_MODULES is out of date:\n  " + "\n  ".join(stale)
+
+
+def test_the_importer_scan_can_actually_see_an_import():
+    """Negative control: if this returns nothing, every check above is vacuous."""
+    assert _importers_of("safety/scope.py"), "importer scan found nothing at all"
+
 # Where a user-facing path can legitimately originate.
 REACHABLE_FROM = (
     SRC / "cli.py",
