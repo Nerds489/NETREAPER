@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -159,6 +160,28 @@ class SettingsScreen(Screen):
         if event.item.name:
             self._show_category(event.item.name)
 
+    # Category name -> the slug in its method names. Both the panel builder
+    # (_compose_<slug>_settings) and the saver (_save_<slug>) are resolved from
+    # this one table, so a category cannot end up with a panel and no way to
+    # save it, or a saver with no panel. Pinned by a test.
+    #
+    # "API Keys" and "Actions" have no saver on purpose: a key is written the
+    # moment its Set button is pressed, and Actions are buttons, not fields.
+    CATEGORY_SLUGS: ClassVar[dict[str, str]] = {
+        "General": "general",
+        "Logging": "logging",
+        "Wireless": "wireless",
+        "Scanning": "scanning",
+        "Credentials": "credentials",
+        "Safety": "safety",
+        "API Keys": "api_key",
+        "Paths": "path",
+        "Actions": "actions",
+    }
+    CATEGORIES_WITHOUT_A_SAVER: ClassVar[frozenset[str]] = frozenset(
+        {"API Keys", "Actions"}
+    )
+
     def _show_category(self, category: str) -> None:
         """Display settings for a category."""
         self._current_category = category
@@ -170,7 +193,6 @@ class SettingsScreen(Screen):
         # itself deleted. Nothing used the result either way.
         panel = self.query_one("#settings-panel", ScrollableContainer)
 
-        # Find category info
         cat_info = next((c for c in SETTINGS_CATEGORIES if c.name == category), None)
         if cat_info:
             title.update(f"[bold cyan]{cat_info.icon} {cat_info.name}[/]")
@@ -180,25 +202,21 @@ class SettingsScreen(Screen):
             if widget.id not in ("panel-title",):
                 widget.remove()
 
-        # Add new content based on category
-        if category == "General":
-            self._compose_general_settings(panel)
-        elif category == "Logging":
-            self._compose_logging_settings(panel)
-        elif category == "Wireless":
-            self._compose_wireless_settings(panel)
-        elif category == "Scanning":
-            self._compose_scanning_settings(panel)
-        elif category == "Credentials":
-            self._compose_credentials_settings(panel)
-        elif category == "Safety":
-            self._compose_safety_settings(panel)
-        elif category == "API Keys":
-            self._compose_api_key_settings(panel)
-        elif category == "Paths":
-            self._compose_path_settings(panel)
-        elif category == "Actions":
-            self._compose_actions(panel)
+        compose = self._composer_for(category)
+        if compose is not None:
+            compose(panel)
+
+    def _composer_for(self, category: str):
+        """The panel builder for a category, or None if there is not one.
+
+        None rather than an exception, which is what the if/elif ladder did for
+        an unrecognised category: it left the panel empty.
+        """
+        slug = self.CATEGORY_SLUGS.get(category)
+        if slug is None:
+            return None
+        name = "_compose_actions" if slug == "actions" else f"_compose_{slug}_settings"
+        return getattr(self, name, None)
 
     @staticmethod
     def _compose_general_settings(panel: ScrollableContainer) -> None:
@@ -665,98 +683,125 @@ class SettingsScreen(Screen):
 
     def _save_current_category(self) -> None:
         """Save settings for the current category."""
+        category = self._current_category
         try:
             settings = get_settings()
-            category = self._current_category
+            saver = self._saver_for(category)
+            if saver is not None:
+                saver(settings)
 
-            if category == "General":
-                # Get values from UI
-                theme_select = self.query_one("#setting-theme", Select)
-                if theme_select.value:
-                    settings.ui.theme = str(theme_select.value)
-
-                settings.ui.show_banner = self.query_one("#setting-show-banner", Switch).value
-                settings.ui.vim_bindings = self.query_one("#setting-vim-bindings", Switch).value
-                settings.non_interactive = self.query_one("#setting-non-interactive", Switch).value
-                settings.debug = self.query_one("#setting-debug", Switch).value
-
-            elif category == "Logging":
-                level_select = self.query_one("#setting-log-level", Select)
-                if level_select.value:
-                    settings.logging.level = LogLevel(level_select.value)
-
-                settings.logging.file_logging = self.query_one("#setting-file-logging", Switch).value
-                settings.logging.log_dir = Path(self.query_one("#setting-log-dir", Input).value)
-
-                max_size = self.query_one("#setting-max-file-size", Input).value
-                if max_size.isdigit():
-                    settings.logging.max_file_size = int(max_size)
-
-                backup = self.query_one("#setting-backup-count", Input).value
-                if backup.isdigit():
-                    settings.logging.backup_count = int(backup)
-
-            elif category == "Wireless":
-                iface = self.query_one("#setting-wireless-interface", Input).value
-                settings.wireless.default_interface = iface if iface else None
-                settings.wireless.monitor_interface_prefix = self.query_one("#setting-monitor-prefix", Input).value
-
-                deauth = self.query_one("#setting-deauth-count", Input).value
-                if deauth.isdigit():
-                    settings.wireless.deauth_count = int(deauth)
-
-                hop = self.query_one("#setting-channel-hop", Input).value
-                try:
-                    settings.wireless.channel_hop_interval = float(hop)
-                except ValueError:
-                    pass
-
-                timeout = self.query_one("#setting-handshake-timeout", Input).value
-                if timeout.isdigit():
-                    settings.wireless.handshake_timeout = int(timeout)
-
-            elif category == "Scanning":
-                scan_type = self.query_one("#setting-scan-type", Select)
-                if scan_type.value:
-                    settings.scanning.default_scan_type = str(scan_type.value)
-
-                settings.scanning.default_ports = self.query_one("#setting-default-ports", Input).value
-
-                timing = self.query_one("#setting-timing", Select)
-                if timing.value:
-                    settings.scanning.timing_template = int(timing.value)
-
-                max_hosts = self.query_one("#setting-max-hosts", Input).value
-                if max_hosts.isdigit():
-                    settings.scanning.max_concurrent_hosts = int(max_hosts)
-
-            elif category == "Credentials":
-                settings.credentials.default_wordlist = Path(self.query_one("#setting-wordlist", Input).value)
-
-                workload = self.query_one("#setting-hashcat-workload", Select)
-                if workload.value:
-                    settings.credentials.hashcat_workload = int(workload.value)
-
-                john_fmt = self.query_one("#setting-john-format", Input).value
-                settings.credentials.john_format = john_fmt if john_fmt else None
-
-            elif category == "Safety":
-                settings.safety.confirm_dangerous = self.query_one("#setting-confirm-dangerous", Switch).value
-                settings.safety.warn_public_ip = self.query_one("#setting-warn-public", Switch).value
-                settings.safety.require_authorization = self.query_one("#setting-require-auth", Switch).value
-                settings.safety.dry_run = self.query_one("#setting-dry-run", Switch).value
-                settings.safety.unsafe_mode = self.query_one("#setting-unsafe-mode", Switch).value
-
-            elif category == "Paths":
-                settings.output_dir = Path(self.query_one("#setting-output-dir", Input).value)
-                settings.database.path = Path(self.query_one("#setting-db-path", Input).value)
-
-            # Save to file
             settings.save()
             self._write_output(f"[green]Settings saved for {category}[/]")
 
         except Exception as e:
             self._write_output(f"[red]Failed to save settings: {e}[/]")
+
+    def _saver_for(self, category: str):
+        """The saver for a category, or None where there is nothing to save."""
+        slug = self.CATEGORY_SLUGS.get(category)
+        if slug is None or category in self.CATEGORIES_WITHOUT_A_SAVER:
+            return None
+        return getattr(self, f"_save_{slug}", None)
+
+    def _save_general(self, settings) -> None:
+        theme_select = self.query_one("#setting-theme", Select)
+        if theme_select.value:
+            settings.ui.theme = str(theme_select.value)
+
+        settings.ui.show_banner = self.query_one("#setting-show-banner", Switch).value
+        settings.ui.vim_bindings = self.query_one("#setting-vim-bindings", Switch).value
+        settings.non_interactive = self.query_one(
+            "#setting-non-interactive", Switch
+        ).value
+        settings.debug = self.query_one("#setting-debug", Switch).value
+
+    def _save_logging(self, settings) -> None:
+        level_select = self.query_one("#setting-log-level", Select)
+        if level_select.value:
+            settings.logging.level = LogLevel(level_select.value)
+
+        settings.logging.file_logging = self.query_one(
+            "#setting-file-logging", Switch
+        ).value
+        settings.logging.log_dir = Path(self.query_one("#setting-log-dir", Input).value)
+
+        max_size = self.query_one("#setting-max-file-size", Input).value
+        if max_size.isdigit():
+            settings.logging.max_file_size = int(max_size)
+
+        backup = self.query_one("#setting-backup-count", Input).value
+        if backup.isdigit():
+            settings.logging.backup_count = int(backup)
+
+    def _save_wireless(self, settings) -> None:
+        iface = self.query_one("#setting-wireless-interface", Input).value
+        settings.wireless.default_interface = iface if iface else None
+        settings.wireless.monitor_interface_prefix = self.query_one(
+            "#setting-monitor-prefix", Input
+        ).value
+
+        deauth = self.query_one("#setting-deauth-count", Input).value
+        if deauth.isdigit():
+            settings.wireless.deauth_count = int(deauth)
+
+        hop = self.query_one("#setting-channel-hop", Input).value
+        try:
+            settings.wireless.channel_hop_interval = float(hop)
+        except ValueError:
+            pass
+
+        timeout = self.query_one("#setting-handshake-timeout", Input).value
+        if timeout.isdigit():
+            settings.wireless.handshake_timeout = int(timeout)
+
+    def _save_scanning(self, settings) -> None:
+        scan_type = self.query_one("#setting-scan-type", Select)
+        if scan_type.value:
+            settings.scanning.default_scan_type = str(scan_type.value)
+
+        settings.scanning.default_ports = self.query_one(
+            "#setting-default-ports", Input
+        ).value
+
+        timing = self.query_one("#setting-timing", Select)
+        if timing.value:
+            settings.scanning.timing_template = int(timing.value)
+
+        max_hosts = self.query_one("#setting-max-hosts", Input).value
+        if max_hosts.isdigit():
+            settings.scanning.max_concurrent_hosts = int(max_hosts)
+
+    def _save_credentials(self, settings) -> None:
+        settings.credentials.default_wordlist = Path(
+            self.query_one("#setting-wordlist", Input).value
+        )
+
+        workload = self.query_one("#setting-hashcat-workload", Select)
+        if workload.value:
+            settings.credentials.hashcat_workload = int(workload.value)
+
+        john_fmt = self.query_one("#setting-john-format", Input).value
+        settings.credentials.john_format = john_fmt if john_fmt else None
+
+    def _save_safety(self, settings) -> None:
+        settings.safety.confirm_dangerous = self.query_one(
+            "#setting-confirm-dangerous", Switch
+        ).value
+        settings.safety.warn_public_ip = self.query_one(
+            "#setting-warn-public", Switch
+        ).value
+        settings.safety.require_authorization = self.query_one(
+            "#setting-require-auth", Switch
+        ).value
+        settings.safety.dry_run = self.query_one("#setting-dry-run", Switch).value
+        settings.safety.unsafe_mode = self.query_one(
+            "#setting-unsafe-mode", Switch
+        ).value
+
+    def _save_path(self, settings) -> None:
+        settings.output_dir = Path(self.query_one("#setting-output-dir", Input).value)
+        settings.database.path = Path(self.query_one("#setting-db-path", Input).value)
+
 
     def _set_api_key(self, service_name: str) -> None:
         """Set an API key."""

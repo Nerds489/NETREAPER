@@ -581,132 +581,167 @@ class PreflightRunner:
         Returns:
             ToolContext with all resolved values and ready=True if all requirements met
         """
-        import shutil
-
         ctx = ToolContext(tool=tool_name)
         req = get_tool_requirements(tool_name)
 
         if not req:
-            # Unknown tool - just check if it exists
-            if not shutil.which(tool_name) and not await self.ensure_tool(tool_name):
-                ctx.error = f"Tool {tool_name} not found and could not be installed"
-                return ctx
-            ctx.ready = True
+            return await self._prepare_unrecognised_tool(ctx, tool_name)
+
+        if not await self._resolve_binary(ctx, tool_name):
             return ctx
 
-        # Step 1: Check tool availability
-        actual_tool = tool_name
-        if not shutil.which(tool_name):
-            # Try fallback first
-            fallback = get_fallback_tool(tool_name)
-            try:
-                ConfirmModal = _load_modal("ConfirmModal")
-            except ImportError:
-                # No way to ask, so do not silently substitute a different tool:
-                # say what is missing and let the operator decide.
-                ctx.error = (
-                    f"{tool_name} is not installed"
-                    + (f" (a fallback to {fallback} exists but cannot be "
-                       f"confirmed: {_MODAL_MISSING})" if fallback else "")
-                )
-                self.app.notify(ctx.error, severity="error")
-                return ctx
-            if fallback:
-                confirm = await self.app.push_screen_wait(
-                    ConfirmModal(
-                        "Tool Not Found",
-                        f"'{tool_name}' not found.\n\n"
-                        f"Use '{fallback}' instead?"
-                    )
-                )
-                if confirm:
-                    actual_tool = fallback
-                    ctx.used_fallback = True
-                    ctx.fallback_tool = fallback
-                else:
-                    # Try to install original
-                    if not await self.ensure_tool(tool_name):
-                        ctx.error = f"Tool {tool_name} not available"
-                        return ctx
-            else:
-                # No fallback, try to install
-                if not await self.ensure_tool(tool_name):
-                    ctx.error = f"Tool {tool_name} not available"
-                    return ctx
-
-        ctx.tool = actual_tool
-
-        # Step 2: Check root requirement
-        if req.needs_root and not await self.ensure_root():
-            ctx.error = "Root privileges required"
+        # Each step returns the reason it could not be satisfied, or None. The
+        # `or` chain short-circuits on the first refusal, which is the same
+        # early-return sequence as before, minus seven copies of it.
+        error = (
+            await self._resolve_root(req)
+            or await self._resolve_target(ctx, req, target)
+            or await self._resolve_interface(ctx, req, interface)
+            or await self._resolve_wordlist(ctx, req)
+            or await self._resolve_api_key(ctx, req)
+        )
+        if error:
+            ctx.error = error
             return ctx
 
-        # Step 3: Check target requirement
-        if req.needs_target:
-            if target:
-                ctx.target = target
-            else:
-                resolved_target = await self.ensure_target(req.target_type)
-                if not resolved_target:
-                    ctx.error = f"Target ({req.target_type}) required"
-                    return ctx
-                ctx.target = resolved_target
-
-        # Step 4: Check interface requirement
-        if req.needs_interface:
-            if interface:
-                ctx.interface = interface
-            elif req.interface_type == "monitor":
-                resolved_iface = await self.ensure_monitor_mode()
-                if not resolved_iface:
-                    ctx.error = "Monitor mode interface required"
-                    return ctx
-                ctx.interface = resolved_iface
-            else:
-                resolved_iface = await self.ensure_interface(req.interface_type or "all")
-                if not resolved_iface:
-                    ctx.error = f"Interface ({req.interface_type}) required"
-                    return ctx
-                ctx.interface = resolved_iface
-
-        # Step 5: Check wordlist requirement
-        if req.needs_wordlist:
-            wordlist = await self.ensure_wordlist()
-            if not wordlist:
-                ctx.error = "Wordlist required"
-                return ctx
-            ctx.wordlist = wordlist
-
-        # Step 6: Check API key requirement
-        if req.needs_api_key:
-            api_key = await self.ensure_api_key(req.needs_api_key)
-            if not api_key:
-                ctx.error = f"API key for {req.needs_api_key} required"
-                return ctx
-            ctx.api_key = api_key
-
-        # Step 7: Check GPU requirement (just warn)
-        if req.needs_gpu:
-            # Check for CUDA/OpenCL
-            import subprocess
-            try:
-                result = subprocess.run(
-                    [actual_tool, "-I"],
-                    check=False,  # -I failing means no GPU, not a broken call
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if "No devices found" in result.stdout or result.returncode != 0:
-                    self.app.notify(
-                        "No GPU found - performance may be slower",
-                        severity="warning"
-                    )
-            except Exception:
-                pass
-
+        await self._warn_if_no_gpu(req, ctx.tool)
         ctx.ready = True
         return ctx
+
+    # ── the steps ────────────────────────────────────────────────────────────
+
+    async def _prepare_unrecognised_tool(
+        self, ctx: ToolContext, tool_name: str
+    ) -> ToolContext:
+        """A tool with no requirements entry: it only has to exist."""
+        import shutil
+
+        if not shutil.which(tool_name) and not await self.ensure_tool(tool_name):
+            ctx.error = f"Tool {tool_name} not found and could not be installed"
+            return ctx
+        ctx.ready = True
+        return ctx
+
+    async def _resolve_binary(self, ctx: ToolContext, tool_name: str) -> bool:
+        """Find the tool, offer its fallback, or install it. False means stop.
+
+        Sets ctx.tool to whatever will actually be run, and ctx.error when it
+        gives up. A fallback is never substituted silently: without a way to
+        ask, this says what is missing and lets the operator decide.
+        """
+        import shutil
+
+        ctx.tool = tool_name
+        if shutil.which(tool_name):
+            return True
+
+        fallback = get_fallback_tool(tool_name)
+        try:
+            ConfirmModal = _load_modal("ConfirmModal")
+        except ImportError:
+            ctx.error = f"{tool_name} is not installed" + (
+                f" (a fallback to {fallback} exists but cannot be "
+                f"confirmed: {_MODAL_MISSING})"
+                if fallback
+                else ""
+            )
+            self.app.notify(ctx.error, severity="error")
+            return False
+
+        if fallback:
+            confirm = await self.app.push_screen_wait(
+                ConfirmModal(
+                    "Tool Not Found",
+                    f"'{tool_name}' not found.\n\nUse '{fallback}' instead?",
+                )
+            )
+            if confirm:
+                ctx.tool = fallback
+                ctx.used_fallback = True
+                ctx.fallback_tool = fallback
+                return True
+
+        if not await self.ensure_tool(tool_name):
+            ctx.error = f"Tool {tool_name} not available"
+            return False
+        return True
+
+    async def _resolve_root(self, req) -> str | None:
+        if req.needs_root and not await self.ensure_root():
+            return "Root privileges required"
+        return None
+
+    async def _resolve_target(
+        self, ctx: ToolContext, req, target: str | None
+    ) -> str | None:
+        if not req.needs_target:
+            return None
+        if target:
+            ctx.target = target
+            return None
+        resolved = await self.ensure_target(req.target_type)
+        if not resolved:
+            return f"Target ({req.target_type}) required"
+        ctx.target = resolved
+        return None
+
+    async def _resolve_interface(
+        self, ctx: ToolContext, req, interface: str | None
+    ) -> str | None:
+        if not req.needs_interface:
+            return None
+        if interface:
+            ctx.interface = interface
+            return None
+        if req.interface_type == "monitor":
+            resolved = await self.ensure_monitor_mode()
+            if not resolved:
+                return "Monitor mode interface required"
+        else:
+            resolved = await self.ensure_interface(req.interface_type or "all")
+            if not resolved:
+                return f"Interface ({req.interface_type}) required"
+        ctx.interface = resolved
+        return None
+
+    async def _resolve_wordlist(self, ctx: ToolContext, req) -> str | None:
+        if not req.needs_wordlist:
+            return None
+        wordlist = await self.ensure_wordlist()
+        if not wordlist:
+            return "Wordlist required"
+        ctx.wordlist = wordlist
+        return None
+
+    async def _resolve_api_key(self, ctx: ToolContext, req) -> str | None:
+        if not req.needs_api_key:
+            return None
+        api_key = await self.ensure_api_key(req.needs_api_key)
+        if not api_key:
+            return f"API key for {req.needs_api_key} required"
+        ctx.api_key = api_key
+        return None
+
+    async def _warn_if_no_gpu(self, req, tool: str) -> None:
+        """A warning, never a refusal: hashcat on CPU is slow, not broken."""
+        if not req.needs_gpu:
+            return
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                [tool, "-I"],
+                check=False,  # -I failing means no GPU, not a broken call
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if "No devices found" in result.stdout or result.returncode != 0:
+                self.app.notify(
+                    "No GPU found - performance may be slower", severity="warning"
+                )
+        except Exception:
+            pass
 
     async def quick_check(self, tool_name: str) -> bool:
         """Quick check if a tool is available (install if not).

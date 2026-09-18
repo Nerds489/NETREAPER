@@ -128,56 +128,64 @@ def test_valid_urls_are_still_accepted(good):
 # ── the class, not just the instances ────────────────────────────────────────
 
 
-def _dollar_anchored_matches() -> list[str]:
-    """re.match/search whose pattern ends in `$`, resolved through the AST.
+def _string_constants(tree: ast.AST) -> dict[str, str]:
+    """Every name bound to a string literal, or to ``re.compile("literal")``.
 
-    Covers a literal pattern, a module-level re.compile, and a pattern held in
-    a local variable, which is the shape wireless/mac.py used and which a
-    literal-only scan missed on the first pass.
+    So a pattern held in a variable resolves. That is the shape wireless/mac.py
+    used, and a literal-only scan missed it on the first pass.
     """
+    assigned: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+
+        value = None
+        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            value = node.value.value
+        elif isinstance(node.value, ast.Call):
+            fn = node.value.func
+            if getattr(fn, "attr", None) == "compile" and node.value.args:
+                first = node.value.args[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    value = first.value
+        if value is None:
+            continue
+
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                assigned[target.id] = value
+    return assigned
+
+
+def _pattern_of(call: ast.Call, assigned: dict[str, str]) -> str | None:
+    """The regex a .match()/.search() call runs, literal or resolved."""
+    if (
+        call.args
+        and isinstance(call.args[0], ast.Constant)
+        and isinstance(call.args[0].value, str)
+    ):
+        return call.args[0].value
+
+    # `PATTERN.match(x)`: the pattern is the receiver, not the argument.
+    receiver = getattr(getattr(call.func, "value", None), "id", None)
+    return assigned.get(receiver)
+
+
+def _dollar_anchored_matches() -> list[str]:
+    """re.match/search whose pattern ends in `$`, resolved through the AST."""
     import re as _re
 
     offenders = []
     for path in SRC.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        tree = ast.parse(text)
-        # every string constant assigned to a name, so a local pattern resolves
-        assigned: dict[str, str] = {}
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Assign)
-                and isinstance(node.value, ast.Constant)
-                and isinstance(node.value.value, str)
-            ):
-                for t in node.targets:
-                    if isinstance(t, ast.Name):
-                        assigned[t.id] = node.value.value
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
-                fn = node.value.func
-                if getattr(fn, "attr", None) == "compile" and node.value.args:
-                    a = node.value.args[0]
-                    if isinstance(a, ast.Constant) and isinstance(a.value, str):
-                        for t in node.targets:
-                            if isinstance(t, ast.Name):
-                                assigned[t.id] = a.value
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        assigned = _string_constants(tree)
 
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             if getattr(node.func, "attr", None) not in ("match", "search"):
                 continue
-            pattern = None
-            if (
-                node.args
-                and isinstance(node.args[0], ast.Constant)
-                and isinstance(node.args[0].value, str)
-            ):
-                pattern = node.args[0].value
-            if pattern is None:
-                base = getattr(node.func, "value", None)
-                vn = getattr(base, "id", None)
-                if vn in assigned:
-                    pattern = assigned[vn]
+            pattern = _pattern_of(node, assigned)
             if pattern and _re.sub(r"\s+#.*$", "", pattern).rstrip().endswith("$"):
                 offenders.append(
                     f"{path.relative_to(SRC).as_posix()}:{node.lineno}: {pattern[:50]}"

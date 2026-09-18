@@ -587,12 +587,17 @@ def test_lfi_payloads_are_offered_as_urls_against_the_target():
     )
 
 
-def test_no_local_is_assigned_and_then_never_read():
-    """The class, not the three instances. Checked through ruff (F841).
+def test_no_local_is_assigned_and_then_never_read_and_no_name_is_undefined():
+    """Two classes, both checked through ruff, both earned.
 
-    Two of the three findings under this rule were real defects rather than
-    tidiness, so the rule earns a standing guard rather than three pinned
-    exceptions.
+    F841 (assigned, never read): two of the three findings under this rule on
+    this branch were real defects rather than tidiness, so it gets a standing
+    guard instead of three pinned exceptions.
+
+    F821 (undefined name): `from __future__ import annotations` makes a class
+    body's annotations lazy, so `X: ClassVar[...] = {...}` with ClassVar not
+    imported creates the class, imports the module and runs the tests without a
+    murmur. Importing a module is not evidence that its names resolve.
     """
     import subprocess
 
@@ -605,7 +610,7 @@ def test_no_local_is_assigned_and_then_never_read():
             "check",
             str(SRC),
             "--select",
-            "F841",
+            "F841,F821",
             "--output-format",
             "concise",
         ],
@@ -613,8 +618,8 @@ def test_no_local_is_assigned_and_then_never_read():
         capture_output=True,
         text=True,
     )
-    hits = [ln for ln in result.stdout.splitlines() if "F841" in ln]
-    assert not hits, "assigned and never read:\n  " + "\n  ".join(hits)
+    hits = [ln for ln in result.stdout.splitlines() if "F841" in ln or "F821" in ln]
+    assert not hits, "unused local or undefined name:\n  " + "\n  ".join(hits)
 
 
 # ── the branch report's remaining classes, and what was refused ───────────────
@@ -630,23 +635,12 @@ def test_every_screen_menu_entry_names_an_action_that_exists():
     and says nothing. The dispatch now reports the miss; this makes sure there
     is never one to report.
     """
-    screens = SRC / "tui" / "screens"
     checked = 0
     missing: list[str] = []
-    for path in sorted(screens.glob("*.py")):
+    for path in sorted((SRC / "tui" / "screens").glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
-            menu = None
-            for node in cls.body:
-                if isinstance(node, ast.Assign) and any(
-                    getattr(t, "id", "") == "MENU_ITEMS" for t in node.targets
-                ):
-                    menu = node.value
-                elif (
-                    isinstance(node, ast.AnnAssign)
-                    and getattr(node.target, "id", "") == "MENU_ITEMS"
-                ):
-                    menu = node.value
+            menu = _class_attribute(cls, "MENU_ITEMS")
             if menu is None:
                 continue
             actions = {
@@ -749,54 +743,110 @@ def test_no_substring_test_can_never_match_its_own_haystack():
     not handled.
     """
     offenders = []
-    roots = [SRC, SRC.parents[1] / "tests"]
-    for root in roots:
+    for root in (SRC, SRC.parents[1] / "tests"):
         for path in sorted(root.rglob("*.py")):
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
             except SyntaxError:  # pragma: no cover
                 continue
-
-            # `lowered = line.lower()` then `"X" in lowered` is the same defect
-            # wearing a local. Resolve those names first, or the guard only
-            # catches the spelling the bug happened to use the first time.
-            folded_names: dict[str, str] = {}
+            folded = _case_folded_names(tree)
             for node in ast.walk(tree):
-                if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)):
-                    continue
-                case = getattr(node.value.func, "attr", None)
-                if case not in ("lower", "upper"):
-                    continue
-                for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        folded_names[target.id] = case
-
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Compare) or len(node.ops) != 1:
-                    continue
-                if not isinstance(node.ops[0], (ast.In, ast.NotIn)):
-                    continue
-                needle, haystack = node.left, node.comparators[0]
-                if not (isinstance(needle, ast.Constant) and isinstance(needle.value, str)):
-                    continue
-
-                if isinstance(haystack, ast.Call):
-                    case = getattr(haystack.func, "attr", None)
-                    shown = f"....{case}()"
-                elif isinstance(haystack, ast.Name):
-                    case = folded_names.get(haystack.id)
-                    shown = haystack.id
-                else:
-                    continue
-                if case not in ("lower", "upper"):
-                    continue
-
-                folded = needle.value.lower() if case == "lower" else needle.value.upper()
-                if folded != needle.value:
-                    offenders.append(
-                        f"{path.relative_to(root.parent)}:{node.lineno}: "
-                        f"{needle.value!r} in {shown} is never true"
-                    )
+                dead = _dead_substring_test(node, folded)
+                if dead:
+                    offenders.append(f"{path.relative_to(root.parent)}:{node.lineno}: {dead}")
     assert not offenders, (
         "substring test that cannot match:\n  " + "\n  ".join(offenders)
     )
+
+
+def _class_attribute(cls: ast.ClassDef, name: str):
+    """The value node assigned to a class attribute, annotated or not."""
+    found = None
+    for node in cls.body:
+        if isinstance(node, ast.Assign) and any(
+            getattr(t, "id", "") == name for t in node.targets
+        ):
+            found = node.value
+        elif isinstance(node, ast.AnnAssign) and getattr(node.target, "id", "") == name:
+            found = node.value
+    return found
+
+
+def _case_folded_names(tree: ast.AST) -> dict[str, str]:
+    """Names bound to a ``.lower()`` or ``.upper()`` call, and which one.
+
+    `lowered = line.lower()` then `"X" in lowered` is the same defect wearing a
+    local, so the guard has to resolve the local or it only catches the spelling
+    the bug happened to use the first time.
+    """
+    folded: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)):
+            continue
+        case = getattr(node.value.func, "attr", None)
+        if case not in ("lower", "upper"):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                folded[target.id] = case
+    return folded
+
+
+def _dead_substring_test(node: ast.AST, folded: dict[str, str]) -> str | None:
+    """A description of the dead comparison at this node, or None."""
+    if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+        return None
+    if not isinstance(node.ops[0], (ast.In, ast.NotIn)):
+        return None
+
+    needle, haystack = node.left, node.comparators[0]
+    if not (isinstance(needle, ast.Constant) and isinstance(needle.value, str)):
+        return None
+
+    if isinstance(haystack, ast.Call):
+        case = getattr(haystack.func, "attr", None)
+        shown = f"....{case}()"
+    elif isinstance(haystack, ast.Name):
+        case = folded.get(haystack.id)
+        shown = haystack.id
+    else:
+        return None
+    if case not in ("lower", "upper"):
+        return None
+
+    want = needle.value.lower() if case == "lower" else needle.value.upper()
+    if want == needle.value:
+        return None
+    return f"{needle.value!r} in {shown} is never true"
+
+
+def test_every_settings_category_resolves_a_panel_and_a_saver():
+    """PY-R1000 at settings.py:667, refactored to one table for both halves.
+
+    _show_category and _save_current_category were two parallel if/elif ladders
+    over the same nine category names, which is how a category ends up with a
+    panel and no way to save it. They now resolve through CATEGORY_SLUGS, and
+    this checks the table against the methods that have to exist.
+    """
+    from netreaper.tui.screens.settings import SETTINGS_CATEGORIES, SettingsScreen
+
+    declared = {c.name for c in SETTINGS_CATEGORIES}
+    tabled = set(SettingsScreen.CATEGORY_SLUGS)
+    assert declared == tabled, (
+        f"the menu and the dispatch table disagree: "
+        f"only in the menu {declared - tabled}, only in the table {tabled - declared}"
+    )
+
+    screen = object.__new__(SettingsScreen)
+    broken = []
+    for name in sorted(declared):
+        if screen._composer_for(name) is None:
+            broken.append(f"{name}: no panel builder")
+        has_saver = screen._saver_for(name) is not None
+        should_save = name not in SettingsScreen.CATEGORIES_WITHOUT_A_SAVER
+        if has_saver != should_save:
+            broken.append(
+                f"{name}: saver {'exists' if has_saver else 'missing'}, "
+                f"expected {'one' if should_save else 'none'}"
+            )
+    assert not broken, "settings dispatch:\n  " + "\n  ".join(broken)
