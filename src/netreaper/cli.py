@@ -231,6 +231,85 @@ def _scope_summary(scope) -> str:
     )
 
 
+def _check_engagement_basics(operator: str, ref: str, hours: float) -> None:
+    """Who, under what authority, for how long. All three are refusals, not
+    warnings: an engagement missing any of them records no authorisation."""
+    if not operator.strip():
+        console.print("[red]--operator must not be empty[/red]")
+        raise typer.Exit(2)
+    if not ref.strip():
+        console.print("[red]--ref must not be empty: give the authorisation ref[/red]")
+        raise typer.Exit(2)
+    if hours <= 0:
+        console.print("[red]--hours must be positive (an engagement must last)[/red]")
+        raise typer.Exit(2)
+    if hours > _MAX_ENGAGEMENT_HOURS:
+        console.print(
+            f"[red]--hours {hours:g} exceeds the {_MAX_ENGAGEMENT_HOURS:g}h cap; an "
+            f"authorisation that outlives its engagement is not an authorisation. "
+            f"Re-run engage start when it expires.[/red]"
+        )
+        raise typer.Exit(2)
+
+
+def _parse_max_tier(max_tier: str):
+    """The blast-radius ceiling: what this engagement MAY reach."""
+    from netreaper.safety.scope import Tier
+
+    try:
+        return Tier[max_tier.strip().upper()]
+    except KeyError:
+        console.print(
+            f"[red]invalid --max-tier {max_tier!r}; use one of: {_TIER_NAMES}[/red]"
+        )
+        raise typer.Exit(2) from None
+
+
+def _parse_confirmed_tiers(confirm_tier: list[str] | None) -> set:
+    """The grants: which tiers the operator states they intended."""
+    from netreaper.safety.scope import Tier
+
+    confirmed: set[Tier] = set()
+    for name in confirm_tier or []:
+        try:
+            confirmed.add(Tier[name.strip().upper()])
+        except KeyError:
+            console.print(
+                f"[red]invalid --confirm-tier {name!r}; use one of: {_TIER_NAMES}[/red]"
+            )
+            raise typer.Exit(2) from None
+    return confirmed
+
+
+def _check_tier_grants(tier, confirmed: set, accept_interception: bool) -> None:
+    """A ceiling and a grant have to agree, and MITM costs a sentence.
+
+    Kept as its own step because these are the two rules an operator gets
+    wrong: confirming above the ceiling, and confirming MITM without the
+    dangerous-ops phrase.
+    """
+    from netreaper.safety.scope import Tier
+
+    above_ceiling = sorted(x.name for x in confirmed if x > tier)
+    if above_ceiling:
+        console.print(
+            f"[red]--confirm-tier {', '.join(above_ceiling)} exceeds --max-tier "
+            f"{tier.name}; raise the ceiling or drop the confirmation[/red]"
+        )
+        raise typer.Exit(2)
+    if Tier.MITM in confirmed and not accept_interception:
+        console.print(
+            "[red]--confirm-tier mitm also requires --accept-interception: MITM "
+            "intercepts traffic that is not yours[/red]"
+        )
+        raise typer.Exit(2)
+    if accept_interception and Tier.MITM not in confirmed:
+        console.print(
+            "[yellow]warning: --accept-interception without --confirm-tier mitm "
+            "does nothing[/yellow]"
+        )
+
+
 @engage_app.command("start")
 def engage_start(
     operator: str = typer.Option(..., "--operator", "-o", help="Who is authorised"),
@@ -282,57 +361,10 @@ def engage_start(
         get_scope_gate,
     )
 
-    if not operator.strip():
-        console.print("[red]--operator must not be empty[/red]")
-        raise typer.Exit(2)
-    if not ref.strip():
-        console.print("[red]--ref must not be empty: give the authorisation ref[/red]")
-        raise typer.Exit(2)
-    if hours <= 0:
-        console.print("[red]--hours must be positive (an engagement must last)[/red]")
-        raise typer.Exit(2)
-    if hours > _MAX_ENGAGEMENT_HOURS:
-        console.print(
-            f"[red]--hours {hours:g} exceeds the {_MAX_ENGAGEMENT_HOURS:g}h cap; an "
-            f"authorisation that outlives its engagement is not an authorisation. "
-            f"Re-run engage start when it expires.[/red]"
-        )
-        raise typer.Exit(2)
-    try:
-        tier = Tier[max_tier.strip().upper()]
-    except KeyError:
-        console.print(
-            f"[red]invalid --max-tier {max_tier!r}; use one of: {_TIER_NAMES}[/red]"
-        )
-        raise typer.Exit(2) from None
-
-    confirmed: set[Tier] = set()
-    for name in confirm_tier or []:
-        try:
-            confirmed.add(Tier[name.strip().upper()])
-        except KeyError:
-            console.print(
-                f"[red]invalid --confirm-tier {name!r}; use one of: {_TIER_NAMES}[/red]"
-            )
-            raise typer.Exit(2) from None
-    above_ceiling = sorted(x.name for x in confirmed if x > tier)
-    if above_ceiling:
-        console.print(
-            f"[red]--confirm-tier {', '.join(above_ceiling)} exceeds --max-tier "
-            f"{tier.name}; raise the ceiling or drop the confirmation[/red]"
-        )
-        raise typer.Exit(2)
-    if Tier.MITM in confirmed and not accept_interception:
-        console.print(
-            "[red]--confirm-tier mitm also requires --accept-interception: MITM "
-            "intercepts traffic that is not yours[/red]"
-        )
-        raise typer.Exit(2)
-    if accept_interception and Tier.MITM not in confirmed:
-        console.print(
-            "[yellow]warning: --accept-interception without --confirm-tier mitm "
-            "does nothing[/yellow]"
-        )
+    _check_engagement_basics(operator, ref, hours)
+    tier = _parse_max_tier(max_tier)
+    confirmed = _parse_confirmed_tiers(confirm_tier)
+    _check_tier_grants(tier, confirmed, accept_interception)
 
     scope = Scope(
         cidrs=list(cidr or []),

@@ -14,6 +14,7 @@ import ipaddress
 import json
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum
@@ -33,6 +34,8 @@ class Tier(IntEnum):
     BROADCAST = 3      # mass/broadcast: mdk4 amok, beacon/probe flood, DoS
     MITM = 4           # evil-twin, MITM, traffic interception
 
+
+_AnyNet = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 _BROADCAST_MAC = "FF:FF:FF:FF:FF:FF"
 
@@ -73,6 +76,51 @@ _PROTECTED_NETS = [
 ]
 
 
+def _parse_net(value: str) -> _AnyNet | None:
+    """A CIDR as a network object, or None if it is not one.
+
+    Extracted so the three loops in allows_network stop re-implementing
+    "parse it, skip it if it will not parse". That pattern was the bulk of a
+    cyclomatic complexity of 11 in a function whose whole job is one question.
+    """
+    try:
+        return ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        return None
+
+
+def _parse_nets(values: Iterable[str]) -> list[_AnyNet]:
+    """Every value that parses, skipping the ones that do not.
+
+    Unparseable entries are skipped rather than raising, which is the original
+    behaviour: a malformed entry in a deny list must not make the whole check
+    throw, because that would fail OPEN on the allow side.
+    """
+    out = []
+    for v in values:
+        net = _parse_net(v)
+        if net is not None:
+            out.append(net)
+    return out
+
+
+def _is_subnet_of(net: _AnyNet, allowed: _AnyNet) -> bool:
+    """subnet_of, with the address families matched first.
+
+    Comparing an IPv4Network with an IPv6Network raises TypeError, so the
+    family check is explicit here rather than caught-and-skipped.
+    """
+    if isinstance(net, ipaddress.IPv4Network) and isinstance(
+        allowed, ipaddress.IPv4Network
+    ):
+        return net.subnet_of(allowed)
+    if isinstance(net, ipaddress.IPv6Network) and isinstance(
+        allowed, ipaddress.IPv6Network
+    ):
+        return net.subnet_of(allowed)
+    return False
+
+
 @dataclass
 class Scope:
     """What an engagement is authorised to touch. Deny-by-default: empty means
@@ -103,35 +151,12 @@ class Scope:
         return self._in_nets(ip, self.cidrs)
 
     def allows_network(self, cidr: str) -> bool:
-        try:
-            net = ipaddress.ip_network(cidr, strict=False)
-        except ValueError:
+        net = _parse_net(cidr)
+        if net is None:
             return False
-        for d in self.deny:
-            try:
-                if net.overlaps(ipaddress.ip_network(d, strict=False)):
-                    return False
-            except ValueError:
-                continue
-        for a in self.cidrs:
-            try:
-                allowed = ipaddress.ip_network(a, strict=False)
-            except ValueError:
-                continue
-            # subnet_of requires the same address family; comparing IPv4 with
-            # IPv6 raises TypeError, so narrow to the concrete type first (this
-            # also makes the family check explicit rather than caught-and-skipped).
-            if isinstance(net, ipaddress.IPv4Network) and isinstance(
-                allowed, ipaddress.IPv4Network
-            ):
-                if net.subnet_of(allowed):
-                    return True
-            elif isinstance(net, ipaddress.IPv6Network) and isinstance(
-                allowed, ipaddress.IPv6Network
-            ):
-                if net.subnet_of(allowed):
-                    return True
-        return False
+        if any(net.overlaps(d) for d in _parse_nets(self.deny)):
+            return False
+        return any(_is_subnet_of(net, a) for a in _parse_nets(self.cidrs))
 
     def allows_hostname(self, host: str) -> bool:
         return host.strip().lower() in {h.lower() for h in self.hostnames}

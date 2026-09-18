@@ -584,20 +584,33 @@ class AuditTrail:
             return True
 
     def verify_file(self) -> bool:
-        """Recompute the whole ON-DISK chain, across every session that wrote it.
+        """Is the ON-DISK chain both unbroken and complete?
 
+        Two separate questions, and they were one function of complexity 11.
         :meth:`verify` only covers what this process holds in memory, which was
-        the gap: a trail could verify happily while the file it had been
-        appending to was truncated, reordered or stitched from several chains.
-        True iff the file is one unbroken chain from GENESIS, or there is no
-        file yet.
+        the original gap: a trail could verify happily while the file it had
+        been appending to was truncated, reordered or stitched from several
+        chains.
         """
         if self._path is None or not self._path.exists():
             return True
+
+        links = self._verify_chain_links()
+        if links is None:
+            return False
+        count, head = links
+        return self._verify_completeness(count, head)
+
+    def _verify_chain_links(self) -> tuple[int, str] | None:
+        """Walk the file from GENESIS. Returns (entry count, head) or None.
+
+        None means the chain itself is broken: a bad hash, a seq out of order, a
+        damaged entry that is not the final one, or an unreadable file.
+        """
         prev = GENESIS
         expected_seq = 0
         try:
-            with self._path.open("r", encoding="utf-8") as fh:
+            with self._path.open("r", encoding="utf-8") as fh:  # type: ignore[union-attr]
                 lines = [ln for ln in fh if ln.strip()]
             last = len(lines) - 1
             for idx, line in enumerate(lines):
@@ -610,25 +623,30 @@ class AuditTrail:
                     if idx == last:
                         logger.warning("audit trail has a torn final line")
                         break
-                    return False
+                    return None
                 entry_hash = body.pop("entry_hash", None)
                 if body.get("seq") != expected_seq or body.get("prev_hash") != prev:
-                    return False
+                    return None
                 if (
                     hashlib.sha256((prev + _canonical(body)).encode()).hexdigest()
                     != entry_hash
                 ):
-                    return False
+                    return None
                 prev = str(entry_hash)
                 expected_seq += 1
         except (OSError, ValueError) as e:
             logger.warning("audit trail file could not be verified: %s", e)
-            return False
+            return None
+        return expected_seq, prev
 
-        # The chain is internally consistent. Now: is it COMPLETE? A prefix of a
-        # valid chain verifies as a valid chain, so without this the log could be
-        # cut short, or emptied, and still pass.
-        anchor = _read_anchor(self._path)
+    def _verify_completeness(self, count: int, head: str) -> bool:
+        """The chain links up. Is any of it MISSING?
+
+        A prefix of a valid chain verifies as a valid chain, so without this the
+        log could be cut short, or emptied, and still pass. The anchor beside it
+        records how long it should be.
+        """
+        anchor = _read_anchor(self._path)  # type: ignore[arg-type]
         if anchor is None:
             logger.warning(
                 "audit trail has no anchor file; completeness cannot be checked "
@@ -636,21 +654,21 @@ class AuditTrail:
             )
             return True
         expected_count, expected_head = anchor
-        if expected_seq == expected_count and prev == expected_head:
+        if count == expected_count and head == expected_head:
             return True
-        if expected_seq == expected_count + 1:
+        if count == expected_count + 1:
             # Killed between the append and the anchor update. One entry, and
             # only one, may legitimately be ahead. Deliberately not a >= slack:
             # that is how the streaming-capture guard came to permit two ungated
             # spawns.
             logger.warning("audit anchor is one entry behind; recovering")
-            _write_anchor(self._path, expected_seq, prev)
+            _write_anchor(self._path, count, head)  # type: ignore[arg-type]
             return True
         logger.error(
             "audit trail is incomplete: %d entries on disk, anchor expects %d. "
             "The log has been truncated, restored from a partial copy, or lost "
             "entries.",
-            expected_seq,
+            count,
             expected_count,
         )
         return False
