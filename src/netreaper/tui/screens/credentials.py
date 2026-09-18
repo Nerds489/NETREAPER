@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -79,11 +79,10 @@ class CrackJob:
     recovered: int = 0
     total: int = 0
     started_at: datetime | None = None
-    cracked_passwords: list = None
-
-    def __post_init__(self):
-        if self.cracked_passwords is None:
-            self.cracked_passwords = []
+    # default_factory, not None plus a __post_init__ fixup. The annotation said
+    # `list` and the default was None, so every reader had to cope with a type
+    # the field claimed it could never hold.
+    cracked_passwords: list = field(default_factory=list)
 
 
 class CredentialsScreen(Screen):

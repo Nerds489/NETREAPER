@@ -26,12 +26,10 @@ class Exporter(ABC):
     @abstractmethod
     def format_name(self) -> str:
         """Return the format name."""
-        pass
 
     @abstractmethod
     async def export(self, data: Any, path: Path) -> ExportResult:
         """Export data to the specified path."""
-        pass
 
 
 class JsonExporter(Exporter):

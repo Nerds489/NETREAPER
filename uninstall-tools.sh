@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
+# shellcheck shell=bash
 # Uninstall all NETREAPER tools for testing the installer
+#
+# The shellcheck directive above is not decoration. Without it the analyser
+# reads this as POSIX sh and reports [[ ]], =~ and read -p as undefined, which
+# is true of sh and false of the interpreter named on line 1.
 
 set -uo pipefail
 
@@ -17,7 +22,7 @@ echo ""
 # Critical packages we should NOT remove
 KEEP="curl wget git python3 python3-pip bash coreutils"
 
-echo "${YELLOW}[!] This will remove all pentesting tools${RESET}"
+echo "${RED}[!] This will remove all pentesting tools, and cannot be undone${RESET}"
 echo ""
 read -p "Continue? [y/N] " -n 1 -r
 echo ""

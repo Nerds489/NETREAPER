@@ -493,10 +493,10 @@ class _RemovableWidget:
         self._tree = tree
 
     def update(self, *_a, **_k) -> None:
-        pass
+        """Accepts and discards: the test is about the tree, not the render."""
 
     def mount(self, *_a, **_k) -> None:
-        pass
+        """See update()."""
 
     def query(self, _selector: str = "*") -> list:
         return [w for w in self._tree.values() if w is not self]
@@ -880,3 +880,62 @@ def test_the_version_flag_still_works_after_being_renamed():
 
     help_text = _re.sub(r"\x1b\[[0-9;]*m", "", runner.invoke(app, ["--help"]).output)
     assert "--version" in help_text, "--version has dropped out of the help"
+
+
+@pytest.mark.parametrize(
+    "raised",
+    [ProcessLookupError, PermissionError, OSError, BlockingIOError],
+)
+def test_a_failed_group_signal_still_falls_back_to_the_process(monkeypatch, raised):
+    """PYL-W0714 at process.py:179, and why the narrowing is safe.
+
+    The handler read ``except (ProcessLookupError, PermissionError, OSError)``.
+    Both named types are OSError subclasses, so the tuple caught exactly what
+    OSError catches while reading as though it were narrower. It is now just
+    OSError, and this pins the behaviour that matters: whatever the group signal
+    fails with, the signal still reaches the process itself. This is the kill
+    path, so a swallowed fallback leaves a spawned tool running.
+    """
+    import os
+
+    from netreaper.core.process import ProcessRunner
+
+    sent: list[int] = []
+
+    class _Proc:
+        pid = 4242
+
+        def send_signal(self, sig):
+            sent.append(sig)
+
+    def _boom(*_a, **_k):
+        raise raised("group signal refused")
+
+    monkeypatch.setattr(os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(os, "killpg", _boom)
+
+    ProcessRunner._signal(_Proc(), 15)
+    assert sent == [15], f"{raised.__name__} from killpg did not fall back to the process"
+
+
+def test_the_process_fallback_does_not_swallow_a_non_oserror(monkeypatch):
+    """The inner tuple keeps ValueError for a reason, and the outer one must not
+    grow to Exception: a bug in the signal path has to be visible, not quiet."""
+    import os
+
+    from netreaper.core.process import ProcessRunner
+
+    class _Proc:
+        pid = 4242
+
+        def send_signal(self, _sig):
+            raise AssertionError("must not be reached")
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("not an OSError")
+
+    monkeypatch.setattr(os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(os, "killpg", _boom)
+
+    with pytest.raises(RuntimeError):
+        ProcessRunner._signal(_Proc(), 15)
