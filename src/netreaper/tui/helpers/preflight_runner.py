@@ -29,6 +29,36 @@ _PREFLIGHT_MISSING = (
 )
 
 
+_MODAL_MISSING = (
+    "netreaper.tui.modals.preflight_modal does not exist: the modals package "
+    "holds only __init__.py. It is part of the TUI rebuild (#31)."
+)
+
+
+def _load_modal(name: str):
+    """Import one preflight modal, at the point it is actually needed.
+
+    These imports used to sit at the TOP of six functions, ABOVE the fast paths
+    that need no modal at all, so every one of them raised ModuleNotFoundError
+    on every call regardless of arguments:
+
+        ensure_interface     raised even with zero or one interface
+        ensure_monitor_mode  raised even when already in monitor mode
+        ensure_wordlist      raised even when rockyou.txt was already on disk
+        ensure_api_key       raised even when the key was already saved
+        ensure_root          raised whenever the process was not already root
+        prepare_tool         raised before it had even built its ToolContext
+
+    prepare_tool is the entry point for every tool run in the traffic, exploit
+    and credentials screens, so all three screens' actions were dead. ensure_tool
+    in this same file has always had it right: its import sits after the
+    shutil.which check, which is why that one works.
+    """
+    from netreaper.tui.modals import preflight_modal
+
+    return getattr(preflight_modal, name)
+
+
 def _load_preflight_checker():
     """Import PreflightChecker on demand, or say precisely why it cannot."""
     try:
@@ -176,7 +206,6 @@ class PreflightRunner:
             Selected interface name or None if cancelled
         """
         from netreaper.automation.handlers.iface import AutoIfaceHandler
-        from netreaper.tui.modals.preflight_modal import InterfaceSelectModal
 
         handler = AutoIfaceHandler(required_type=interface_type)
         interfaces = await handler.get_interfaces(interface_type)
@@ -203,6 +232,16 @@ class PreflightRunner:
             for iface in interfaces
         ]
 
+        try:
+            InterfaceSelectModal = _load_modal("InterfaceSelectModal")
+        except ImportError:
+            self.app.notify(
+                f"{len(interfaces)} interfaces found and there is no picker yet "
+                f"({_MODAL_MISSING}) Name one explicitly.",
+                severity="warning",
+            )
+            return None
+
         selected = await self.app.push_screen_wait(
             InterfaceSelectModal(
                 interface_data,
@@ -223,7 +262,6 @@ class PreflightRunner:
         """
         from netreaper.automation.handlers.iface import AutoIfaceHandler
         from netreaper.automation.handlers.monitor import AutoMonHandler
-        from netreaper.tui.modals.preflight_modal import ConfirmModal
 
         # Get interface if not specified
         if not interface:
@@ -241,7 +279,16 @@ class PreflightRunner:
 
         handler = AutoMonHandler(interface)
 
-        # Ask user to confirm
+        try:
+            ConfirmModal = _load_modal("ConfirmModal")
+        except ImportError:
+            self.app.notify(
+                f"Cannot ask about enabling monitor mode: {_MODAL_MISSING} "
+                f"Put {interface} into monitor mode yourself and pass it in.",
+                severity="warning",
+            )
+            return None
+
         confirm = await self.app.push_screen_wait(
             ConfirmModal(
                 "Enable Monitor Mode",
@@ -278,8 +325,19 @@ class PreflightRunner:
         if os.geteuid() == 0:
             return True
 
-        from netreaper.automation.handlers.privilege import AutoPrivHandler
-        from netreaper.tui.modals.preflight_modal import ConfirmModal
+        # netreaper.automation.handlers.privilege does not exist either. Same
+        # dangling-reference family; say so rather than raising at the operator.
+        try:
+            from netreaper.automation.handlers.privilege import AutoPrivHandler
+
+            ConfirmModal = _load_modal("ConfirmModal")
+        except ImportError:
+            self.app.notify(
+                "This needs root and there is no privilege helper yet "
+                f"({_MODAL_MISSING}) Re-run NETREAPER with sudo.",
+                severity="error",
+            )
+            return False
 
         handler = AutoPrivHandler()
         relaunch_cmd = handler.get_relaunch_command()
@@ -303,8 +361,17 @@ class PreflightRunner:
         Returns:
             Target value or None if cancelled
         """
-        from netreaper.tui.modals.preflight_modal import InputModal
         from netreaper.automation.handlers.validate import AutoValidateHandler
+
+        try:
+            InputModal = _load_modal("InputModal")
+        except ImportError:
+            self.app.notify(
+                f"Cannot prompt for a target: {_MODAL_MISSING} Pass one "
+                f"explicitly instead.",
+                severity="error",
+            )
+            return None
 
         placeholders = {
             "ip": "192.168.1.1",
@@ -346,8 +413,18 @@ class PreflightRunner:
         if shutil.which(tool_name):
             return True
 
-        from netreaper.automation.handlers.install import AutoInstallHandler
-        from netreaper.tui.modals.preflight_modal import ConfirmModal
+        # netreaper.automation.handlers.install does not exist either.
+        try:
+            from netreaper.automation.handlers.install import AutoInstallHandler
+
+            ConfirmModal = _load_modal("ConfirmModal")
+        except ImportError:
+            self.app.notify(
+                f"{tool_name} is not installed and there is no installer yet "
+                f"({_MODAL_MISSING}) Install it with your package manager.",
+                severity="error",
+            )
+            return False
 
         handler = AutoInstallHandler(tool_name)
 
@@ -388,7 +465,6 @@ class PreflightRunner:
             API key or None if not configured
         """
         from netreaper.automation.handlers.keys import AutoKeysHandler
-        from netreaper.tui.modals.preflight_modal import InputModal
 
         handler = AutoKeysHandler(service)
 
@@ -402,6 +478,16 @@ class PreflightRunner:
         title = f"Enter {service.title()} API Key"
         if url:
             title += f"\n(Get one at: {url})"
+
+        try:
+            InputModal = _load_modal("InputModal")
+        except ImportError:
+            self.app.notify(
+                f"No {service} API key stored and no prompt available "
+                f"({_MODAL_MISSING})",
+                severity="error",
+            )
+            return None
 
         key = await self.app.push_screen_wait(
             InputModal(title, placeholder="API Key", password=True)
@@ -422,7 +508,6 @@ class PreflightRunner:
         """
         from pathlib import Path
         from netreaper.automation.handlers.data import AutoDataHandler
-        from netreaper.tui.modals.preflight_modal import ConfirmModal
 
         # Check standard locations
         standard_paths = [
@@ -440,6 +525,16 @@ class PreflightRunner:
 
         if not await handler.can_fix():
             self.app.notify("Cannot download wordlist: curl/wget not found", severity="error")
+            return None
+
+        try:
+            ConfirmModal = _load_modal("ConfirmModal")
+        except ImportError:
+            self.app.notify(
+                f"No wordlist on disk and no download prompt available "
+                f"({_MODAL_MISSING}) Pass --wordlist explicitly.",
+                severity="error",
+            )
             return None
 
         confirm = await self.app.push_screen_wait(
@@ -487,7 +582,6 @@ class PreflightRunner:
             ToolContext with all resolved values and ready=True if all requirements met
         """
         import shutil
-        from netreaper.tui.modals.preflight_modal import ConfirmModal
 
         ctx = ToolContext(tool=tool_name)
         req = get_tool_requirements(tool_name)
@@ -506,6 +600,18 @@ class PreflightRunner:
         if not shutil.which(tool_name):
             # Try fallback first
             fallback = get_fallback_tool(tool_name)
+            try:
+                ConfirmModal = _load_modal("ConfirmModal")
+            except ImportError:
+                # No way to ask, so do not silently substitute a different tool:
+                # say what is missing and let the operator decide.
+                ctx.error = (
+                    f"{tool_name} is not installed"
+                    + (f" (a fallback to {fallback} exists but cannot be "
+                       f"confirmed: {_MODAL_MISSING})" if fallback else "")
+                )
+                self.app.notify(ctx.error, severity="error")
+                return ctx
             if fallback:
                 confirm = await self.app.push_screen_wait(
                     ConfirmModal(

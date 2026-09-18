@@ -259,3 +259,137 @@ def test_no_unused_imports_in_the_package():
     )
     hits = [ln for ln in result.stdout.splitlines() if ":" in ln and "F401" in ln]
     assert not hits, "unused import(s):\n  " + "\n  ".join(hits)
+
+
+# ── the preflight entry points, which all raised on every call ───────────────
+#
+# Six methods in tui/helpers/preflight_runner.py hoisted an import of
+# netreaper.tui.modals.preflight_modal (a module that does not exist) to the TOP
+# of the function, ABOVE the fast path that needs no modal at all. So:
+#
+#   ensure_interface     raised even with zero or one interface
+#   ensure_monitor_mode  raised even when already in monitor mode
+#   ensure_wordlist      raised even when rockyou.txt was already on disk
+#   ensure_api_key       raised even when the key was already saved
+#   ensure_root          raised whenever not already root
+#   prepare_tool         raised before it had even built its ToolContext
+#
+# prepare_tool is the entry point for every tool run in the traffic, exploit and
+# credentials screens, so all three screens' actions were dead. ensure_tool in
+# the same file always worked, because its import sits AFTER the shutil.which
+# check: the correct pattern was already there to copy.
+
+
+class _StubApp:
+    """Enough App surface for PreflightRunner, with no Textual involved."""
+
+    def __init__(self) -> None:
+        self.notifications: list[str] = []
+
+    def notify(self, message, **kwargs) -> None:
+        self.notifications.append(str(message))
+
+    def bell(self) -> None:
+        pass
+
+    async def push_screen_wait(self, *a, **k):
+        return None
+
+
+def _runner():
+    from netreaper.tui.helpers.preflight_runner import PreflightRunner
+
+    app = _StubApp()
+    return PreflightRunner(app), app
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "prepare_tool",
+        "ensure_interface",
+        "ensure_monitor_mode",
+        "ensure_wordlist",
+        "ensure_api_key",
+        "ensure_root",
+        "ensure_target",
+        "ensure_tool",
+    ],
+)
+def test_no_preflight_entry_point_raises_on_a_missing_module(call):
+    """A missing optional module must degrade, never explode at the operator."""
+    runner, _app = _runner()
+    args = {
+        "prepare_tool": ("bash",),
+        "ensure_interface": ("wireless",),
+        "ensure_monitor_mode": ("wlan0",),
+        "ensure_wordlist": (),
+        "ensure_api_key": ("shodan",),
+        "ensure_root": (),
+        "ensure_target": ("ip",),
+        "ensure_tool": ("bash",),
+    }[call]
+
+    try:
+        asyncio.run(getattr(runner, call)(*args))
+    except ModuleNotFoundError as e:
+        raise AssertionError(
+            f"{call}() raised {e}. The import is hoisted above the fast path "
+            f"again; move it to the point of use as ensure_tool does."
+        ) from e
+
+
+def test_prepare_tool_reaches_ready_for_a_tool_that_is_installed():
+    """The whole point: the happy path has to actually complete.
+
+    bash is present on any box this runs on and needs no root, target,
+    interface, wordlist, API key or GPU, so it exercises prepare_tool end to end
+    with every requirement satisfied.
+    """
+    runner, _app = _runner()
+    ctx = asyncio.run(runner.prepare_tool("bash"))
+    assert ctx.ready is True, f"prepare_tool did not complete: {ctx.error}"
+    assert ctx.error is None
+
+
+def test_a_missing_tool_is_reported_not_raised():
+    runner, app = _runner()
+    ctx = asyncio.run(runner.prepare_tool("no-such-binary-xyz"))
+    assert ctx.ready is False
+    assert ctx.error, "prepare_tool failed without saying why"
+    assert app.notifications, "the operator was told nothing"
+
+
+def test_the_dangling_imports_are_not_hoisted_above_a_fast_path():
+    """Structural: no function may import a KNOWN_DANGLING module before its
+    first `if`, because that is exactly what made the fast paths unreachable."""
+    tree = ast.parse(
+        (SRC / "tui" / "helpers" / "preflight_runner.py").read_text(encoding="utf-8")
+    )
+    dangling = ("preflight_modal", "handlers.privilege", "handlers.install")
+    offenders = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        # Line numbers inside any try block. ast.walk yields context objects
+        # (Load/Store) that carry no lineno, hence the getattr rather than
+        # n.lineno, which raised AttributeError on the first run.
+        guarded = {
+            getattr(n, "lineno", None)
+            for t in ast.walk(fn)
+            if isinstance(t, ast.Try)
+            for n in ast.walk(t)
+        } - {None}
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            if not any(d in node.module for d in dangling):
+                continue
+            if node.lineno in guarded:
+                continue  # wrapped in try/except: degrades, does not explode
+            offenders.append(f"{fn.name}:{node.lineno} -> {node.module}")
+    assert not offenders, (
+        "unguarded import(s) of a module that does not exist. Wrap in "
+        "try/except ImportError and degrade, or load at the point of use:\n  "
+        + "\n  ".join(offenders)
+    )
