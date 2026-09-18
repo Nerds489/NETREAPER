@@ -31,7 +31,11 @@ def version_callback(value: bool):
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    version: bool = typer.Option(
+    # Named with a leading underscore because nothing reads it: the flag exists
+    # so typer registers --version/-v, and version_callback does the work
+    # eagerly before any subcommand runs. The option names are given
+    # explicitly above, so the parameter's Python name is free.
+    _version: bool = typer.Option(
         None, "--version", "-v", callback=version_callback, is_eager=True
     ),
 ):

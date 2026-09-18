@@ -850,3 +850,33 @@ def test_every_settings_category_resolves_a_panel_and_a_saver():
                 f"expected {'one' if should_save else 'none'}"
             )
     assert not broken, "settings dispatch:\n  " + "\n  ".join(broken)
+
+
+def test_the_version_flag_still_works_after_being_renamed():
+    """PYL-W0613 at cli.py:34. The parameter is unused and has to exist.
+
+    Nothing reads it: typer needs a parameter so --version/-v is registered,
+    and version_callback does the work eagerly before any subcommand runs. It
+    is named `_version` rather than suppressed, which is the convention every
+    linter already understands, and which is safe here only because the option
+    strings are given explicitly so the Python name is free.
+
+    That last part is exactly the sort of thing that is true until it is not,
+    so it is checked rather than asserted in a comment.
+    """
+    import re as _re
+
+    from typer.testing import CliRunner
+
+    from netreaper import __version__
+    from netreaper.cli import app
+
+    runner = CliRunner()
+    for flag in ("--version", "-v"):
+        result = runner.invoke(app, [flag])
+        plain = _re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+        assert result.exit_code == 0, f"{flag} exited {result.exit_code}"
+        assert __version__ in plain.replace("\n", ""), f"{flag} printed {plain!r}"
+
+    help_text = _re.sub(r"\x1b\[[0-9;]*m", "", runner.invoke(app, ["--help"]).output)
+    assert "--version" in help_text, "--version has dropped out of the help"
