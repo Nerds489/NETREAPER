@@ -82,6 +82,29 @@ class AireplayTool(BaseToolWrapper):
     )
 
     # Attack mode flags
+    # Which attacks name the AP with -b rather than -a. aireplay-ng's getnet()
+    # reads f_bssid (-b) when called with filter=1 and r_bssid (-a) when called
+    # with filter=0: the capture-filtering attacks take the former, the ones
+    # that transmit at the AP take the latter. Getting it wrong is not a
+    # degraded run, it is an immediate "Please specify at least a BSSID (-b) or
+    # an ESSID (-e)" and exit 1, which is what --arpreplay, the DEFAULT WEP
+    # injection strategy, did every single time it was invoked.
+    FILTER_BSSID_ATTACKS = frozenset({
+        AttackMode.ARPREPLAY,
+        AttackMode.CHOPCHOP,
+        AttackMode.FRAGMENT,
+        AttackMode.CAFFE_LATTE,
+        AttackMode.CFRAG,
+        AttackMode.INTERACTIVE,
+        AttackMode.MIGMODE,
+    })
+
+    # Attacks whose flag takes a value. Every other long option here is declared
+    # no_argument in aireplay-ng, so appending a count produces a second
+    # positional and trips its "argc - optind != 1" check: exit 1, again
+    # immediately. --cfrag and --migmode were both being given one.
+    VALUED_ATTACK_FLAGS = frozenset({AttackMode.DEAUTH, AttackMode.FAKEAUTH})
+
     ATTACK_FLAGS = {
         AttackMode.DEAUTH: "--deauth",
         AttackMode.FAKEAUTH: "--fakeauth",
@@ -94,6 +117,24 @@ class AireplayTool(BaseToolWrapper):
         AttackMode.MIGMODE: "--migmode",
         AttackMode.TEST: "--test",
     }
+
+    # Attack modes with a builder of their own, by method name. A table rather
+    # than an if/elif ladder, and looked up with [] rather than getattr's
+    # default, so a name that stops resolving is an error instead of a silent
+    # fall-through to --deauth. Pinned by a test.
+    ATTACK_BUILDERS: ClassVar[dict["AttackMode", str]] = {
+        AttackMode.DEAUTH: "_build_deauth_command",
+        AttackMode.FAKEAUTH: "_build_fakeauth_command",
+        AttackMode.ARPREPLAY: "_build_arpreplay_command",
+        AttackMode.CHOPCHOP: "_build_chopchop_command",
+        AttackMode.FRAGMENT: "_build_fragment_command",
+        AttackMode.CAFFE_LATTE: "_build_caffe_latte_command",
+        AttackMode.INTERACTIVE: "_build_interactive_command",
+        AttackMode.TEST: "_build_test_command",
+    }
+
+    def _bssid_flag(self, attack: "AttackMode") -> str:
+        return "-b" if attack in self.FILTER_BSSID_ATTACKS else "-a"
 
     def __init__(self, aireplay_config: AireplayConfig | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -118,82 +159,96 @@ class AireplayTool(BaseToolWrapper):
         """
         require_interface(target)  # reject a bad/flag-like interface before argv
 
-        cmd = []
-
-        # Get attack mode
         attack = options.get("attack", AttackMode.DEAUTH)
         if isinstance(attack, str):
             attack = AttackMode(attack)
 
-        # Attack-specific command building
-        if attack == AttackMode.DEAUTH:
-            cmd.extend(self._build_deauth_command(options))
-        elif attack == AttackMode.FAKEAUTH:
-            cmd.extend(self._build_fakeauth_command(options))
-        elif attack == AttackMode.ARPREPLAY:
-            cmd.extend(self._build_arpreplay_command(options))
-        elif attack == AttackMode.CHOPCHOP:
-            cmd.extend(self._build_chopchop_command(options))
-        elif attack == AttackMode.FRAGMENT:
-            cmd.extend(self._build_fragment_command(options))
-        elif attack == AttackMode.CAFFE_LATTE:
-            cmd.extend(self._build_caffe_latte_command(options))
-        elif attack == AttackMode.INTERACTIVE:
-            cmd.extend(self._build_interactive_command(options))
-        elif attack == AttackMode.TEST:
-            cmd.extend(self._build_test_command(options))
-        else:
-            # Generic attack flag
-            flag = self.ATTACK_FLAGS.get(attack, "--deauth")
-            count = options.get("count", self.aireplay_config.default_deauth_count)
-            cmd.extend([flag, str(count)])
+        cmd = self._attack_args(attack, options)
+        cmd += self._common_args(attack, options)
+        cmd.append(target)  # the interface is always last
+        return cmd
 
-        # Common options
-        # Target AP BSSID
+    def _attack_args(self, attack: "AttackMode", options: dict[str, Any]) -> list[str]:
+        """The attack selector and whatever that one attack needs with it."""
+        builder = self.ATTACK_BUILDERS.get(attack)
+        if builder is not None:
+            return list(getattr(self, builder)(options))
+
+        # Generic attack flag. Only the valued ones get a number after them.
+        flag = self.ATTACK_FLAGS.get(attack, "--deauth")
+        if attack in self.VALUED_ATTACK_FLAGS:
+            count = options.get("count", self.aireplay_config.default_deauth_count)
+            return [flag, str(count)]
+        return [flag]
+
+    def _common_args(self, attack: "AttackMode", options: dict[str, Any]) -> list[str]:
+        """Options every attack mode accepts, in the order aireplay-ng expects."""
+        args: list[str] = []
+
+        # Target AP BSSID, named with the flag this attack actually reads.
         bssid = options.get("bssid")
         if bssid:
-            cmd.extend(["-a", bssid])
+            args += [self._bssid_flag(attack), bssid]
 
         # Target client MAC
         client = options.get("client")
         if client:
-            cmd.extend(["-c", client])
+            args += ["-c", client]
 
         # Source MAC (spoof)
         source = options.get("source")
         if source:
-            cmd.extend(["-h", source])
+            args += ["-h", source]
 
-        # Ignore negative ACK
-        if options.get("ignore_negative", self.aireplay_config.ignore_negative_ack):
-            cmd.append("-x")
+        # Ignore a negative-one channel report from the driver.
+        #
+        # Two bugs here. The flag emitted was a bare "-x", but in aireplay-ng
+        # "-x" is packets-per-second and takes a NUMBER; the correct option is
+        # "--ignore-negative-one". Because the real "-x <pps>" is appended
+        # further down, the bare one landed immediately before the interface,
+        # so aireplay-ng would have parsed "wlan0mon" as a rate and been left
+        # with no interface at all.
+        #
+        # And the option key never matched the config field: this read
+        # "ignore_negative" while the config declares "ignore_negative_ack",
+        # so passing ignore_negative_ack=True did nothing. Both keys are
+        # accepted now, with the config field as the default.
+        if options.get(
+            "ignore_negative_ack",
+            options.get("ignore_negative", self.aireplay_config.ignore_negative_ack),
+        ):
+            args.append("--ignore-negative-one")
 
         # Read from file
         read_file = options.get("read_file")
         if read_file:
-            cmd.extend(["-r", str(read_file)])
-
-        # Interface (target)
-        cmd.append(target)
-
-        return cmd
+            args += ["-r", str(read_file)]
+        return args
 
     def _build_deauth_command(self, options: dict[str, Any]) -> list[str]:
         """Build deauthentication attack command."""
         count = options.get("count", self.aireplay_config.default_deauth_count)
         return ["--deauth", str(count)]
 
-    def _build_fakeauth_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_fakeauth_command(options: dict[str, Any]) -> list[str]:
         """Build fake authentication attack command."""
         cmd = []
 
         delay = options.get("delay", 0)
         cmd.extend(["--fakeauth", str(delay)])
 
-        # ESSID
+        # ESSID. aireplay-ng's do_attack_fake_auth() refuses outright without
+        # it ("Please specify an ESSID (-e)."), and every caller defaulted it to
+        # "", so the ergonomic invocation built a command that could not run.
+        # Fail here, with the reason, rather than one exec later with theirs.
         essid = options.get("essid")
-        if essid:
-            cmd.extend(["-e", essid])
+        if not essid:
+            raise ValueError(
+                "fakeauth requires an ESSID: aireplay-ng refuses --fakeauth "
+                "without -e. Pass essid=... (CLI: --essid)."
+            )
+        cmd.extend(["-e", essid])
 
         # Keepalive
         keepalive = options.get("keepalive")
@@ -226,7 +281,8 @@ class AireplayTool(BaseToolWrapper):
 
         return cmd
 
-    def _build_chopchop_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_chopchop_command(options: dict[str, Any]) -> list[str]:
         """Build KoreK chopchop attack command."""
         cmd = ["--chopchop"]
 
@@ -237,7 +293,8 @@ class AireplayTool(BaseToolWrapper):
 
         return cmd
 
-    def _build_fragment_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_fragment_command(options: dict[str, Any]) -> list[str]:
         """Build fragmentation attack command."""
         cmd = ["--fragment"]
 
@@ -247,18 +304,17 @@ class AireplayTool(BaseToolWrapper):
 
         return cmd
 
-    def _build_caffe_latte_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_caffe_latte_command(options: dict[str, Any]) -> list[str]:
         """Build Caffe-Latte attack command."""
-        cmd = ["--caffe-latte"]
+        # -N was passed here as a packet count. There is no -N in aireplay-ng:
+        # not in the short-option string, not in long_options[], no case 'N' in
+        # the switch. It hit the unrecognised-option branch and exited 1, so
+        # caffe-latte never ran once. --caffe-latte itself takes no argument.
+        return ["--caffe-latte"]
 
-        # Number of packets
-        count = options.get("count")
-        if count:
-            cmd.extend(["-N", str(count)])
-
-        return cmd
-
-    def _build_interactive_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_interactive_command(options: dict[str, Any]) -> list[str]:
         """Build interactive packet replay command."""
         cmd = ["--interactive"]
 
@@ -273,7 +329,8 @@ class AireplayTool(BaseToolWrapper):
 
         return cmd
 
-    def _build_test_command(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _build_test_command(options: dict[str, Any]) -> list[str]:
         """Build injection test command."""
         cmd = ["--test"]
 

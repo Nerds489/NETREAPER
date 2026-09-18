@@ -2,6 +2,81 @@
 
 All notable changes to NETREAPER.
 
+## [12.0.0] - 2026-09-18
+
+Safety-spine release. Four independent reviews of the v11 spine found controls
+that were documented and enforced nowhere, and one that was enforced so hard it
+made the tool unusable. **Breaking**: authorising a targeted action now takes two
+parts, and engagement files from 11.x are rejected.
+
+### Breaking
+- **A ceiling is no longer an authorisation.** `--max-tier` says what an
+  engagement may reach; the new `--confirm-tier` (repeatable) says you intended
+  it. Anything at SINGLE_TARGET or above needs the tier pre-confirmed. MITM also
+  needs `--accept-interception`. BROADCAST can never be confirmed mid-run, on a
+  TTY or otherwise: nothing in the gate prompts.
+- **Engagement files from 11.x are rejected.** The consent digest now covers the
+  confirmation grants, so an older record cannot hash-match. The file carries a
+  schema version and says "re-run engage start" instead of reporting tampering.
+- **`engage start --hours` is capped at 48.** An authorisation that outlives its
+  engagement is not an authorisation.
+
+### Security
+- **Credentials no longer reach the logs.** The audit sink redacts argv, the
+  free-text detail field and targets; per-tool, so `hydra -p` is masked while
+  `nmap -p 80,443` is not. The event bus redacts too: it was logging the raw
+  joined argv, raw tool stdout, and `CREDENTIAL_CRACKED` payloads carrying the
+  recovered secret, at DEBUG, with the file handler pinned to DEBUG regardless
+  of console level.
+- **Protected-address bypass closed.** A reserved address was refused bare and
+  allowed with a netmask (`200::1` refused, `200::1/128` allowed) because the
+  CIDR and bare-address branches used two different lists. One policy now.
+- **`requires_confirmation` is enforced.** It was accepted by `authorize()`,
+  forwarded by the seam, and read nowhere but a `[confirm]` badge.
+- **A manifest's declared cost binds.** `destructive` and
+  `requires_confirmation` drove nothing; the live auto-chain ran a targeted
+  deauth with no engagement at all and passed its tests.
+- **The wireless host actions go through the seam.** `wireless/mac.py` and
+  `channels.py` spawned `ip`/`iw`/`ethtool` directly, skipping the gate, the
+  timeout, the process-group teardown and the audit trail.
+- **The TUI no longer spawns an ungated attack console.** `searchsploit`,
+  `msfconsole`, `msfvenom` and a live `xsstrike` run against a user-supplied URL
+  all went out with no engagement, no tier and no audit line. All routed; packet
+  captures authorise before they spawn.
+- **T4 teardown survives SIGTERM.** It was wired to `KeyboardInterrupt` only, so
+  `kill` left hostapd and dnsmasq intercepting traffic indefinitely.
+  `CleanupRegistry` had SIGTERM handlers and no callers.
+
+### Fixed
+- **The audit chain survives concurrency and crashes.** Two processes sharing one
+  trail produced duplicate sequence numbers and silently discarded 200 recorded
+  actions; appends are serialised with a file lock. A torn final line no longer
+  poisons the file permanently. `verify_file()` is new and catches truncation,
+  reordering and edits that the in-memory check structurally cannot.
+- **The report carries the real audit trail** and states whether it verifies,
+  instead of an always-empty database table whose INSERT omitted the column the
+  query filtered on.
+- **`aireplay-ng` argv.** `ignore_negative` emitted a bare `-x`, which is
+  packets-per-second and takes a number, landing immediately before the
+  interface so the command could not run. It is `--ignore-negative-one` now, and
+  the option key matches the config field it was always meant to read.
+
+### Added
+- **Every WEP injection strategy is reachable.** `wifi wep --injection` selects
+  arpreplay, chopchop, fragment, caffe_latte, cfrag or interactive. The
+  aireplay-ng primitives already existed; `wep.py` only ever drove ARP replay and
+  the CLI offered no choice.
+- 458 tests, up from 333.
+
+### Known
+- WPS parity (easybox, arcadyan, the known-PIN database, online brute force,
+  lockout back-off) is still open on #47 and needs a restore-versus-descope
+  decision rather than code.
+- `confirm_dangerous` and `warn_public_ip` are config fields with no
+  implementation; the README now says so.
+- `tui/screens/traffic.py` does not import (`netreaper.automation.preflight` is
+  missing), which predates this release.
+
 ## [11.0.0] - 2026-09-12
 
 First GA of the Python rebuild: a single-language, gated, wireless-focused

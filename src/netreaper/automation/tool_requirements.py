@@ -1,9 +1,7 @@
 """Tool requirements configuration - defines what each tool needs to run."""
 
 from dataclasses import dataclass, field
-from typing import Any
 
-from netreaper.automation.fallbacks import FALLBACK_CHAINS
 
 
 @dataclass

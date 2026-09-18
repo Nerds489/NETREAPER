@@ -135,7 +135,7 @@ def test_handshakes_for_and_cap_has_handshake_filter_bssid():
     assert cap_has_handshake_bytes(cap, None) is True
 
 
-def cap_has_handshake_bytes(cap: bytes, bssid, tmp=[]):  # noqa: B006 - test helper
+def cap_has_handshake_bytes(cap: bytes, bssid):
     """cap_has_handshake works on paths; write bytes and delegate."""
     import tempfile
     from pathlib import Path

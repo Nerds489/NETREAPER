@@ -1,6 +1,6 @@
 """Help and documentation screen."""
 from textual.app import ComposeResult
-from textual.containers import Container, VerticalScroll
+from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Markdown
 

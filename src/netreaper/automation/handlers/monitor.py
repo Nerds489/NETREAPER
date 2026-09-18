@@ -56,7 +56,8 @@ class AutoMonHandler:
             return f"Enable monitor mode on {self.interface}?"
         return "Enable monitor mode on wireless interface?"
 
-    async def _get_wireless_interfaces(self) -> list[str]:
+    @staticmethod
+    async def _get_wireless_interfaces() -> list[str]:
         """Get list of wireless interfaces."""
         interfaces = []
         wireless_path = Path("/sys/class/net")

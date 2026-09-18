@@ -31,9 +31,6 @@ class AutoCleanupHandler:
     # Class-level cleanup stack shared across instances
     _cleanup_stack: list[CleanupAction] = []
 
-    def __init__(self) -> None:
-        pass
-
     async def can_fix(self) -> bool:
         """Check if there are cleanup actions to perform."""
         return len(self._cleanup_stack) > 0
@@ -79,6 +76,11 @@ class AutoCleanupHandler:
                 raise  # a scope-gate denial is never swallowed
             except Exception as e:
                 logger.warning("Cleanup action failed: %s: %s", action.name, e)
+                logger.debug('Cleanup action completed: %s', action.name)
+            except TargetValidationError:
+                raise  # a scope-gate denial is never swallowed
+            except Exception as e:
+                logger.warning('Cleanup action failed: %s: %s', action.name, e)
                 success = False
 
         return success

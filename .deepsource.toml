@@ -1,0 +1,57 @@
+# DeepSource analysis configuration.
+#
+# Version-controlled on purpose. Until now this lived only in the DeepSource
+# dashboard, where it is invisible to anyone reading the repository and cannot
+# be reviewed in a pull request.
+#
+# The three analysers here are the three that were already running. Nothing is
+# switched off; two things are made explicit that were being guessed.
+
+version = 1
+
+# tests/ is test code. Without this, DeepSource grades a duck-typed stub in a
+# test fixture by the same rules as production code, which is where a run of
+# "this no-op method has no body" and "this stub never touches self" findings
+# came from. Those stubs exist precisely to be no-ops and to stand in for a
+# real object on an instance.
+test_patterns = [
+  "tests/**",
+  "**/test_*.py",
+  "**/*_test.py",
+]
+
+exclude_patterns = [
+  "**/__pycache__/**",
+  ".venv/**",
+]
+
+[[analyzers]]
+name = "python"
+enabled = true
+
+  [analyzers.meta]
+  # "3.x.x" and "2.x.x" are the only two values this takes; it selects the
+  # major version, not the minor. Stated rather than left to the default so it
+  # cannot drift if the default ever changes.
+  runtime_version = "3.x.x"
+
+  # 88, matching ruff's line-length in pyproject.toml. Two tools disagreeing
+  # about where a line ends is how a file ends up reformatted twice.
+  max_line_length = 88
+
+[[analyzers]]
+name = "shell"
+enabled = true
+
+  [analyzers.meta]
+  # Every shell script in this repository declares `#!/usr/bin/env bash` on
+  # line 1. Auto-detection was not picking that up through `env`, so the one
+  # script here was being analysed as POSIX sh and reported for [[ ]], =~,
+  # BASH_SOURCE, &> and `set -o pipefail`: all correct for sh, all wrong for
+  # the interpreter the file actually names. Under bash, shellcheck 0.11
+  # reports nothing.
+  dialect = "bash"
+
+[[analyzers]]
+name = "secrets"
+enabled = true

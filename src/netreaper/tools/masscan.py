@@ -66,10 +66,8 @@ class MasscanTool(BaseToolWrapper):
                 - wait: Seconds to wait after sending
                 - retries: Number of retries
         """
-        cmd = []
-
         # Target
-        cmd.append(target)
+        cmd = [target]
 
         # Ports
         ports = options.get("ports", self.masscan_config.default_ports)
@@ -123,13 +121,14 @@ class MasscanTool(BaseToolWrapper):
         return cmd
 
     def parse_output(self, output: str) -> dict[str, Any]:
-        """Parse masscan output (JSON format)."""
-        result = {
-            "hosts": [],
-            "ports_found": 0,
-            "scan_info": {},
-        }
+        """Parse masscan output (JSON format).
 
+        No accumulator here on purpose. There used to be one, shaped
+        ``{hosts, ports_found, scan_info}``, built and then dropped on every
+        path: both parsers below return their own dict shaped
+        ``{hosts, ports_found, hosts_found}``. It was never a partial result,
+        it was a promise of a ``scan_info`` key that nothing has ever emitted.
+        """
         # Try JSON file first
         if self._output_file and self._output_file.exists():
             try:
@@ -208,7 +207,8 @@ class MasscanTool(BaseToolWrapper):
             "hosts_found": len(hosts),
         }
 
-    def _parse_text_output(self, output: str) -> dict[str, Any]:
+    @staticmethod
+    def _parse_text_output(output: str) -> dict[str, Any]:
         """Parse masscan text output."""
         hosts_dict: dict[str, dict] = {}
 

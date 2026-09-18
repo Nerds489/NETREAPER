@@ -146,3 +146,135 @@ def test_a_properly_referenced_engagement_still_builds():
     eng = Engagement(operator="tester", authorization_ref="SOW-1", scope=_scope())
     assert eng.consent_hash
     assert eng.verify_consent()
+
+
+# ── the event bus: a hole found in my own event-bus fix, an hour later ───────
+
+
+def test_credential_cracked_events_do_not_log_the_secret():
+    """CREDENTIAL_CRACKED carries {"password": <the recovered secret>}.
+
+    The first event-bus pass redacted the command line and the tool's output
+    but not the structured credential field, which is the most direct leak of
+    the three. Four call sites emit it: wireless/wep.py, tools/hydra.py,
+    tools/john.py and tools/reaver.py.
+    """
+    import json
+
+    from netreaper.orchestration.events import _redact_event
+
+    payloads = [
+        {"type": "wep", "bssid": "AA:BB:CC:DD:EE:FF", "password": "abcd1234"},
+        {"type": "ssh", "target": "10.0.0.5", "username": "root", "password": "hunter2"},
+        {"type": "wps", "bssid": "AA:BB", "pin": "12345670", "psk": "CorrectHorse"},
+        {"type": "hash", "password": "letmein"},
+    ]
+    secrets = ("abcd1234", "hunter2", "12345670", "CorrectHorse", "letmein")
+    for p in payloads:
+        blob = json.dumps(_redact_event(p))
+        for s in secrets:
+            assert s not in blob, f"{s} leaked from {p}"
+
+
+def test_the_event_still_says_what_was_found_and_where():
+    """Masking must not destroy the finding: only the secret goes."""
+    from netreaper.orchestration.events import _redact_event
+
+    out = _redact_event(
+        {"type": "ssh", "target": "10.0.0.5", "username": "root", "password": "x"}
+    )
+    assert out["target"] == "10.0.0.5"
+    assert out["username"] == "root"
+    assert out["type"] == "ssh"
+    assert out["password"] == REDACTED
+
+
+def test_tool_output_lines_are_masked_by_shape_not_by_flag():
+    """A tool REPORTS credentials in a shape no flag matches."""
+    from netreaper.core.audit import redact_output
+
+    assert "hunter2" not in redact_output(
+        "[22][ssh] host: 10.0.0.5   login: root   password: hunter2"
+    )
+    assert "***" in redact_output("KEY FOUND! [ 61:62:63:64:65 ]")
+    assert "12345670" not in redact_output("WPS PIN: '12345670'")
+    # and a harmless line is untouched
+    line = "Scanning 10.0.0.5 ports 80,443 - 2 open"
+    assert redact_output(line) == line
+
+
+# ── the forms a tokeniser misses, found by throwing secrets at record() ──────
+#
+# Seven of seventeen credential shapes reached disk in plaintext. Four were argv
+# forms the "--flag value" / "--flag=value" split never saw, and three were the
+# largest class of all: `detail` carries captured tool output, and tool output is
+# exactly where a cracked password is announced. detail went through
+# redact_text (which handles a command line quoted in an error message) but
+# never redact_output (which handles "KEY FOUND! [ ... ]"), so every password
+# this tool successfully cracked was written to the trail in the clear.
+
+SECRET = "Sup3rSecret!Pass"  # noqa: S105 - the fixture under test
+
+
+def _recorded(tmp_path, **kwargs) -> str:
+    p = tmp_path / "audit.jsonl"
+    AuditTrail(path=p).record(outcome="executed", targets=["10.0.0.1"], **kwargs)
+    return p.read_text()
+
+
+@pytest.mark.parametrize(
+    ("tool", "argv"),
+    [
+        ("mysql", ["mysql", f"-p{SECRET}", "-u", "root"]),          # attached value
+        ("smbclient", ["smbclient", "-U", f"admin%{SECRET}"]),      # user%password
+        ("psql", ["psql", f"PGPASSWORD={SECRET}"]),                 # NAME=value
+        ("wpa_supplicant", ["wpa_supplicant", "-psk", SECRET]),     # unlisted flag
+        ("hydra", ["hydra", "-p", "-p", SECRET]),                   # flag-shaped decoy
+        ("curl", ["curl", f"http://admin:{SECRET}@10.0.0.1/"]),     # URL credentials
+    ],
+)
+def test_no_argv_shape_leaks_the_secret(tmp_path, tool, argv):
+    assert SECRET not in _recorded(tmp_path, tool=tool, argv=argv)
+
+
+@pytest.mark.parametrize(
+    "detail",
+    [
+        f"[22][ssh] host: 10.0.0.1   login: admin   password: {SECRET}",
+        f"WPS PIN: 12345670\nWPA PSK: {SECRET}",
+        f"KEY FOUND! [ {SECRET} ]",
+        f"env MYSQL_PWD={SECRET} mysql -u root",
+    ],
+)
+def test_no_captured_output_shape_leaks_the_secret(tmp_path, detail):
+    """detail is where a recovered credential actually turns up."""
+    assert SECRET not in _recorded(
+        tmp_path, tool="hydra", argv=["hydra"], detail=detail
+    )
+
+
+def test_redaction_keeps_the_finding(tmp_path):
+    """Masking the whole line would destroy the evidence it exists to preserve.
+
+    The label, the host, the port and the login are the finding. Only the
+    secret goes. `-U admin%pass` in particular must keep the username: the
+    first cut of this masked the entire argument.
+    """
+    text = _recorded(
+        tmp_path,
+        tool="smbclient",
+        argv=["smbclient", "-U", f"admin%{SECRET}", "//host/share"],
+        detail=f"[445][smb] host: 10.0.0.1  login: admin  password: {SECRET}",
+    )
+    assert "admin%***" in text, "the username was masked along with the secret"
+    assert "//host/share" in text, "the target share was lost"
+    assert "login: admin" in text, "the login is the finding"
+    assert "password: ***" in text
+
+
+def test_a_wordlist_path_is_not_mistaken_for_a_secret(tmp_path):
+    """-P and -w take a file, not a password. Over-masking hides the method."""
+    text = _recorded(
+        tmp_path, tool="hydra", argv=["hydra", "-l", "admin", "-P", "/list.txt"]
+    )
+    assert "/list.txt" in text

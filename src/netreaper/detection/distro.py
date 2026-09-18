@@ -1,5 +1,6 @@
 """Linux distribution detection and package manager mapping."""
 import platform
+from functools import lru_cache
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -33,6 +34,37 @@ class PackageManager(Enum):
     EMERGE = "emerge"
     NIX = "nix"
     UNKNOWN = "unknown"
+
+
+# (family, exact ID values, ID_LIKE markers). ORDERED: ID_LIKE overlaps, so a
+# Rocky os-release listing both "rhel" and "fedora" must resolve the same way it
+# did when this was an if-ladder, and Manjaro listing "arch" likewise.
+_FAMILY_MARKERS: tuple[tuple["DistroFamily", frozenset[str], tuple[str, ...]], ...] = (
+    (
+        DistroFamily.DEBIAN,
+        frozenset({"debian", "ubuntu", "kali", "parrot", "mint", "pop", "elementary"}),
+        ("debian", "ubuntu"),
+    ),
+    (
+        DistroFamily.REDHAT,
+        frozenset({"fedora", "rhel", "centos", "rocky", "alma", "oracle"}),
+        ("fedora", "rhel"),
+    ),
+    (
+        DistroFamily.ARCH,
+        frozenset({"arch", "manjaro", "endeavouros", "garuda", "blackarch"}),
+        ("arch",),
+    ),
+    (
+        DistroFamily.SUSE,
+        frozenset({"opensuse", "suse", "opensuse-leap", "opensuse-tumbleweed"}),
+        ("suse",),
+    ),
+    (DistroFamily.ALPINE, frozenset({"alpine"}), ()),
+    (DistroFamily.VOID, frozenset({"void"}), ()),
+    (DistroFamily.GENTOO, frozenset({"gentoo"}), ()),
+    (DistroFamily.NIXOS, frozenset({"nixos"}), ()),
+)
 
 
 @dataclass
@@ -106,36 +138,15 @@ class SystemInfo:
 
     @staticmethod
     def _determine_family(distro_id: str, id_like: list[str]) -> DistroFamily:
-        """Determine distribution family."""
-        debian_ids = {
-            "debian",
-            "ubuntu",
-            "kali",
-            "parrot",
-            "mint",
-            "pop",
-            "elementary",
-        }
-        redhat_ids = {"fedora", "rhel", "centos", "rocky", "alma", "oracle"}
-        arch_ids = {"arch", "manjaro", "endeavouros", "garuda", "blackarch"}
-        suse_ids = {"opensuse", "suse", "opensuse-leap", "opensuse-tumbleweed"}
+        """Determine distribution family.
 
-        if distro_id in debian_ids or "debian" in id_like or "ubuntu" in id_like:
-            return DistroFamily.DEBIAN
-        if distro_id in redhat_ids or "fedora" in id_like or "rhel" in id_like:
-            return DistroFamily.REDHAT
-        if distro_id in arch_ids or "arch" in id_like:
-            return DistroFamily.ARCH
-        if distro_id in suse_ids or "suse" in id_like:
-            return DistroFamily.SUSE
-        if distro_id == "alpine":
-            return DistroFamily.ALPINE
-        if distro_id == "void":
-            return DistroFamily.VOID
-        if distro_id == "gentoo":
-            return DistroFamily.GENTOO
-        if distro_id == "nixos":
-            return DistroFamily.NIXOS
+        Ordered, because ID_LIKE overlaps: a Rocky os-release lists both "rhel"
+        and "fedora", and Manjaro lists "arch". First match wins, as it did
+        when this was an if-ladder.
+        """
+        for family, ids, like_markers in _FAMILY_MARKERS:
+            if distro_id in ids or any(m in id_like for m in like_markers):
+                return family
         return DistroFamily.UNKNOWN
 
     @staticmethod
@@ -184,12 +195,12 @@ class SystemInfo:
 
 
 # Singleton for cached system info
-_system_info: SystemInfo | None = None
-
-
+@lru_cache(maxsize=1)
 def get_system_info() -> SystemInfo:
-    """Get cached system information."""
-    global _system_info
-    if _system_info is None:
-        _system_info = SystemInfo.detect()
-    return _system_info
+    """Get cached system information.
+
+    lru_cache rather than a module-level `global`. The behaviour is the same
+    lazy singleton, and it comes with `get_system_info.cache_clear()`, which is
+    a better seam for a test than reaching in and rebinding a private name.
+    """
+    return SystemInfo.detect()

@@ -109,6 +109,22 @@ class KeyringNotAvailableError(Exception):
     pass
 
 
+def _is_missing_entry(exc: Exception) -> bool:
+    """Was this "no such entry", or a backend that refused?
+
+    keyring raises PasswordDeleteError for both, and the two mean opposite
+    things to somebody revoking a credential: one is success, the other is the
+    key still being there. The message is the only discriminator available, so
+    treat anything that does not clearly say "not found" as a real failure and
+    fail closed.
+    """
+    text = str(exc).lower()
+    return any(
+        phrase in text
+        for phrase in ("not found", "no such", "does not exist", "no password")
+    )
+
+
 class APIKeyManager:
     """Manages API keys using system keyring."""
 
@@ -131,6 +147,7 @@ class APIKeyManager:
 
             if self._keyring_available:
                 logger.debug("Using keyring backend: %s", backend.name)
+                logger.debug('Using keyring backend: %s', backend.name)
             else:
                 logger.warning("No secure keyring backend available")
 
@@ -143,7 +160,8 @@ class APIKeyManager:
 
         return self._keyring_available
 
-    def _get_key_name(self, service: APIService, is_secret: bool = False) -> str:
+    @staticmethod
+    def _get_key_name(service: APIService, is_secret: bool = False) -> str:
         """Get the keyring key name for a service."""
         suffix = "_secret" if is_secret else "_key"
         return f"{service.value}{suffix}"
@@ -209,6 +227,7 @@ class APIKeyManager:
 
                 keyring.set_password(KEYRING_SERVICE, key_name, key)
                 logger.info("Stored API key for %s in keyring", service.value)
+                logger.info('Stored API key for %s in keyring', service.value)
                 return True
             except Exception as e:
                 logger.warning("Failed to store key in keyring: %s", e)
@@ -216,6 +235,7 @@ class APIKeyManager:
         # Fallback to in-memory cache (not persistent)
         self._fallback_cache[key_name] = key
         logger.warning("Stored API key for %s in memory (not persistent)", service.value)
+        logger.warning('Stored API key for %s in memory (not persistent)', service.value)
         return True
 
     def set_secret(self, service: APIService, secret: str) -> bool:
@@ -236,11 +256,17 @@ class APIKeyManager:
 
                 keyring.set_password(KEYRING_SERVICE, key_name, secret)
                 logger.info("Stored API secret for %s in keyring", service.value)
+                logger.info('Stored API secret for %s in keyring', service.value)
                 return True
             except Exception as e:
                 logger.warning("Failed to store secret in keyring: %s", e)
 
         self._fallback_cache[key_name] = secret
+        # set_key warns here and this did not, so a secret silently falling back
+        # to volatile memory produced no signal anywhere at all.
+        logger.warning(
+            "Stored API secret for %s in memory (not persistent)", service.value
+        )
         return True
 
     def delete_key(self, service: APIService) -> bool:
@@ -254,6 +280,12 @@ class APIKeyManager:
         """
         key_name = self._get_key_name(service)
 
+        # This used to return True no matter what. "Not found" and "the keyring
+        # is locked / unreachable / refused" were swallowed by the same handler
+        # and reported identically, so an operator revoking a compromised key
+        # was told it was cleared while it sat in the keyring untouched. On a
+        # security tool that is the worst place for a false success.
+        ok = True
         if self._check_keyring():
             try:
                 import keyring
@@ -262,6 +294,20 @@ class APIKeyManager:
                 logger.info("Deleted API key for %s", service.value)
             except Exception as e:
                 logger.debug("Key may not exist: %s", e)
+                logger.info('Deleted API key for %s', service.value)
+            except Exception as e:
+                # keyring raises PasswordDeleteError both for "no such entry"
+                # and for a backend that would not cooperate. Only the first is
+                # a success, and only the caller can tell them apart from the
+                # message, so surface it rather than deciding for them.
+                if _is_missing_entry(e):
+                    logger.debug("no keyring entry for %s: %s", service.value, e)
+                else:
+                    ok = False
+                    logger.error(
+                        "could not delete the keyring entry for %s: %s. The key "
+                        "may still be stored.", service.value, e,
+                    )
 
         # Also clear from fallback cache
         self._fallback_cache.pop(key_name, None)
@@ -269,9 +315,9 @@ class APIKeyManager:
         # Also delete secret if applicable
         info = API_SERVICES.get(service)
         if info and info.has_secret:
-            self.delete_secret(service)
+            ok = self.delete_secret(service) and ok
 
-        return True
+        return ok
 
     def delete_secret(self, service: APIService) -> bool:
         """Delete API secret for a service.
@@ -284,16 +330,26 @@ class APIKeyManager:
         """
         key_name = self._get_key_name(service, is_secret=True)
 
+        ok = True
         if self._check_keyring():
             try:
                 import keyring
 
                 keyring.delete_password(KEYRING_SERVICE, key_name)
-            except Exception:
-                pass
+            except Exception as e:
+                # `except Exception: pass`, with no log at any level, and then
+                # return True. Same false success as delete_key above.
+                if _is_missing_entry(e):
+                    logger.debug("no keyring secret for %s: %s", service.value, e)
+                else:
+                    ok = False
+                    logger.error(
+                        "could not delete the keyring secret for %s: %s. The "
+                        "secret may still be stored.", service.value, e,
+                    )
 
         self._fallback_cache.pop(key_name, None)
-        return True
+        return ok
 
     def has_key(self, service: APIService) -> bool:
         """Check if an API key is set for a service.
@@ -306,7 +362,8 @@ class APIKeyManager:
         """
         return self.get_key(service) is not None
 
-    def get_all_services(self) -> list[APIKeyInfo]:
+    @staticmethod
+    def get_all_services() -> list[APIKeyInfo]:
         """Get all available API services."""
         return list(API_SERVICES.values())
 
@@ -367,16 +424,18 @@ class APIKeyManager:
 
             url = info.test_endpoint.format(key=key)
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        return True, "API key is valid"
-                    elif response.status == 401:
-                        return False, "Invalid API key"
-                    elif response.status == 403:
-                        return False, "API key forbidden (may be rate limited)"
-                    else:
-                        return False, f"Unexpected response: {response.status}"
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(url, timeout=10) as response,
+            ):
+                if response.status == 200:
+                    return True, "API key is valid"
+                elif response.status == 401:
+                    return False, "Invalid API key"
+                elif response.status == 403:
+                    return False, "API key forbidden (may be rate limited)"
+                else:
+                    return False, f"Unexpected response: {response.status}"
 
         except ImportError:
             return True, "aiohttp not available for testing (key stored)"

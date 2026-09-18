@@ -1,7 +1,6 @@
 """Tests for export functionality."""
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -9,7 +8,8 @@ import pytest
 class TestFileNamer:
     """Test FileNamer path generation."""
 
-    def test_capture_path_format(self):
+    @staticmethod
+    def test_capture_path_format():
         """Capture paths should have correct format."""
         from netreaper.export.manager import FileNamer
 
@@ -19,7 +19,8 @@ class TestFileNamer:
         assert "AABBCCDDEEFF" in path.name
         assert "wifi" in str(path) or "captures" in str(path)
 
-    def test_capture_sanitizes_bssid(self):
+    @staticmethod
+    def test_capture_sanitizes_bssid():
         """BSSID colons should be removed from filename."""
         from netreaper.export.manager import FileNamer
 
@@ -27,7 +28,8 @@ class TestFileNamer:
 
         assert ":" not in path.name
 
-    def test_scan_path_format(self):
+    @staticmethod
+    def test_scan_path_format():
         """Scan paths should include tool name."""
         from netreaper.export.manager import FileNamer
 
@@ -36,7 +38,8 @@ class TestFileNamer:
         assert "nmap" in str(path)
         assert "192.168.1.1" in path.name
 
-    def test_report_path_format(self):
+    @staticmethod
+    def test_report_path_format():
         """Report paths should have session and format."""
         from netreaper.export.manager import FileNamer
 
@@ -202,7 +205,8 @@ class TestExportManager:
         assert len(results) == 2
         assert all(r.success for r in results)
 
-    def test_get_supported_formats(self):
+    @staticmethod
+    def test_get_supported_formats():
         """Should return list of supported formats."""
         from netreaper.export.manager import ExportManager
 

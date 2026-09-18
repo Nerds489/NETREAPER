@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SessionStatus(str, Enum):
@@ -59,8 +59,11 @@ class Session(BaseModel):
     ended_at: datetime | None = None
     summary: SessionSummary = Field(default_factory=SessionSummary)
 
-    class Config:
-        use_enum_values = True
+    # ConfigDict, not the class-based Config that was here: pydantic deprecated
+    # that in 2.0 and removes it in 3.0. The pin in pyproject is >=2.5.0 with no
+    # ceiling, so a resolver picking up 3.x would have broken this model with no
+    # warning left to notice.
+    model_config = ConfigDict(use_enum_values=True)
 
     @classmethod
     def from_db_row(cls, row: dict[str, Any]) -> "Session":

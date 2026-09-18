@@ -14,3 +14,13 @@ venv/
 .netreaper/
 backups/
 *.log
+
+# Coverage artefacts. .coverage was TRACKED (430KB binary) and matched no
+# ignore rule, so it showed as dirty on every run and, because there is no
+# [tool.hatch.build.targets.sdist] section, hatchling's VCS-aware default would
+# have swept it into a published sdist: internal paths and line-hit data for a
+# security tool.
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

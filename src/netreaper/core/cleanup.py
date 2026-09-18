@@ -17,12 +17,21 @@ class CleanupRegistry:
 
     _instance: "CleanupRegistry | None" = None
 
+    _handlers: list[tuple[int, CleanupFunc]]
+    _installed: bool
+
     def __new__(cls) -> "CleanupRegistry":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._handlers: list[tuple[int, CleanupFunc]] = []
-            cls._instance._installed = False
         return cls._instance
+
+    def __init__(self) -> None:
+        # State set here rather than reaching into cls._instance from __new__,
+        # which is what DeepSource flagged. Guarded, because __init__ runs on
+        # every CleanupRegistry() call while __new__ returns the same object.
+        if not hasattr(self, "_handlers"):
+            self._handlers = []
+            self._installed = False
 
     def register(self, handler: CleanupFunc, priority: int = 50) -> None:
         """Register a cleanup handler with priority (lower = earlier)."""
@@ -51,8 +60,9 @@ class CleanupRegistry:
     async def cleanup(self) -> None:
         """Execute all registered cleanup handlers."""
         logger.info("Running %s cleanup handlers...", len(self._handlers))
+        logger.info('Running %s cleanup handlers...', len(self._handlers))
 
-        for priority, handler in self._handlers:
+        for _priority, handler in self._handlers:
             try:
                 result = handler()
                 if asyncio.iscoroutine(result):

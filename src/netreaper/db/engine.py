@@ -37,7 +37,7 @@ class DatabaseEngine:
                 await db.executescript(schema_sql)
 
             await db.commit()
-            logger.info("Database initialized at %s", self.db_path)
+            logger.info('Database initialized at %s', self.db_path)
 
     @asynccontextmanager
     async def connection(self) -> AsyncIterator[aiosqlite.Connection]:

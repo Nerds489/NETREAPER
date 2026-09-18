@@ -1,13 +1,13 @@
 """Network traffic analysis screen."""
 
 import asyncio
-import shutil
+import os
 import tempfile
 from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
+from textual.containers import ScrollableContainer, Vertical
 from textual.screen import Screen
 from textual.widgets import (
     Button,
@@ -20,14 +20,43 @@ from textual.widgets import (
     Static,
 )
 
+from netreaper.core.constants import NETREAPER_WIRED_CAPTURES_DIR
 from netreaper.core.logging import get_logger
 from netreaper.core.process import get_process_runner
 from netreaper.safety.scope import Tier, get_scope_gate
 from netreaper.tui.helpers.preflight_runner import PreflightRunner
 from netreaper.tui.widgets.tool_output import ToolOutput
 
-
 logger = get_logger(__name__)
+
+
+def _new_capture_path() -> str:
+    """A private, non-racy path for a packet capture.
+
+    This was ``tempfile.mktemp(suffix=".pcap")``, which is two bugs in one call.
+
+    mktemp returns a name without creating anything, so between the name being
+    chosen and tcpdump opening it there is a window in which any local user can
+    create that path as a symlink. tcpdump here runs as root (capture needs
+    CAP_NET_RAW and the screen asks for root), so the symlink target is then
+    written by root: an arbitrary root file overwrite from an unprivileged
+    account.
+
+    The second bug is quieter. /tmp is world-readable and the file inherits the
+    umask, so a capture that exists to collect plaintext credentials off the
+    wire was readable by every account on the box.
+
+    mkstemp fixes both: it creates the file atomically with O_EXCL and mode
+    0600, so there is no window and no name to win, and it is created inside a
+    0700 directory we own rather than in /tmp.
+    """
+    NETREAPER_WIRED_CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
+    NETREAPER_WIRED_CAPTURES_DIR.chmod(0o700)
+    fd, path = tempfile.mkstemp(
+        prefix="capture-", suffix=".pcap", dir=NETREAPER_WIRED_CAPTURES_DIR
+    )
+    os.close(fd)
+    return path
 
 
 async def _authorise_capture(interface: str) -> None:
@@ -41,6 +70,7 @@ async def _authorise_capture(interface: str) -> None:
         (), tier=Tier.PASSIVE, destructive=False, host_action=True
     )
     logger.info("packet capture authorised on %s", interface)
+
 
 class TrafficScreen(Screen):
     """Packet capture and network traffic analysis."""
@@ -155,7 +185,15 @@ class TrafficScreen(Screen):
         for menu_id, _, action_name in self.MENU_ITEMS:
             if menu_id == item_id:
                 action_method = getattr(self, f"action_{action_name}", None)
-                if action_method:
+                if action_method is None:
+                    # Every MENU_ITEMS entry resolves today and a test pins that.
+                    # Before this, a menu entry naming an action that did not
+                    # exist was a click that did nothing and said nothing.
+                    self._write_output(
+                        f"{action_name} is listed in the menu but not implemented",
+                        "error",
+                    )
+                else:
                     self.run_worker(action_method(), exclusive=True)
                 break
 
@@ -213,7 +251,7 @@ class TrafficScreen(Screen):
         interface = self._get_interface()
         filter_expr = self._get_filter()
 
-        self.capture_file = tempfile.mktemp(suffix=".pcap")
+        self.capture_file = _new_capture_path()
         self._write_output(f"Starting capture on {interface}...")
 
         cmd = ["tcpdump", "-i", interface, "-l", "-nn"]

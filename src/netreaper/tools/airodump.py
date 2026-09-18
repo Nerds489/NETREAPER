@@ -341,7 +341,8 @@ class AirodumpTool(BaseToolWrapper):
         except (ValueError, IndexError):
             return None
 
-    def _parse_client_line(self, line: str) -> dict[str, Any] | None:
+    @staticmethod
+    def _parse_client_line(line: str) -> dict[str, Any] | None:
         """Parse a single client line from terminal output."""
         # Pattern: BSSID  STATION  PWR  Rate  Lost  Frames  Notes  Probes
         pattern = r'([0-9A-Fa-f:]{17}|[\(\)a-z ]+)\s+([0-9A-Fa-f:]{17})\s+(-?\d+)\s+(\S+)\s+(\d+)\s+(\d+)\s*(.*)'
@@ -367,7 +368,8 @@ class AirodumpTool(BaseToolWrapper):
         except (ValueError, IndexError):
             return None
 
-    def _parse_encryption(self, privacy: str, cipher: str, auth: str) -> str:
+    @staticmethod
+    def _parse_encryption(privacy: str, cipher: str, auth: str) -> str:
         """Generate human-readable encryption string."""
         if "WPA3" in privacy:
             return "WPA3"
@@ -383,7 +385,8 @@ class AirodumpTool(BaseToolWrapper):
             return "Open"
         return privacy
 
-    def _calculate_signal_quality(self, power: int) -> str:
+    @staticmethod
+    def _calculate_signal_quality(power: int) -> str:
         """Convert power level to signal quality descriptor."""
         if power >= -50:
             return "Excellent"
@@ -396,7 +399,8 @@ class AirodumpTool(BaseToolWrapper):
         else:
             return "Very Weak"
 
-    def _safe_int(self, value: str) -> int:
+    @staticmethod
+    def _safe_int(value: str) -> int:
         """Safely convert string to int."""
         try:
             return int(value.strip())

@@ -208,7 +208,8 @@ class WpsAttack:
     def _succeeded(data: dict) -> bool:
         return bool(data.get("psk")) or data.get("status") == "success"
 
-    def _win(self, result: WpsResult, data: dict, pin: str | None) -> WpsResult:
+    @staticmethod
+    def _win(result: WpsResult, data: dict, pin: str | None) -> WpsResult:
         result.success = True
         result.pin = pin
         result.psk = data.get("psk")

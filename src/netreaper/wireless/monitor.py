@@ -84,7 +84,8 @@ class MonitorController:
         logger.info("monitor mode enabled: %s -> %s", interface, self.monitor_iface)
         return self.monitor_iface
 
-    def _resolve_monitor_iface(self, before: set[str], after: set[str], interface: str) -> str:
+    @staticmethod
+    def _resolve_monitor_iface(before: set[str], after: set[str], interface: str) -> str:
         new = after - before
         if len(new) == 1:
             return next(iter(new))

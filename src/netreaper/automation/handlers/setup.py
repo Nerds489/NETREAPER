@@ -67,7 +67,8 @@ class AutoSetupHandler:
         }
         return prompts.get(self.setup_type, f"Setup {self.setup_type}?")
 
-    async def _setup_directories(self) -> bool:
+    @staticmethod
+    async def _setup_directories() -> bool:
         """Create the NETREAPER directory structure."""
         directories = [
             NETREAPER_LOG_DIR,
@@ -92,7 +93,8 @@ class AutoSetupHandler:
         except PermissionError:
             return False
 
-    async def _setup_config(self) -> bool:
+    @staticmethod
+    async def _setup_config() -> bool:
         """Create default configuration file."""
         config_path = NETREAPER_CONFIG_DIR / "settings.toml"
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,7 +130,8 @@ include_screenshots = true
         except Exception:
             return False
 
-    async def _setup_certs(self) -> bool:
+    @staticmethod
+    async def _setup_certs() -> bool:
         """Generate self-signed certificates."""
         cert_dir = NETREAPER_CERTS_DIR
         cert_dir.mkdir(parents=True, exist_ok=True)
@@ -161,7 +164,8 @@ include_screenshots = true
 
         return True
 
-    async def _setup_portal(self) -> bool:
+    @staticmethod
+    async def _setup_portal() -> bool:
         """Generate default captive portal assets."""
         portal_dir = NETREAPER_PORTALS_DIR / "default"
         portal_dir.mkdir(parents=True, exist_ok=True)
@@ -233,7 +237,8 @@ header("Location: success.html");
         except Exception:
             return False
 
-    async def _setup_hostapd(self) -> bool:
+    @staticmethod
+    async def _setup_hostapd() -> bool:
         """Create hostapd configuration."""
         config_path = NETREAPER_CONFIG_DIR / "hostapd.conf"
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -256,7 +261,8 @@ wpa=0
         except Exception:
             return False
 
-    async def _setup_dnsmasq(self) -> bool:
+    @staticmethod
+    async def _setup_dnsmasq() -> bool:
         """Create dnsmasq configuration."""
         config_path = NETREAPER_CONFIG_DIR / "dnsmasq.conf"
         config_path.parent.mkdir(parents=True, exist_ok=True)

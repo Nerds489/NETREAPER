@@ -107,7 +107,8 @@ class BasePlugin(ABC):
         """Clean up resources."""
         ...
 
-    async def validate_target(self, target: str) -> bool:
+    @staticmethod
+    async def validate_target(target: str) -> bool:
         """Validate that target is appropriate for this plugin."""
         return True
 
