@@ -1,7 +1,8 @@
 """Plugin registry and management."""
 from dataclasses import dataclass
-from typing import Any, Type
+from typing import Type
 
+from netreaper.core.exceptions import PluginError
 from netreaper.core.logging import get_logger
 from netreaper.plugins.base import (
     BasePlugin,
@@ -10,7 +11,7 @@ from netreaper.plugins.base import (
     PluginMetadata,
     PluginType,
 )
-from netreaper.plugins.discovery import PLUGIN_GROUPS, plugin_discovery
+from netreaper.plugins.discovery import plugin_discovery
 
 logger = get_logger(__name__)
 
@@ -42,7 +43,7 @@ class PluginRegistry:
             for name, plugin_class in plugins.items():
                 self._register(name, group, plugin_class)
 
-        logger.info(f"Registry initialized with {len(self._registry)} plugins")
+        logger.info('Registry initialized with %s plugins', len(self._registry))
 
     def _register(
         self, name: str, group: str, plugin_class: Type[BasePlugin]
@@ -106,6 +107,15 @@ class PluginRegistry:
             raise KeyError(f"Plugin not found: {name}")
 
         registered = self._registry[name]
+        # disable() set this flag and get_instance() never read it, so a plugin
+        # the operator had explicitly disabled still loaded and ran. A control
+        # that reports success and changes nothing is worse than no control: it
+        # is believed.
+        if not registered.enabled:
+            raise PluginError(
+                f"plugin {name!r} is disabled; enable it before use "
+                f"(plugin_registry.enable({name!r}))"
+            )
         return await plugin_discovery.load_plugin(registered.group, name)
 
 

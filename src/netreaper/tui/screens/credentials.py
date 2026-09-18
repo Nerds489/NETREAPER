@@ -2,17 +2,15 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import (
     Button,
-    Checkbox,
     DataTable,
     Input,
     Label,
@@ -28,9 +26,6 @@ from netreaper.config.settings import get_settings
 from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events
 from netreaper.tui.helpers.preflight_runner import PreflightRunner
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 
@@ -84,11 +79,10 @@ class CrackJob:
     recovered: int = 0
     total: int = 0
     started_at: datetime | None = None
-    cracked_passwords: list = None
-
-    def __post_init__(self):
-        if self.cracked_passwords is None:
-            self.cracked_passwords = []
+    # default_factory, not None plus a __post_init__ fixup. The annotation said
+    # `list` and the default was None, so every reader had to cope with a type
+    # the field claimed it could never hold.
+    cracked_passwords: list = field(default_factory=list)
 
 
 class CredentialsScreen(Screen):
@@ -174,7 +168,7 @@ class CredentialsScreen(Screen):
 
             yield Label("Hash Type:")
             yield Select(
-                [(name, hash_id) for name, hash_id in HASH_TYPES],
+                list(HASH_TYPES),  # a copy: Select is free to reorder its options
                 value="22000",
                 id="select-hash-type",
                 classes="config-input",
@@ -197,7 +191,7 @@ class CredentialsScreen(Screen):
 
             yield Label("Wordlist:")
             yield Select(
-                [(name, path) for name, path in WORDLISTS],
+                list(WORDLISTS),
                 value="/usr/share/wordlists/rockyou.txt",
                 id="select-wordlist",
                 classes="config-input",
@@ -237,27 +231,25 @@ class CredentialsScreen(Screen):
             yield Button("Stop", id="btn-stop", variant="error", classes="action-button")
 
         # Center/Right: Results panel with tabs
-        with Vertical(id="results-panel"):
-            with TabbedContent(initial="input"):
-                with TabPane("Hash Input", id="input"):
-                    yield Label("Enter hashes or path to hash file:")
-                    yield TextArea(id="hash-input")
-                    yield Label("Or select a file:")
-                    yield Input(placeholder="Path to hash/capture file", id="input-hash-file")
-                    yield Button("Load File", id="btn-load-file")
+        with Vertical(id="results-panel"), TabbedContent(initial="input"):
+            with TabPane("Hash Input", id="input"):
+                yield Label("Enter hashes or path to hash file:")
+                yield TextArea(id="hash-input")
+                yield Label("Or select a file:")
+                yield Input(placeholder="Path to hash/capture file", id="input-hash-file")
+                yield Button("Load File", id="btn-load-file")
 
-                with TabPane("Progress", id="progress"):
-                    with Vertical(id="progress-container"):
-                        yield Label("Status: [dim]Idle[/]", id="label-status")
-                        yield ProgressBar(id="crack-progress", show_eta=True)
-                        yield Label("Speed: [dim]--[/]", id="label-speed")
-                        yield Label("Recovered: [dim]0/0[/]", id="label-recovered")
+            with TabPane("Progress", id="progress"), Vertical(id="progress-container"):
+                yield Label("Status: [dim]Idle[/]", id="label-status")
+                yield ProgressBar(id="crack-progress", show_eta=True)
+                yield Label("Speed: [dim]--[/]", id="label-speed")
+                yield Label("Recovered: [dim]0/0[/]", id="label-recovered")
 
-                with TabPane("Cracked", id="cracked"):
-                    yield DataTable(id="cracked-table")
+            with TabPane("Cracked", id="cracked"):
+                yield DataTable(id="cracked-table")
 
-                with TabPane("Potfile", id="potfile"):
-                    yield Static("Previously cracked passwords from potfile", id="potfile-content")
+            with TabPane("Potfile", id="potfile"):
+                yield Static("Previously cracked passwords from potfile", id="potfile-content")
 
         # Bottom: Output
         with Vertical(id="output-panel"):
@@ -300,7 +292,7 @@ class CredentialsScreen(Screen):
             self.app.notify(f"Password cracked: {password}", severity="information")
 
         except Exception as e:
-            logger.warning(f"Failed to process cracked credential: {e}")
+            logger.warning("Failed to process cracked credential: %s", e)
 
     def _refresh_cracked_table(self) -> None:
         """Refresh the cracked passwords table."""
@@ -340,7 +332,7 @@ class CredentialsScreen(Screen):
                 potfile_widget.update("[dim]Potfile not found[/]")
 
         except Exception as e:
-            logger.warning(f"Failed to load potfile: {e}")
+            logger.warning("Failed to load potfile: %s", e)
 
     def _write_output(self, message: str) -> None:
         """Write message to output panel."""
@@ -435,7 +427,19 @@ class CredentialsScreen(Screen):
                 from netreaper.tools.john import JohnTool
                 tool = JohnTool()
             else:
-                from netreaper.tools.hashcat import HashcatTool
+                # netreaper.tools.hashcat does not exist. The import is inside
+                # this function, so the screen opens fine and the failure lands
+                # on the operator mid-task as a bare ImportError. Say what is
+                # actually wrong and name the one that does work.
+                try:
+                    from netreaper.tools.hashcat import HashcatTool
+                except ImportError:
+                    self._write_output(
+                        "[red]The hashcat wrapper is not implemented "
+                        "(netreaper.tools.hashcat does not exist). Choose John, "
+                        "or run hashcat directly.[/]"
+                    )
+                    return
                 tool = HashcatTool()
 
             await tool.initialize()
@@ -454,7 +458,7 @@ class CredentialsScreen(Screen):
 
             options["hash_file"] = target
 
-            self._write_output(f"[cyan]Running hashcat...[/]")
+            self._write_output("[cyan]Running hashcat...[/]")
             self._update_progress("Running", 0, "--", 0, 0)
 
             result = await tool.execute(target, options)

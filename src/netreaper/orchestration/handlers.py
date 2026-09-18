@@ -12,9 +12,7 @@ async def on_vulnerability_found(data: dict) -> None:
     title = data.get("title", "Unknown vulnerability")
     target = data.get("target", "")
 
-    logger.warning(
-        f"Vulnerability found: [{severity.upper()}] {vuln_id} - {title} on {target}"
-    )
+    logger.warning('Vulnerability found: [%s] %s - %s on %s', severity.upper(), vuln_id, title, target)
 
     # Store in database
     from netreaper.db.engine import get_db
@@ -34,7 +32,7 @@ async def on_credential_cracked(data: dict) -> None:
     cred_type = data.get("type", "unknown")
     target = data.get("target", "")
 
-    logger.info(f"Credential cracked: {cred_type} for {target}")
+    logger.info("Credential cracked: %s for %s", cred_type, target)
 
     # Store encrypted in loot table
     from netreaper.loot.storage import loot_storage
@@ -52,23 +50,22 @@ async def on_handshake_captured(data: dict) -> None:
     essid = data.get("essid", "")
     file_path = data.get("file", "")
 
-    logger.info(f"Handshake captured: {essid} ({bssid}) -> {file_path}")
+    logger.info("Handshake captured: %s (%s) -> %s", essid, bssid, file_path)
 
-    # Store reference
-    from netreaper.db.engine import get_db
+    # Through LootStorage, like on_credential_cracked above. This used to raw
+    # INSERT into loot, putting a plain file path straight into the column named
+    # encrypted_data. Two writers, one format contract, and only one honoured
+    # it: every handshake row was then permanently unreadable, because
+    # LootStorage.retrieve() calls Fernet.decrypt() on that column and a plain
+    # path raises InvalidToken. The metadata column also got str(dict) rather
+    # than the JSON the reader parses.
+    from netreaper.loot.storage import loot_storage
 
-    db = await get_db()
-    await db.execute(
-        """
-        INSERT INTO loot (loot_type, encrypted_data, source_tool, metadata)
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            "handshake",
-            file_path,
-            "airodump-ng",
-            str({"bssid": bssid, "essid": essid}),
-        ),
+    await loot_storage.store(
+        loot_type="handshake",
+        data={"file": file_path, "bssid": bssid, "essid": essid},
+        source_tool="airodump-ng",
+        metadata={"bssid": bssid, "essid": essid},
     )
 
 

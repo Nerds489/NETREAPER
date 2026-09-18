@@ -1,10 +1,11 @@
 """Plugin discovery using entry_points."""
+import asyncio
 from importlib.metadata import entry_points
 from typing import Type
 
 from netreaper.core.exceptions import PluginError
 from netreaper.core.logging import get_logger
-from netreaper.plugins.base import BasePlugin, PluginMetadata, PluginType
+from netreaper.plugins.base import BasePlugin, PluginConfig, PluginMetadata, PluginType
 
 logger = get_logger(__name__)
 
@@ -28,11 +29,11 @@ class PluginDiscovery:
 
     def discover_all(self) -> dict[str, dict[str, Type[BasePlugin]]]:
         """Discover all plugins from all groups."""
-        for plugin_type, group in PLUGIN_GROUPS.items():
+        for group in PLUGIN_GROUPS.values():
             self._discovered[group] = self._discover_group(group)
 
         total = sum(len(plugins) for plugins in self._discovered.values())
-        logger.info(f"Discovered {total} plugins across {len(PLUGIN_GROUPS)} groups")
+        logger.info('Discovered %s plugins across %s groups', total, len(PLUGIN_GROUPS))
 
         return self._discovered
 
@@ -50,16 +51,33 @@ class PluginDiscovery:
             try:
                 plugin_class = ep.load()
                 if self._validate_plugin(plugin_class):
+                    # entry_points() returns declarations from EVERY installed
+                    # distribution, and this was a plain dict assignment. A
+                    # second package registering the name "nmap" silently
+                    # replaced the first-party adapter, with iteration order
+                    # deciding which one an operator actually ran, and nothing
+                    # logged. Keep the first and refuse the shadow, loudly.
+                    if ep.name in plugins:
+                        logger.error(
+                            "refusing duplicate plugin %r in group %s: already "
+                            "provided by %s, also declared by %s. The first is "
+                            "kept; resolve the collision before relying on it.",
+                            ep.name, group,
+                            getattr(plugins[ep.name], "__module__", "?"),
+                            getattr(plugin_class, "__module__", "?"),
+                        )
+                        continue
                     plugins[ep.name] = plugin_class
-                    logger.debug(f"Discovered plugin: {ep.name} from {group}")
+                    logger.debug('Discovered plugin: %s from %s', ep.name, group)
                 else:
-                    logger.warning(f"Invalid plugin: {ep.name}")
+                    logger.warning('Invalid plugin: %s', ep.name)
             except Exception as e:
-                logger.error(f"Failed to load plugin {ep.name}: {e}")
+                logger.error('Failed to load plugin %s: %s', ep.name, e)
 
         return plugins
 
-    def _validate_plugin(self, plugin_class: type) -> bool:
+    @staticmethod
+    def _validate_plugin(plugin_class: type) -> bool:
         """Validate that a class is a valid plugin."""
         if not isinstance(plugin_class, type):
             return False
@@ -107,10 +125,20 @@ class PluginDiscovery:
             raise PluginError(f"Plugin not found: {name} in {group}")
 
         plugin = plugin_class()
-        await plugin.initialize()
+        # PluginConfig.timeout existed and nothing read it, while initialize()
+        # was awaited with no deadline: a plugin whose initialize() never
+        # returns hung the caller for ever. The declared field now does the job
+        # it was declared for.
+        timeout = float(getattr(PluginConfig(), "timeout", 600) or 600)
+        try:
+            await asyncio.wait_for(plugin.initialize(), timeout=timeout)
+        except TimeoutError as e:
+            raise PluginError(
+                f"plugin {name!r} did not finish initialising within {timeout:g}s"
+            ) from e
 
         self._loaded[cache_key] = plugin
-        logger.info(f"Loaded plugin: {name}")
+        logger.info("Loaded plugin: %s", name)
 
         return plugin
 
@@ -122,7 +150,7 @@ class PluginDiscovery:
             plugin = self._loaded[cache_key]
             await plugin.cleanup()
             del self._loaded[cache_key]
-            logger.info(f"Unloaded plugin: {name}")
+            logger.info("Unloaded plugin: %s", name)
 
     async def unload_all(self) -> None:
         """Unload all loaded plugins."""
@@ -131,7 +159,7 @@ class PluginDiscovery:
             try:
                 await plugin.cleanup()
             except Exception as e:
-                logger.error(f"Error cleaning up {cache_key}: {e}")
+                logger.error("Error cleaning up %s: %s", cache_key, e)
             del self._loaded[cache_key]
 
 

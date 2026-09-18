@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
+# shellcheck shell=bash
 # Uninstall all NETREAPER tools for testing the installer
+#
+# The directive above says bash, and so does line 1, but the analyser kept
+# reading this as POSIX sh regardless. Rather than keep arguing with it, the
+# two constructs it objected to are now written the portable way. `case` is
+# clearer than `[[ =~ ]]` here anyway: it puts the accept and the reject side
+# by side instead of hiding the reject in an && chain.
 
 set -uo pipefail
 
@@ -17,12 +24,15 @@ echo ""
 # Critical packages we should NOT remove
 KEEP="curl wget git python3 python3-pip bash coreutils"
 
-echo "${YELLOW}[!] This will remove all pentesting tools${RESET}"
+echo "${RED}[!] This will remove all pentesting tools, and cannot be undone${RESET}"
 echo ""
 read -p "Continue? [y/N] " -n 1 -r
 echo ""
 
-[[ ! $REPLY =~ ^[Yy]$ ]] && echo "Aborted." && exit 0
+case "$REPLY" in
+    [Yy]) ;;
+    *) echo "Aborted."; exit 0 ;;
+esac
 
 # Extract all package names from install-tools.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,7 +41,9 @@ PACKAGES=$(grep -oP 'pkg:\K[^,"|]+' "$SCRIPT_DIR/install-tools.sh" | sort -u)
 echo ""
 echo "${GREEN}[*] Removing apt packages...${RESET}"
 for pkg in $PACKAGES; do
-    [[ " $KEEP " == *" $pkg "* ]] && continue
+    case " $KEEP " in
+        *" $pkg "*) continue ;;
+    esac
     if dpkg -l "$pkg" &>/dev/null; then
         echo "    Removing: $pkg"
         sudo apt-get remove --purge -y "$pkg" 2>/dev/null || true

@@ -170,11 +170,22 @@ def test_the_same_hole_in_free_text():
 
 
 def _torn(tmp_path):
+    """A file in the state a real crash mid-append leaves behind.
+
+    Updated when the trail gained a length anchor. The old version wrote three
+    entries and chopped 25 bytes off the file, which is NOT what a crash looks
+    like: the third entry had already been written and anchored, so removing it
+    afterwards is loss, and the trail is now supposed to say so. A genuine crash
+    leaves a partial line that was never anchored, because the anchor is written
+    after the append completes. Simulated here by appending the partial line
+    directly, leaving the anchor where it legitimately would be.
+    """
     p = tmp_path / "audit.jsonl"
     first = AuditTrail(path=p)
     for i in range(3):
         first.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
-    p.write_text(p.read_text()[:-25])
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write('{"seq": 3, "at": "2026-01-01T00:00:00Z", "outco')
     return p
 
 
@@ -197,7 +208,11 @@ def test_a_later_process_resumes_the_repaired_file(tmp_path):
     r.record(outcome="executed", tool="b", argv=["b"])
     third = AuditTrail(path=p)
     assert third.verify_file()
-    assert third._seq == 4  # the torn entry is discarded, not resurrected
+    # _torn leaves 3 intact entries (seq 0-2) plus a partial seq-3 line. The
+    # partial is discarded, so "a" takes seq 3 and "b" seq 4, leaving 5 as the
+    # next. Was 4, when _torn chopped a byte range that destroyed one of the
+    # three intact entries as well as the tail.
+    assert third._seq == 3 + 2, "the torn entry is discarded, not resurrected"
 
 
 def test_a_damaged_middle_is_still_rejected_after_repair(tmp_path):

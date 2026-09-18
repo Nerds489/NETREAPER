@@ -1,7 +1,6 @@
 """Input validation functions for security and safety."""
 import ipaddress
 import re
-from typing import Any
 
 
 def validate_ip(ip: str) -> str:
@@ -154,7 +153,7 @@ def validate_hostname(hostname: str) -> str:
     for label in labels:
         if not label or len(label) > 63:
             raise ValueError(f"Invalid hostname label: {label}")
-        if not re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$", label):
+        if not re.fullmatch(r"[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?", label):
             raise ValueError(f"Invalid hostname label: {label}")
 
     return hostname
@@ -173,17 +172,21 @@ def validate_url(url: str) -> str:
         ValueError: If URL is invalid
     """
     # Basic URL validation
+    # fullmatch below, so no leading ^ / trailing $ is needed. `$` matches
+    # before a single trailing newline, which let "http://evil.com/\n" through
+    # as a valid URL; fullmatch has no such carve-out.
+    _octet = r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
     url_pattern = re.compile(
-        r"^https?://"  # http:// or https://
+        r"https?://"  # http:// or https://
         r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain
         r"localhost|"  # localhost
-        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # IP
+        rf"{_octet}\.{_octet}\.{_octet}\.{_octet})"  # IP, octets bounded 0-255
         r"(?::\d+)?"  # optional port
-        r"(?:/?|[/?]\S+)$",
+        r"(?:/?|[/?]\S+)",
         re.IGNORECASE,
     )
 
-    if not url_pattern.match(url):
+    if not url_pattern.fullmatch(url):
         raise ValueError(f"Invalid URL: {url}")
 
     return url
@@ -212,7 +215,7 @@ def validate_domain(domain: str) -> str:
     for label in labels:
         if not label or len(label) > 63:
             raise ValueError(f"Invalid domain label: {label}")
-        if not re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$", label):
+        if not re.fullmatch(r"[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?", label):
             raise ValueError(f"Invalid domain label: {label}")
 
     # TLD should be at least 2 characters

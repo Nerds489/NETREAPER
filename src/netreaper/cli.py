@@ -31,7 +31,11 @@ def version_callback(value: bool):
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    version: bool = typer.Option(
+    # Named with a leading underscore because nothing reads it: the flag exists
+    # so typer registers --version/-v, and version_callback does the work
+    # eagerly before any subcommand runs. The option names are given
+    # explicitly above, so the parameter's Python name is free.
+    _version: bool = typer.Option(
         None, "--version", "-v", callback=version_callback, is_eager=True
     ),
 ):
@@ -231,6 +235,85 @@ def _scope_summary(scope) -> str:
     )
 
 
+def _check_engagement_basics(operator: str, ref: str, hours: float) -> None:
+    """Who, under what authority, for how long. All three are refusals, not
+    warnings: an engagement missing any of them records no authorisation."""
+    if not operator.strip():
+        console.print("[red]--operator must not be empty[/red]")
+        raise typer.Exit(2)
+    if not ref.strip():
+        console.print("[red]--ref must not be empty: give the authorisation ref[/red]")
+        raise typer.Exit(2)
+    if hours <= 0:
+        console.print("[red]--hours must be positive (an engagement must last)[/red]")
+        raise typer.Exit(2)
+    if hours > _MAX_ENGAGEMENT_HOURS:
+        console.print(
+            f"[red]--hours {hours:g} exceeds the {_MAX_ENGAGEMENT_HOURS:g}h cap; an "
+            f"authorisation that outlives its engagement is not an authorisation. "
+            f"Re-run engage start when it expires.[/red]"
+        )
+        raise typer.Exit(2)
+
+
+def _parse_max_tier(max_tier: str):
+    """The blast-radius ceiling: what this engagement MAY reach."""
+    from netreaper.safety.scope import Tier
+
+    try:
+        return Tier[max_tier.strip().upper()]
+    except KeyError:
+        console.print(
+            f"[red]invalid --max-tier {max_tier!r}; use one of: {_TIER_NAMES}[/red]"
+        )
+        raise typer.Exit(2) from None
+
+
+def _parse_confirmed_tiers(confirm_tier: list[str] | None) -> set:
+    """The grants: which tiers the operator states they intended."""
+    from netreaper.safety.scope import Tier
+
+    confirmed: set[Tier] = set()
+    for name in confirm_tier or []:
+        try:
+            confirmed.add(Tier[name.strip().upper()])
+        except KeyError:
+            console.print(
+                f"[red]invalid --confirm-tier {name!r}; use one of: {_TIER_NAMES}[/red]"
+            )
+            raise typer.Exit(2) from None
+    return confirmed
+
+
+def _check_tier_grants(tier, confirmed: set, accept_interception: bool) -> None:
+    """A ceiling and a grant have to agree, and MITM costs a sentence.
+
+    Kept as its own step because these are the two rules an operator gets
+    wrong: confirming above the ceiling, and confirming MITM without the
+    dangerous-ops phrase.
+    """
+    from netreaper.safety.scope import Tier
+
+    above_ceiling = sorted(x.name for x in confirmed if x > tier)
+    if above_ceiling:
+        console.print(
+            f"[red]--confirm-tier {', '.join(above_ceiling)} exceeds --max-tier "
+            f"{tier.name}; raise the ceiling or drop the confirmation[/red]"
+        )
+        raise typer.Exit(2)
+    if Tier.MITM in confirmed and not accept_interception:
+        console.print(
+            "[red]--confirm-tier mitm also requires --accept-interception: MITM "
+            "intercepts traffic that is not yours[/red]"
+        )
+        raise typer.Exit(2)
+    if accept_interception and Tier.MITM not in confirmed:
+        console.print(
+            "[yellow]warning: --accept-interception without --confirm-tier mitm "
+            "does nothing[/yellow]"
+        )
+
+
 @engage_app.command("start")
 def engage_start(
     operator: str = typer.Option(..., "--operator", "-o", help="Who is authorised"),
@@ -282,57 +365,10 @@ def engage_start(
         get_scope_gate,
     )
 
-    if not operator.strip():
-        console.print("[red]--operator must not be empty[/red]")
-        raise typer.Exit(2)
-    if not ref.strip():
-        console.print("[red]--ref must not be empty: give the authorisation ref[/red]")
-        raise typer.Exit(2)
-    if hours <= 0:
-        console.print("[red]--hours must be positive (an engagement must last)[/red]")
-        raise typer.Exit(2)
-    if hours > _MAX_ENGAGEMENT_HOURS:
-        console.print(
-            f"[red]--hours {hours:g} exceeds the {_MAX_ENGAGEMENT_HOURS:g}h cap; an "
-            f"authorisation that outlives its engagement is not an authorisation. "
-            f"Re-run engage start when it expires.[/red]"
-        )
-        raise typer.Exit(2)
-    try:
-        tier = Tier[max_tier.strip().upper()]
-    except KeyError:
-        console.print(
-            f"[red]invalid --max-tier {max_tier!r}; use one of: {_TIER_NAMES}[/red]"
-        )
-        raise typer.Exit(2) from None
-
-    confirmed: set[Tier] = set()
-    for name in confirm_tier or []:
-        try:
-            confirmed.add(Tier[name.strip().upper()])
-        except KeyError:
-            console.print(
-                f"[red]invalid --confirm-tier {name!r}; use one of: {_TIER_NAMES}[/red]"
-            )
-            raise typer.Exit(2) from None
-    above_ceiling = sorted(x.name for x in confirmed if x > tier)
-    if above_ceiling:
-        console.print(
-            f"[red]--confirm-tier {', '.join(above_ceiling)} exceeds --max-tier "
-            f"{tier.name}; raise the ceiling or drop the confirmation[/red]"
-        )
-        raise typer.Exit(2)
-    if Tier.MITM in confirmed and not accept_interception:
-        console.print(
-            "[red]--confirm-tier mitm also requires --accept-interception: MITM "
-            "intercepts traffic that is not yours[/red]"
-        )
-        raise typer.Exit(2)
-    if accept_interception and Tier.MITM not in confirmed:
-        console.print(
-            "[yellow]warning: --accept-interception without --confirm-tier mitm "
-            "does nothing[/yellow]"
-        )
+    _check_engagement_basics(operator, ref, hours)
+    tier = _parse_max_tier(max_tier)
+    confirmed = _parse_confirmed_tiers(confirm_tier)
+    _check_tier_grants(tier, confirmed, accept_interception)
 
     scope = Scope(
         cidrs=list(cidr or []),
@@ -478,13 +514,13 @@ def wifi_monitor(
             result = await disable_monitor_mode(interface)
             console.print(f"[green]Monitor mode now: {result.get('current_mode')}[/green]")
         elif action == "status":
-            status = await get_monitor_status(interface)
+            mon_status = await get_monitor_status(interface)
             console.print(f"Interface: {interface}")
-            console.print(f"Is wireless: {status.get('is_wireless')}")
-            console.print(f"Current mode: {status.get('current_mode')}")
-            console.print(f"In monitor mode: {status.get('is_monitor')}")
-            console.print(f"Supports monitor: {status.get('supports_monitor')}")
-            console.print(f"Supports injection: {status.get('supports_injection')}")
+            console.print(f"Is wireless: {mon_status.get('is_wireless')}")
+            console.print(f"Current mode: {mon_status.get('current_mode')}")
+            console.print(f"In monitor mode: {mon_status.get('is_monitor')}")
+            console.print(f"Supports monitor: {mon_status.get('supports_monitor')}")
+            console.print(f"Supports injection: {mon_status.get('supports_injection')}")
         else:
             console.print("[red]Invalid action. Use: enable, disable, or status[/red]")
             raise typer.Exit(1)
@@ -658,11 +694,29 @@ def wifi_wep(
     output: str = typer.Option(None, "--output", "-o", help="Capture file prefix"),
     seconds: int = typer.Option(30, "--seconds", "-s", help="IV window per round"),
     rounds: int = typer.Option(5, "--rounds", "-r", help="Capture+crack rounds"),
+    injection: str = typer.Option(
+        "arpreplay",
+        "--injection",
+        "-i",
+        help=(
+            "IV-generation strategy: arpreplay, chopchop, fragment, "
+            "caffe_latte, cfrag, interactive"
+        ),
+    ),
 ):
-    """Recover a WEP key (IV collection, injection, aircrack-ng)."""
+    """Recover a WEP key (IV collection, injection, aircrack-ng).
+
+    --injection picks the strategy. The aireplay-ng primitives for chopchop,
+    fragmentation, caffe-latte, cfrag and interactive replay all existed but
+    were unreachable: wep.py only ever drove ARP replay and there was no flag
+    to choose anything else (#47).
+    """
 
     async def run_wep():
-        from netreaper.core.exceptions import TargetValidationError
+        from netreaper.core.exceptions import (
+            ConfigurationError,
+            TargetValidationError,
+        )
         from netreaper.wireless.wep import crack_wep
 
         console.print(f"[cyan]WEP attack on {bssid} (channel {channel})...[/cyan]")
@@ -676,7 +730,11 @@ def wifi_wep(
                 output=output,
                 capture_seconds=seconds,
                 max_rounds=rounds,
+                injection=injection,
             )
+        except ConfigurationError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(2) from exc
         except TargetValidationError as exc:
             console.print(f"[red]Denied by scope gate: {exc}[/red]")
             raise typer.Exit(2) from exc
@@ -1179,3 +1237,236 @@ def plugin_list():
 
 if __name__ == "__main__":
     app()
+
+# ─────────────────────────── resources (#33) ────────────────────────────────
+
+resources_app = typer.Typer(help="External sources this build incorporates")
+app.add_typer(resources_app, name="resources")
+
+
+@resources_app.command("list")
+def resources_list():
+    """Show every external source, how it is incorporated, and its licence."""
+    from netreaper.resources import SOURCES
+    from netreaper.resources.registry import validate_registry
+
+    table = Table(title="External sources")
+    for col in ("Source", "Kind", "How", "Domain", "Licence"):
+        table.add_column(col)
+    for s in SOURCES:
+        licence = s.licence if s.licence_verified else "[yellow]unverified[/yellow]"
+        name = f"[red]{s.name}[/red]" if s.is_safety_restricted else s.name
+        table.add_row(name, s.kind.value, s.incorporation.value, s.domain, licence)
+    console.print(table)
+
+    restricted = [s for s in SOURCES if s.is_safety_restricted]
+    if restricted:
+        console.print("\n[red]Safety-restricted (documented, not implemented):[/red]")
+        for s in restricted:
+            console.print(f"  [red]{s.name}[/red]: {s.safety_note}")
+
+    problems = validate_registry()
+    if problems:
+        console.print("\n[red]Registry violations:[/red]")
+        for pr in problems:
+            console.print(f"  {pr}")
+        raise typer.Exit(1)
+
+
+@resources_app.command("show")
+def resources_show(name: str = typer.Argument(..., help="Source name")):
+    """Detail for one source."""
+    from netreaper.resources import get_source
+
+    s = get_source(name)
+    if s is None:
+        console.print(f"[red]no such source: {name}[/red]")
+        raise typer.Exit(2)
+    console.print(f"[cyan]{s.name}[/cyan]  {s.url}")
+    console.print(f"  kind: {s.kind.value}   incorporation: {s.incorporation.value}")
+    console.print(f"  domain: {s.domain}   licence: {s.licence}")
+    console.print(f"  {s.summary}")
+    if s.provides:
+        console.print(f"  provides: {', '.join(s.provides)}")
+    if s.safety_note:
+        console.print(f"\n[red]SAFETY: {s.safety_note}[/red]")
+
+# ───────── wiring the orphaned tool wrappers (#33 reachability) ─────────────
+#
+# GobusterTool, HydraTool, MasscanTool, SubfinderTool and WhatWebTool were
+# complete, tested-in-isolation wrappers that NOTHING referenced: no CLI
+# command, no chain, no manifest. Roughly 1,500 lines a user could not invoke.
+# Each goes through BaseToolWrapper.execute(), so naming the target here is what
+# makes the scope gate check it.
+
+web_app = typer.Typer(help="Web application recon")
+app.add_typer(web_app, name="web")
+
+creds_app = typer.Typer(help="Credential attacks")
+app.add_typer(creds_app, name="creds")
+
+osint_app = typer.Typer(help="Open-source intelligence")
+app.add_typer(osint_app, name="osint")
+
+can_app = typer.Typer(help="Automotive CAN bus (read-only)")
+app.add_typer(can_app, name="can")
+
+
+def _run_tool(coro_factory, label: str):
+    """Shared runner: gate denials and missing tools are reported, not tracebacks."""
+    from netreaper.core.exceptions import (
+        SubprocessError,
+        TargetValidationError,
+        ToolNotFoundError,
+    )
+
+    async def _go():
+        try:
+            return await coro_factory()
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        except ToolNotFoundError as exc:
+            console.print(f"[yellow]{label} is not installed: {exc}[/yellow]")
+            raise typer.Exit(3) from exc
+        except SubprocessError as exc:
+            console.print(f"[red]{label} failed: {exc}[/red]")
+            raise typer.Exit(1) from exc
+
+    return asyncio.run(_go())
+
+
+@web_app.command("dirs")
+def web_dirs(
+    target: str = typer.Argument(..., help="Target URL"),
+    wordlist: str = typer.Option(None, "--wordlist", "-w", help="Wordlist path"),
+):
+    """Directory and file discovery (gobuster)."""
+    from netreaper.tools.gobuster import GobusterTool
+
+    opts = {"wordlist": wordlist} if wordlist else {}
+    res = _run_tool(lambda: GobusterTool().execute(target, opts), "gobuster")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@web_app.command("fingerprint")
+def web_fingerprint(target: str = typer.Argument(..., help="Target URL")):
+    """Identify web technologies (whatweb)."""
+    from netreaper.tools.whatweb import WhatWebTool
+
+    res = _run_tool(lambda: WhatWebTool().execute(target, {}), "whatweb")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@app.command("portscan")
+def portscan(
+    target: str = typer.Argument(..., help="Target IP or CIDR"),
+    ports: str = typer.Option("1-65535", "--ports", "-p", help="Port range"),
+):
+    """Fast port sweep (masscan)."""
+    from netreaper.tools.masscan import MasscanTool
+
+    res = _run_tool(lambda: MasscanTool().execute(target, {"ports": ports}), "masscan")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@osint_app.command("subdomains")
+def osint_subdomains(domain: str = typer.Argument(..., help="Root domain")):
+    """Passive subdomain enumeration (subfinder)."""
+    from netreaper.tools.subfinder import SubfinderTool
+
+    res = _run_tool(lambda: SubfinderTool().execute(domain, {}), "subfinder")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@creds_app.command("attack")
+def creds_attack(
+    target: str = typer.Argument(
+        ..., help="Target host (scheme and port are stripped)"
+    ),
+    service: str = typer.Option(
+        "ssh", "--service", "-s", help="ssh/ftp/smb/rdp/mysql"
+    ),
+    username: str = typer.Option(None, "--username", "-l"),
+    user_list: str = typer.Option(None, "--user-list", "-L"),
+    pass_list: str = typer.Option(None, "--pass-list", "-P"),
+):
+    """Credential attack (hydra).
+
+    Tiered SINGLE_TARGET, so it needs a confirmation grant on the engagement.
+    """
+    from netreaper.tools.hydra import HydraTool
+
+    opts = {
+        k: v
+        for k, v in {
+            "service": service,
+            "username": username,
+            "user_list": user_list,
+            "pass_list": pass_list,
+        }.items()
+        if v
+    }
+    res = _run_tool(lambda: HydraTool().execute(target, opts), "hydra")
+    console.print(res.stdout if hasattr(res, "stdout") else res)
+
+
+@can_app.command("interfaces")
+def can_interfaces():
+    """List SocketCAN interfaces."""
+    from netreaper.tools.canutils import CanUtilsTool
+
+    found = _run_tool(lambda: CanUtilsTool().list_interfaces(), "ip")
+    if not found:
+        console.print(
+            "[yellow]No CAN interfaces. `ip link add dev vcan0 type vcan` "
+            "gives you a virtual one for testing.[/yellow]"
+        )
+        return
+    for i in found:
+        console.print(f"  {i}")
+
+
+@can_app.command("dump")
+def can_dump(
+    interface: str = typer.Argument(
+        ..., help="SocketCAN interface, e.g. can0 or vcan0"
+    ),
+    seconds: int = typer.Option(10, "--seconds", "-s", help="Capture window"),
+    frames: int = typer.Option(
+        0, "--frames", "-n", help="Stop after N frames (0 = time-bound)"
+    ),
+    database: str = typer.Option(
+        None, "--db", "-d", help="CAN id database file or directory"
+    ),
+):
+    """Read and decode a CAN bus. Read-only: this cannot transmit."""
+
+
+    from netreaper.automotive import CanIdDatabase, decode_capture
+    from netreaper.tools.canutils import CanUtilsTool
+
+    cap = _run_tool(
+        lambda: CanUtilsTool().dump(interface, seconds=seconds, max_frames=frames),
+        "candump",
+    )
+    console.print(
+        f"[green]{cap.frame_count} frames, "
+        f"{len(cap.unique_ids)} unique ids[/green]"
+    )
+    if not database:
+        for fid in sorted(cap.unique_ids):
+            console.print(f"  {fid}")
+        return
+    db = CanIdDatabase.load(Path(database))
+    table = Table(title=f"Decoded ({len(db)} known ids)")
+    for col in ("CAN ID", "Signal", "Data"):
+        table.add_column(col)
+    seen = set()
+    for f in decode_capture(cap, db):
+        if f.can_id in seen:
+            continue
+        seen.add(f.can_id)
+        table.add_row(f.can_id, f.name, f.data)
+    console.print(table)
+

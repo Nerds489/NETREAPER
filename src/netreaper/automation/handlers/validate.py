@@ -2,7 +2,6 @@
 
 import re
 import ipaddress
-from typing import Any
 
 from netreaper.automation.labels import AUTO_REGISTRY
 
@@ -16,7 +15,8 @@ class AutoValidateHandler:
         self.error: str | None = None
         self.warning: str | None = None
 
-    async def can_fix(self) -> bool:
+    @staticmethod
+    async def can_fix() -> bool:
         """Validation doesn't fix, it validates."""
         return False
 
@@ -159,7 +159,7 @@ class AutoValidateHandler:
             "bcrypt": (60, r"^\$2[aby]?\$[0-9]{2}\$.{53}$"),
         }
 
-        for hash_type, (length, pattern) in hash_patterns.items():
+        for length, pattern in hash_patterns.values():
             if len(value) == length or re.match(pattern, value):
                 return True
 

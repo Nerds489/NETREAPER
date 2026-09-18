@@ -42,7 +42,8 @@ class AutoDataHandler:
         self.source_url = source_url
         self.dest_path: Path | None = None
 
-    async def can_fix(self) -> bool:
+    @staticmethod
+    async def can_fix() -> bool:
         """Check if we can download the data."""
         # Need curl or wget
         import shutil

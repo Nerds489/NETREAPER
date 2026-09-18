@@ -176,10 +176,17 @@ class ProcessRunner:
         """Send a signal to the whole process group, falling back to the process."""
         try:
             os.killpg(os.getpgid(proc.pid), sig)
-        except (ProcessLookupError, PermissionError, OSError):
+        except OSError:
+            # Was (ProcessLookupError, PermissionError, OSError). Both of the
+            # named ones are OSError subclasses, so the tuple caught exactly
+            # what OSError catches while reading as though it were narrower.
+            # The cases that actually reach here are the process already being
+            # gone, and not owning its group.
             try:
                 proc.send_signal(sig)
             except (ProcessLookupError, ValueError):
+                # ValueError is NOT an OSError: asyncio raises it for a process
+                # whose transport has already closed. That tuple stays.
                 pass
 
 

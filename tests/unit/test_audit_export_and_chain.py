@@ -241,7 +241,12 @@ def test_a_torn_final_line_does_not_destroy_the_chain(tmp_path):
     first = AuditTrail(path=p)
     for i in range(3):
         first.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
-    p.write_text(p.read_text()[:-25])          # killed mid-write
+    # Killed mid-write: a partial line lands and the anchor never advances,
+    # because the anchor is written after the append completes. Chopping bytes
+    # off a fully anchored file is a different thing entirely (loss), and
+    # test_a_truncated_trail_is_rejected below covers that.
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write('{"seq": 3, "at": "2026-01-01T00:00:00Z", "outco')
 
     resumed = AuditTrail(path=p)
     assert resumed.verify_file()
@@ -259,3 +264,91 @@ def test_a_damaged_middle_is_still_rejected(tmp_path):
     lines[1] = "{broken"
     p.write_text("\n".join(lines) + "\n")
     assert not AuditTrail(path=p, resume=False).verify_file()
+
+
+# ── completeness: a hash chain cannot detect its own truncation ──────────────
+
+
+def test_a_truncated_trail_is_rejected(tmp_path):
+    """A prefix of a valid chain is a valid chain.
+
+    Every entry binds the previous hash, so any edit WITHIN the file is caught.
+    Cutting the file short is not: verify_file() walked from GENESIS and
+    returned True for a log with its last entries removed, for a log reduced to
+    one entry, and for an empty file. For a trail whose purpose is that an
+    operator cannot later deny what the tool did, deleting the last few entries
+    is the attack that matters, and it was the one that worked.
+    """
+    p = tmp_path / "audit.jsonl"
+    t = AuditTrail(path=p)
+    for i in range(5):
+        t.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
+    assert t.verify_file()
+
+    lines = p.read_text().splitlines()
+    p.write_text("\n".join(lines[:-1]) + "\n")
+    assert not AuditTrail(path=p).verify_file(), "truncation went undetected"
+
+
+def test_an_emptied_trail_is_rejected(tmp_path):
+    p = tmp_path / "audit.jsonl"
+    t = AuditTrail(path=p)
+    for i in range(3):
+        t.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
+    p.write_text("")
+    assert not AuditTrail(path=p).verify_file(), "an emptied trail verified"
+
+
+def test_a_trail_cut_back_to_its_first_entry_is_rejected(tmp_path):
+    p = tmp_path / "audit.jsonl"
+    t = AuditTrail(path=p)
+    for i in range(5):
+        t.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
+    p.write_text(p.read_text().splitlines()[0] + "\n")
+    assert not AuditTrail(path=p).verify_file()
+
+
+def test_an_anchor_one_entry_behind_is_tolerated_exactly_once(tmp_path):
+    """The only inconsistency a crash can leave, and no more than that.
+
+    Killed between the append and the anchor update: the file is one ahead.
+    Deliberately an equality, not a >=. A tolerance expressed as slack is how
+    the streaming-capture guard came to permit two ungated spawns.
+    """
+    p = tmp_path / "audit.jsonl"
+    t = AuditTrail(path=p)
+    for i in range(4):
+        t.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
+
+    anchor = p.with_suffix(p.suffix + ".anchor")
+    lines = p.read_text().splitlines()
+
+    raw = json.loads(anchor.read_text())
+    raw["count"] -= 1
+    raw["head"] = json.loads(lines[-2])["entry_hash"]
+    anchor.write_text(json.dumps(raw, sort_keys=True))
+    assert AuditTrail(path=p).verify_file(), "the real crash window must pass"
+
+    raw["count"] -= 1
+    raw["head"] = json.loads(lines[-3])["entry_hash"]
+    anchor.write_text(json.dumps(raw, sort_keys=True))
+    assert not AuditTrail(path=p).verify_file(), "two behind is not a crash"
+
+
+def test_a_trail_written_before_anchoring_still_verifies(tmp_path):
+    """A file from an older version has no anchor. It must not hard-fail."""
+    p = tmp_path / "audit.jsonl"
+    t = AuditTrail(path=p)
+    for i in range(3):
+        t.record(outcome="executed", tool=f"t{i}", argv=[f"t{i}"])
+    p.with_suffix(p.suffix + ".anchor").unlink()
+    assert AuditTrail(path=p).verify_file()
+
+
+def test_the_anchor_is_owner_only(tmp_path):
+    import stat
+
+    p = tmp_path / "audit.jsonl"
+    AuditTrail(path=p).record(outcome="executed", tool="t", argv=["t"])
+    mode = stat.S_IMODE(p.with_suffix(p.suffix + ".anchor").stat().st_mode)
+    assert mode == 0o600, f"anchor is {oct(mode)}; it names the trail's head"

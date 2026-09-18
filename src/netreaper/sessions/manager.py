@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 from netreaper.core.logging import get_logger
@@ -66,7 +67,7 @@ class SessionManager:
             "name": name,
         })
 
-        logger.info(f"Created session: {name} ({session_id})")
+        logger.info("Created session: %s (%s)", name, session_id)
         return session
 
     async def get(self, session_id: str) -> Session | None:
@@ -213,13 +214,13 @@ class SessionManager:
 
         deleted = cursor.rowcount > 0
         if deleted:
-            logger.info(f"Deleted session: {session_id}")
+            logger.info("Deleted session: %s", session_id)
 
         return deleted
 
+    @staticmethod
     async def add_target(
-        self,
-        session_id: str,
+                session_id: str,
         target_type: str,
         value: str,
         metadata: dict[str, Any] | None = None,
@@ -241,12 +242,12 @@ class SessionManager:
             )
             return cursor.lastrowid
         except Exception as e:
-            logger.warning(f"Failed to add target: {e}")
+            logger.warning("Failed to add target: %s", e)
             return None
 
+    @staticmethod
     async def log_tool_execution(
-        self,
-        session_id: str,
+                session_id: str,
         tool_name: str,
         command: str,
         status: str = "running",
@@ -268,12 +269,12 @@ class SessionManager:
             )
             return cursor.lastrowid
         except Exception as e:
-            logger.warning(f"Failed to log tool execution: {e}")
+            logger.warning("Failed to log tool execution: %s", e)
             return None
 
+    @staticmethod
     async def update_tool_execution(
-        self,
-        execution_id: int,
+                execution_id: int,
         status: str,
         exit_code: int | None = None,
         summary: str | None = None,
@@ -290,7 +291,8 @@ class SessionManager:
             (status, exit_code, summary, execution_id),
         )
 
-    async def _get_summary(self, session_id: str) -> SessionSummary:
+    @staticmethod
+    async def _get_summary(session_id: str) -> SessionSummary:
         """Get summary statistics for a session."""
         db = await get_db()
 
@@ -343,12 +345,12 @@ class SessionManager:
 
 
 # Singleton instance
-_session_manager: SessionManager | None = None
-
-
+@lru_cache(maxsize=1)
 def get_session_manager() -> SessionManager:
-    """Get session manager instance."""
-    global _session_manager
-    if _session_manager is None:
-        _session_manager = SessionManager()
-    return _session_manager
+    """Get session manager instance.
+
+    See get_system_info in detection/distro.py: same lazy singleton, same
+    reason for lru_cache over a module-level `global`, and cache_clear() is a
+    seam rather than a private name to rebind.
+    """
+    return SessionManager()
