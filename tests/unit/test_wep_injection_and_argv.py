@@ -143,11 +143,17 @@ def test_the_mode_is_validated_before_any_capture_is_arranged():
 
 
 def test_the_cli_offers_every_strategy():
+    # Against the ANSI-stripped text, not the raw output. Rich styles the help
+    # table and puts escape codes inside the token, so `"--injection" in out` is
+    # true with colour off and false with colour on. CI has colour on. This
+    # assertion was red on every CI run from the day it was written while
+    # passing locally every time.
+    from tests.conftest import plain
     from typer.testing import CliRunner
 
     from netreaper.cli import app
 
-    out = CliRunner().invoke(app, ["wifi", "wep", "--help"]).output
+    out = plain(CliRunner().invoke(app, ["wifi", "wep", "--help"]).output)
     assert "--injection" in out
     for mode in INJECTION_MODES:
         assert mode in out, mode

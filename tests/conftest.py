@@ -2,7 +2,42 @@
 """Shared pytest fixtures."""
 from __future__ import annotations
 
+import os
+import re
+
 import pytest
+
+# ── make the local suite render the way CI renders ───────────────────────────
+#
+# Eleven consecutive CI runs were red while the suite passed locally every time,
+# and the whole difference was colour. GitHub Actions is detected by Rich, which
+# turns styling ON; pytest capturing output locally turns it OFF. Rich then
+# emits style codes INSIDE a token, so `"--injection" in result.output` is true
+# locally and false in CI, for output that reads identically to a human.
+#
+# Forcing colour on here makes the local run the harsher one. A test that only
+# passes without styling now fails on the machine of whoever wrote it, rather
+# than on a CI page nobody opened.
+os.environ.setdefault("FORCE_COLOR", "1")
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def plain(text: str) -> str:
+    """Rendered CLI output with the styling removed.
+
+    Assert against this, never against the raw output. The raw bytes of
+    `--injection` are not contiguous once Rich has styled them, so a substring
+    check on them tests the renderer's internals rather than the CLI's
+    behaviour.
+    """
+    return _ANSI.sub("", text)
+
+
+@pytest.fixture
+def strip_ansi():
+    """The same helper, for tests that prefer a fixture."""
+    return plain
 
 
 @pytest.fixture
