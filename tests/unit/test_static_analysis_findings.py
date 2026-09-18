@@ -1199,18 +1199,52 @@ def test_nmap_does_not_import_a_name_defusedxml_does_not_have():
 
         from defusedxml.ElementTree import parse, Element
 
-    defusedxml.ElementTree has no `Element`. That import fails at module load,
-    which takes the whole nmap wrapper with it.
+    defusedxml.ElementTree has no `Element`.
+
+    THIS GUARD WAS TOO WEAK AND THE BOT PROVED IT. On 2026-09-18
+    deepsource-autofix[bot] pushed that patch to the branch as b03febf. It
+    inserted a `\"\"\"` in the middle of _parse_scan_xml's docstring, which
+    closed the docstring early, left a duplicate DOCTYPE check and a
+    `return parse(path)` as dead code above the real body, and made the rest of
+    the docstring an unterminated string literal. The file stopped parsing and
+    CI went red on collection.
+
+    This test PASSED on that file. It looked only at the text after the FIRST
+    `from defusedxml.ElementTree import`, and the bot had added two such lines
+    with `parse` on the first one. It also never checked that the module parses
+    at all, which is the thing that actually broke.
+
+    Both are fixed below: every occurrence is checked, and the file has to
+    compile.
     """
     import defusedxml.ElementTree as safe_et
 
     assert not hasattr(safe_et, "Element"), (
         "defusedxml.ElementTree has gained an Element; this test can be removed"
     )
-    src = (SRC / "tools" / "nmap.py").read_text(encoding="utf-8")
-    assert "from defusedxml.ElementTree import" not in src or "Element" not in src.split(
-        "from defusedxml.ElementTree import"
-    )[1].split("\n")[0], "nmap.py imports Element from defusedxml.ElementTree, which has none"
+
+    path = SRC / "tools" / "nmap.py"
+    src = path.read_text(encoding="utf-8")
+
+    # The thing that actually broke: the file has to compile.
+    try:
+        ast.parse(src)
+    except SyntaxError as e:  # pragma: no cover - the failure this guards
+        raise AssertionError(f"{path.name} does not parse: {e}") from e
+
+    # Every import from defusedxml.ElementTree, not just the first.
+    imported: set[str] = set()
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.ImportFrom) and node.module == "defusedxml.ElementTree":
+            imported.update(a.name for a in node.names)
+    missing = sorted(n for n in imported if not hasattr(safe_et, n))
+    assert not missing, (
+        f"{path.name} imports {missing} from defusedxml.ElementTree, which has "
+        f"no such name; that is an ImportError at module load"
+    )
+
+    # And the stdlib parser must not come back.
+    assert "defusedxml" in src, "the defusedxml parser is gone from nmap.py"
 
 
 def test_every_exporter_format_name_is_readable():
@@ -1273,3 +1307,28 @@ def test_the_two_converted_singletons_are_still_singletons():
 
     get_system_info.cache_clear()
     assert get_system_info() is not None
+
+
+def test_every_python_file_in_the_repository_compiles():
+    """The broadest form of what broke on 2026-09-18.
+
+    deepsource-autofix[bot] pushed a patch that put a `\"\"\"` in the middle of a
+    docstring. The file stopped parsing, pytest failed at collection, and CI
+    went red in 22 seconds. Nothing in the suite was checking the simplest
+    property there is.
+
+    Collection already covers test modules and any src module a test imports.
+    This covers the rest: a module nothing imports yet can still be broken by a
+    bot, a bad merge or a conflict marker, and the failure should name the file
+    rather than surface as a mystery collection error.
+    """
+    broken = []
+    for root in (SRC, SRC.parents[1] / "tests"):
+        for path in sorted(root.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            try:
+                ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except SyntaxError as e:
+                broken.append(f"{path.relative_to(root.parent)}:{e.lineno}: {e.msg}")
+    assert not broken, "file(s) that do not parse:\n  " + "\n  ".join(broken)
