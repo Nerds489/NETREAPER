@@ -91,8 +91,10 @@ class ReaverTool(BaseToolWrapper):
 
         # Pixie Dust attack (faster, uses implementation flaw)
         if options.get("pixiedust"):
+            # -K is declared no_argument in reaver-wps-fork-t6x; there is no
+            # "mode 1". The stray "1" was an unused positional that reaver
+            # happens to ignore, so this was wrong rather than fatal.
             cmd.append("-K")
-            cmd.append("1")  # Pixie Dust mode 1
 
         # Delay between attempts
         delay = options.get("delay", self.reaver_config.delay)

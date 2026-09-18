@@ -209,3 +209,104 @@ def test_every_manifest_set_has_a_registrar():
         "manifest set(s) declared but never registered, so the planner cannot "
         "reach them:\n  " + "\n  ".join(unregistered)
     )
+
+
+# ── guard 3: imports of modules that do not exist ───────────────────────────
+#
+# Guard 1 asserts every module in the package imports. It cannot see an import
+# of a module that was never written, because such a module is not walked and
+# the import sits inside a function where it costs nothing until a user reaches
+# it. Fourteen of them were found by resolving every `netreaper.*` import in the
+# tree against importlib: six distinct modules, all referenced, none existing.
+# netreaper.tui.app was a fifteenth, and it was the entry point for the whole
+# TUI, so the operator hit it by running `netreaper` with no arguments.
+#
+# This is a debt register, not a dumping ground: an entry that has become real
+# must be deleted, and a new dangling import fails until it is listed with a
+# reason or the module is written.
+KNOWN_DANGLING: dict[str, str] = {
+    "netreaper.tui.modals.preflight_modal": (
+        "the preflight UI (9 sites in helpers/preflight_runner.py). Part of the "
+        "TUI rebuild, #31; run_with_preflight degrades with a message instead"
+    ),
+    "netreaper.automation.preflight": (
+        "PreflightChecker. Dangling from the v11 Bash-to-Python rebuild; "
+        "designing it belongs with the TUI rebuild, #31"
+    ),
+    "netreaper.automation.handlers.privilege": (
+        "privilege escalation handler for the preflight flow; same family, #31"
+    ),
+    "netreaper.automation.handlers.install": (
+        "tool install handler for the preflight flow; same family, #31"
+    ),
+    "netreaper.tools.hashcat": (
+        "hashcat wrapper for the credentials screen. John is wired and works; "
+        "the screen now says so rather than raising ImportError at the operator"
+    ),
+    "netreaper.tools.nuclei": (
+        "nuclei wrapper for the exploit screen; the screen now explains itself"
+    ),
+}
+
+
+def _dangling_imports() -> dict[str, list[str]]:
+    """Every `netreaper.*` import in the tree that does not resolve."""
+    import importlib.util
+
+    found: dict[str, list[str]] = {}
+    for path in SRC.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module.startswith("netreaper"):
+                    names = [node.module]
+            elif isinstance(node, ast.Import):
+                names = [a.name for a in node.names if a.name.startswith("netreaper")]
+            for name in names:
+                try:
+                    if importlib.util.find_spec(name) is not None:
+                        continue
+                except (ImportError, AttributeError, ValueError):
+                    pass
+                found.setdefault(name, []).append(
+                    f"{path.relative_to(SRC)}:{node.lineno}"
+                )
+    return found
+
+
+def test_no_import_points_at_a_module_that_was_never_written():
+    dangling = _dangling_imports()
+    undeclared = {k: v for k, v in dangling.items() if k not in KNOWN_DANGLING}
+    assert not undeclared, (
+        "import(s) of module(s) that do not exist. Write the module, or add it "
+        "to KNOWN_DANGLING with a reason:\n  "
+        + "\n  ".join(f"{k} <- {', '.join(v)}" for k, v in sorted(undeclared.items()))
+    )
+
+
+def test_the_dangling_register_has_no_stale_entries():
+    """A module that now exists must be dropped from the register."""
+    import importlib.util
+
+    stale = []
+    for name in KNOWN_DANGLING:
+        try:
+            if importlib.util.find_spec(name) is not None:
+                stale.append(f"{name}: exists now, drop it from KNOWN_DANGLING")
+        except (ImportError, AttributeError, ValueError):
+            continue
+    assert not stale, "stale KNOWN_DANGLING entries:\n  " + "\n  ".join(stale)
+
+
+def test_every_dangling_entry_gives_a_reason():
+    for name, reason in KNOWN_DANGLING.items():
+        assert len(reason) > 30, f"{name} needs a real reason, got {reason!r}"
+
+
+def test_the_dangling_scan_is_not_vacuous():
+    """If find_spec resolution broke, every assertion above goes green."""
+    import importlib.util
+
+    assert importlib.util.find_spec("netreaper.cli") is not None
+    assert importlib.util.find_spec("netreaper.definitely_not_a_module") is None

@@ -435,7 +435,19 @@ class CredentialsScreen(Screen):
                 from netreaper.tools.john import JohnTool
                 tool = JohnTool()
             else:
-                from netreaper.tools.hashcat import HashcatTool
+                # netreaper.tools.hashcat does not exist. The import is inside
+                # this function, so the screen opens fine and the failure lands
+                # on the operator mid-task as a bare ImportError. Say what is
+                # actually wrong and name the one that does work.
+                try:
+                    from netreaper.tools.hashcat import HashcatTool
+                except ImportError:
+                    self._write_output(
+                        "[red]The hashcat wrapper is not implemented "
+                        "(netreaper.tools.hashcat does not exist). Choose John, "
+                        "or run hashcat directly.[/]"
+                    )
+                    return
                 tool = HashcatTool()
 
             await tool.initialize()

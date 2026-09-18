@@ -108,7 +108,12 @@ class ChannelHopper:
             # Through the gated seam: retuning our own adapter is a host action
             # with no network target, but it is still audited and torn down there.
             result = await run_host(
-                ["iw", self.interface, "set", "channel", str(channel)],
+                # `iw dev <iface> set channel N`. Without `dev`, iw tries to
+                # parse the interface name as a top-level command group and
+                # errors out, so the channel never changed. This was the only
+                # one of eight iw call sites in the tree missing it, and
+                # wireless/advanced.py does the identical operation correctly.
+                ["iw", "dev", self.interface, "set", "channel", str(channel)],
                 destructive=True,
             )
 
