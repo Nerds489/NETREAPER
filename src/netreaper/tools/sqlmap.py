@@ -229,11 +229,6 @@ class SqlmapTool(BaseToolWrapper):
         for match in self._INJECTION_RE.finditer(output):
             points.append({"parameter": match.group(1), "type": match.group(2)})
         return points
-                                "file": csv_file.name,
-                                "content": content[:5000],  # Limit size
-                            })
-                    except OSError as e:
-                        logger.warning("Could not read sqlmap output file %s: %s", csv_file.name, e)
 
         results: dict[str, Any] = {}
         # Check for various success indicators
