@@ -146,6 +146,7 @@ class APIKeyManager:
             self._keyring_available = not isinstance(backend, fail.Keyring)
 
             if self._keyring_available:
+                logger.debug("Using keyring backend: %s", backend.name)
                 logger.debug('Using keyring backend: %s', backend.name)
             else:
                 logger.warning("No secure keyring backend available")
@@ -225,6 +226,7 @@ class APIKeyManager:
                 import keyring
 
                 keyring.set_password(KEYRING_SERVICE, key_name, key)
+                logger.info("Stored API key for %s in keyring", service.value)
                 logger.info('Stored API key for %s in keyring', service.value)
                 return True
             except Exception as e:
@@ -232,6 +234,7 @@ class APIKeyManager:
 
         # Fallback to in-memory cache (not persistent)
         self._fallback_cache[key_name] = key
+        logger.warning("Stored API key for %s in memory (not persistent)", service.value)
         logger.warning('Stored API key for %s in memory (not persistent)', service.value)
         return True
 
@@ -252,6 +255,7 @@ class APIKeyManager:
                 import keyring
 
                 keyring.set_password(KEYRING_SERVICE, key_name, secret)
+                logger.info("Stored API secret for %s in keyring", service.value)
                 logger.info('Stored API secret for %s in keyring', service.value)
                 return True
             except Exception as e:
@@ -287,7 +291,7 @@ class APIKeyManager:
                 import keyring
 
                 keyring.delete_password(KEYRING_SERVICE, key_name)
-                logger.info('Deleted API key for %s', service.value)
+                logger.info("Deleted API key for %s", service.value)
             except Exception as e:
                 # keyring raises PasswordDeleteError both for "no such entry"
                 # and for a backend that would not cooperate. Only the first is

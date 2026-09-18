@@ -37,11 +37,13 @@ class PluginLifecycleManager:
         plugin_id = id(plugin)
         old_state = self._states.get(plugin_id, PluginState.UNINITIALIZED)
         self._states[plugin_id] = state
+        logger.debug("Plugin %s state: %s -> %s", plugin.name, old_state.value, state.value)
         logger.debug('Plugin %s state: %s -> %s', plugin.name, old_state.value, state.value)
 
     async def initialize_plugin(self, plugin: BasePlugin) -> bool:
         """Initialize a plugin with state management."""
         if self.get_state(plugin) != PluginState.UNINITIALIZED:
+            logger.warning("Plugin %s already initialized", plugin.name)
             logger.warning('Plugin %s already initialized', plugin.name)
             return True
 

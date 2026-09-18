@@ -59,6 +59,7 @@ class CleanupRegistry:
 
     async def cleanup(self) -> None:
         """Execute all registered cleanup handlers."""
+        logger.info("Running %s cleanup handlers...", len(self._handlers))
         logger.info('Running %s cleanup handlers...', len(self._handlers))
 
         for _priority, handler in self._handlers:

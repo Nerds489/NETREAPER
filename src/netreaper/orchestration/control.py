@@ -125,6 +125,7 @@ class ExecutionController:
             async with self._lock:
                 processes_to_stop = list(self._processes.values())
 
+            logger.info("Stopping %s processes", len(processes_to_stop))
             logger.info('Stopping %s processes', len(processes_to_stop))
 
             for running in processes_to_stop:
@@ -147,6 +148,7 @@ class ExecutionController:
                 },
             )
 
+            logger.info("Stop all completed: %s cancelled, %s failed", results['cancelled'], results['failed'])
             logger.info('Stop all completed: %s cancelled, %s failed', results['cancelled'], results['failed'])
 
         finally:
@@ -179,7 +181,7 @@ class ExecutionController:
 
             try:
                 await asyncio.wait_for(process.wait(), timeout=timeout)
-                logger.debug('Process %s terminated gracefully', running.process_id)
+                logger.debug("Process %s terminated gracefully", running.process_id)
             except asyncio.TimeoutError:
                 # Force kill if timeout
                 logger.warning('Process %s did not terminate, killing', running.process_id)
@@ -201,9 +203,9 @@ class ExecutionController:
             return True
 
         except Exception as e:
+            logger.error("Failed to terminate process %s: %s", running.process_id, e)
             logger.error('Failed to terminate process %s: %s', running.process_id, e)
             return False
-
     async def _on_stop_all(self, data: dict) -> None:
         """Handle stop all event from event bus."""
         await self.stop_all()

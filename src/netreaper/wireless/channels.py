@@ -90,6 +90,7 @@ class ChannelHopper:
 
         self._running = True
         self._task = asyncio.create_task(self._hop_loop())
+        logger.info("Channel hopping started on %s", self.interface)
         logger.info('Channel hopping started on %s', self.interface)
 
     async def stop(self) -> None:

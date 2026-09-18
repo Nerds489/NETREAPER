@@ -1087,6 +1087,7 @@ class ToolRegistry:
         # Try package manager first
         cmd = self.get_install_command(tool_name)
         if cmd:
+            logger.info("Installing %s via package manager: %s", tool_name, ' '.join(cmd))
             logger.info('Installing %s via package manager: %s', tool_name, ' '.join(cmd))
             success, msg = await self._run_install_cmd(cmd, tool_name, callback)
             if success:
@@ -1098,6 +1099,7 @@ class ToolRegistry:
         if defn and defn.pip_package:
             pip_cmd = await self._get_pip_install_command(defn.pip_package)
             if pip_cmd:
+                logger.info("Installing %s via pip: %s", tool_name, ' '.join(pip_cmd))
                 logger.info('Installing %s via pip: %s', tool_name, ' '.join(pip_cmd))
                 success, msg = await self._run_install_cmd(pip_cmd, tool_name, callback)
                 if success:
