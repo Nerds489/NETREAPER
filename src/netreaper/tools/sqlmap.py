@@ -230,32 +230,6 @@ class SqlmapTool(BaseToolWrapper):
         for match in self._INJECTION_RE.finditer(output):
             points.append({"parameter": match.group(1), "type": match.group(2)})
         return points
-            results["vulnerable"] = True
-
-        # Parse DBMS info
-        dbms_match = re.search(r"back-end DBMS:\s+(.+)", output)
-        if dbms_match:
-            results["dbms"] = dbms_match.group(1).strip()
-
-        # Parse OS info
-        os_match = re.search(r"operating system:\s+(.+)", output)
-        if os_match:
-            results["os"] = os_match.group(1).strip()
-
-        # Parse web server
-        server_match = re.search(r"web server operating system:\s+(.+)", output)
-        if server_match:
-            results["web_server"] = server_match.group(1).strip()
-
-        # Parse databases
-        db_section = re.search(r"available databases.*?:\s*\n((?:\[\*\].+\n)+)", output)
-        if db_section:
-            for line in db_section.group(1).splitlines():
-                db_match = re.search(r"\[\*\]\s+(.+)", line)
-                if db_match:
-                    results["databases"].append(db_match.group(1).strip())
-
-        # Parse tables
         table_pattern = re.compile(r"\|\s+(\S+)\s+\|")
         in_table_section = False
         for line in output.splitlines():

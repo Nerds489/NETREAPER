@@ -184,10 +184,6 @@ class ExecutionController:
                 logger.debug("Process %s terminated gracefully", running.process_id)
             except asyncio.TimeoutError:
                 # Force kill if timeout
-                logger.warning("Process %s did not terminate, killing", running.process_id)
-                logger.debug('Process %s terminated gracefully', running.process_id)
-            except asyncio.TimeoutError:
-                # Force kill if timeout
                 logger.warning('Process %s did not terminate, killing', running.process_id)
                 process.kill()
                 await process.wait()
