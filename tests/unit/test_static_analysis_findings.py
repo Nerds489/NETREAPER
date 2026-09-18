@@ -1186,3 +1186,41 @@ def test_nmap_does_not_import_a_name_defusedxml_does_not_have():
     assert "from defusedxml.ElementTree import" not in src or "Element" not in src.split(
         "from defusedxml.ElementTree import"
     )[1].split("\n")[0], "nmap.py imports Element from defusedxml.ElementTree, which has none"
+
+
+def test_every_exporter_format_name_is_readable():
+    """A third refused autofix: @property stacked on @staticmethod.
+
+    Proposed for PYL-R0201 on exporters.py, where format_name is a property
+    whose body never reads self:
+
+        @property
+        @staticmethod
+        def format_name() -> str:
+
+    property calls its getter with the instance, and a staticmethod getter
+    accepts nothing, so reading the attribute raises TypeError. Every exporter
+    is looked up by format_name, so that is every export path.
+    """
+    from netreaper.export import exporters as ex
+
+    checked = 0
+    for name in dir(ex):
+        cls = getattr(ex, name)
+        if not isinstance(cls, type) or not hasattr(cls, "format_name"):
+            continue
+        if getattr(cls, "__abstractmethods__", None):
+            continue  # the ABC itself
+        try:
+            instance = object.__new__(cls)
+            value = instance.format_name
+        except TypeError as e:  # pragma: no cover - the failure this guards
+            raise AssertionError(
+                f"{name}.format_name is not readable on an instance ({e}). A "
+                f"@staticmethod under @property is the usual cause."
+            ) from e
+        except Exception:  # noqa: BLE001 - only the TypeError shape matters here
+            continue
+        assert isinstance(value, str) and value, f"{name}.format_name is {value!r}"
+        checked += 1
+    assert checked >= 2, f"only checked {checked} exporters; the scan is broken"
