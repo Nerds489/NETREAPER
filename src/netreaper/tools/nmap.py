@@ -5,8 +5,10 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from defusedxml.ElementTree import parse
+
 if TYPE_CHECKING:  # the annotation below needs the name; nothing here parses with it
-    from xml.etree.ElementTree import Element
+    from defusedxml.ElementTree import Element
 
 from pydantic import BaseModel
 
@@ -32,6 +34,13 @@ def _parse_scan_xml(path: Path) -> "Element":
     through a parser handler, because XMLParser exposes its underlying expat
     parser under different names across Python versions and a handler that
     silently fails to attach is worse than no defence at all.
+    """
+    # Check for DOCTYPE before parsing to defend against billion laughs
+    data = path.read_bytes()
+    if _DOCTYPE_RE.search(data):
+        raise ValueError("DTD detected in XML, refusing to parse")
+    # Use defusedxml.parse for safe XML parsing
+    return parse(path)
 
     ``xml.etree.ElementTree`` is not imported at runtime at all. The return
     annotation needs the ``Element`` name, so it is imported under
