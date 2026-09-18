@@ -61,7 +61,7 @@ class CleanupRegistry:
         """Execute all registered cleanup handlers."""
         logger.info('Running %s cleanup handlers...', len(self._handlers))
 
-        for priority, handler in self._handlers:
+        for _priority, handler in self._handlers:
             try:
                 result = handler()
                 if asyncio.iscoroutine(result):

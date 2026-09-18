@@ -63,9 +63,10 @@ class PluginLifecycleManager:
         """Execute a plugin with state management."""
         current_state = self.get_state(plugin)
 
-        if current_state == PluginState.UNINITIALIZED:
-            if not await self.initialize_plugin(plugin):
-                raise RuntimeError(f"Plugin {plugin.name} failed to initialize")
+        if current_state == PluginState.UNINITIALIZED and not await self.initialize_plugin(
+            plugin
+        ):
+            raise RuntimeError(f"Plugin {plugin.name} failed to initialize")
 
         if current_state == PluginState.ERROR:
             raise RuntimeError(f"Plugin {plugin.name} is in error state")

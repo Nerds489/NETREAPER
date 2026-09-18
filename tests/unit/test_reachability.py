@@ -138,9 +138,12 @@ def _importers_of(rel: str) -> set[str]:
         if other.name == "__init__.py":
             continue  # a re-export is not a consumer
         for node in ast.walk(ast.parse(other.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module:
-                if node.module == f"netreaper.{mod}" or node.module.endswith(f".{mod}"):
-                    found.add(other.relative_to(SRC).as_posix())
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and (node.module == f"netreaper.{mod}" or node.module.endswith(f".{mod}"))
+            ):
+                found.add(other.relative_to(SRC).as_posix())
     return found
 
 

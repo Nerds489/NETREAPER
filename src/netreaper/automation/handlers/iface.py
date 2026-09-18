@@ -87,9 +87,12 @@ class AutoIfaceHandler:
                 interface_type = "wired"
 
             # Filter by type
-            if iface_type != "all" and interface_type != iface_type:
-                if not (iface_type == "wireless" and interface_type == "monitor"):
-                    continue
+            # A monitor interface still counts as wireless, which is the only
+            # reason this is not a plain equality test.
+            if iface_type not in ("all", interface_type) and not (
+                iface_type == "wireless" and interface_type == "monitor"
+            ):
+                continue
 
             # Get additional info
             driver = await self._get_driver(iface_path)

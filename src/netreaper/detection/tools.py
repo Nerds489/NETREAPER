@@ -167,6 +167,7 @@ class ToolInfo:
         try:
             result = subprocess.run(
                 [path, version_flag],
+                check=False,  # a tool that exits non-zero on --version is still installed
                 capture_output=True,
                 text=True,
                 timeout=5,

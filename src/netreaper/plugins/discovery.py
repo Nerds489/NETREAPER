@@ -29,7 +29,7 @@ class PluginDiscovery:
 
     def discover_all(self) -> dict[str, dict[str, Type[BasePlugin]]]:
         """Discover all plugins from all groups."""
-        for plugin_type, group in PLUGIN_GROUPS.items():
+        for group in PLUGIN_GROUPS.values():
             self._discovered[group] = self._discover_group(group)
 
         total = sum(len(plugins) for plugins in self._discovered.values())

@@ -31,9 +31,6 @@ class AutoCleanupHandler:
     # Class-level cleanup stack shared across instances
     _cleanup_stack: list[CleanupAction] = []
 
-    def __init__(self) -> None:
-        pass
-
     async def can_fix(self) -> bool:
         """Check if there are cleanup actions to perform."""
         return len(self._cleanup_stack) > 0

@@ -118,14 +118,22 @@ class NmapTool(BaseToolWrapper):
             cmd.extend(["-p", ports])
 
         # Service detection
-        if options.get("service_detection", self.nmap_config.service_detection):
-            if "-sV" not in cmd and "-A" not in cmd:
-                cmd.append("-sV")
+        # The -A check matters: the "full" scan-type preset already sets it, so
+        # adding -sV on top would be redundant. Collapsed, not reordered.
+        if (
+            options.get("service_detection", self.nmap_config.service_detection)
+            and "-sV" not in cmd
+            and "-A" not in cmd
+        ):
+            cmd.append("-sV")
 
         # OS detection (requires root)
-        if options.get("os_detection", self.nmap_config.os_detection):
-            if "-O" not in cmd and "-A" not in cmd:
-                cmd.append("-O")
+        if (
+            options.get("os_detection", self.nmap_config.os_detection)
+            and "-O" not in cmd
+            and "-A" not in cmd
+        ):
+            cmd.append("-O")
 
         # Script scanning
         scripts = options.get("scripts", self.nmap_config.scripts)
@@ -133,9 +141,8 @@ class NmapTool(BaseToolWrapper):
             cmd.extend(["--script", ",".join(scripts)])
 
         # Skip host discovery (-Pn)
-        if options.get("skip_discovery", False):
-            if "-Pn" not in cmd:
-                cmd.append("-Pn")
+        if options.get("skip_discovery", False) and "-Pn" not in cmd:
+            cmd.append("-Pn")
 
         # Extra arguments from UI
 

@@ -115,6 +115,69 @@ def test_the_denial_reraise_still_precedes_a_broad_handler(rel):
     raise AssertionError(f"{rel}: no TargetValidationError handler found")
 
 
+def test_the_tool_wrapper_handler_stays_narrow():
+    """base.py had a `except TargetValidationError: raise` that was dead.
+
+    DeepSource rated it CRITICAL, and it was right about that ONE site: the
+    following handler is `(SubprocessError, ToolNotFoundError)`, and
+    TargetValidationError subclasses neither, so a denial propagated on its own.
+    The re-raise is gone; this is what replaces it. If that handler ever widens
+    to `except Exception`, the denial starts getting swallowed and the re-raise
+    has to come back.
+    """
+    tree = ast.parse((SRC / "tools" / "base.py").read_text(encoding="utf-8"))
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.AsyncFunctionDef) or fn.name != "execute":
+            continue
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Try):
+                continue
+            for h in node.handlers:
+                caught = ast.unparse(h.type) if h.type else "<bare>"
+                assert "Exception" not in caught, (
+                    f"tools/base.py execute() now catches {caught}, which will "
+                    f"swallow a scope-gate denial. Restore the "
+                    f"`except TargetValidationError: raise` above it."
+                )
+        return
+    raise AssertionError("BaseToolWrapper.execute not found")
+
+
+def test_the_denial_really_does_propagate_out_of_the_tool_wrapper():
+    """The behaviour the structural test above protects."""
+    import asyncio as _aio
+
+    from netreaper.tools.base import BaseToolWrapper
+
+    class _Denying(BaseToolWrapper):
+        TOOL_BINARY = "bash"
+
+        def build_command(self, target, options):
+            return ["-c", "true"]
+
+        def parse_output(self, output):
+            return {}
+
+    tool = _Denying()
+
+    async def _denied(*a, **k):
+        raise TargetValidationError("denied by the scope gate")
+
+    import netreaper.tools.base as base_mod
+
+    original = base_mod.get_process_runner
+
+    class _Runner:
+        run = staticmethod(_denied)
+
+    base_mod.get_process_runner = lambda: _Runner()
+    try:
+        with pytest.raises(TargetValidationError):
+            _aio.run(tool.execute("10.0.0.1", {}))
+    finally:
+        base_mod.get_process_runner = original
+
+
 # ── #66/#68: the crash under the style finding ───────────────────────────────
 
 
@@ -254,6 +317,7 @@ def test_no_unused_imports_in_the_package():
         pytest.skip("ruff not available in this environment")
     result = subprocess.run(
         [str(ruff), "check", str(SRC), "--select", "F401", "--output-format", "concise"],
+        check=False,  # ruff exits 1 when it finds something; that IS the result
         capture_output=True,
         text=True,
     )
@@ -393,3 +457,143 @@ def test_the_dangling_imports_are_not_hoisted_above_a_fast_path():
         "try/except ImportError and degrade, or load at the point of use:\n  "
         + "\n  ".join(offenders)
     )
+
+
+# ── the two "unused variable" findings that were not about unused variables ───
+#
+# DeepSource reported PYL-W0612 at settings.py:171 and exploit.py:494 as dead
+# assignments. Both are, but that is the symptom. One of them is a crash and the
+# other is a feature that does nothing, and deleting the line is only the right
+# fix for one of them.
+
+
+class _RemovableWidget:
+    """A widget that leaves the tree when removed, which is the whole point."""
+
+    def __init__(self, wid: str, tree: dict) -> None:
+        self.id = wid
+        self._tree = tree
+
+    def update(self, *_a, **_k) -> None:
+        pass
+
+    def mount(self, *_a, **_k) -> None:
+        pass
+
+    def query(self, _selector: str = "*") -> list:
+        return [w for w in self._tree.values() if w is not self]
+
+    def remove(self) -> None:
+        self._tree.pop(self.id, None)
+
+
+class _FakeScreenTree:
+    """``query_one`` over a dict of widgets, raising NoMatches like Textual."""
+
+    def __init__(self, ids: tuple[str, ...]) -> None:
+        self.widgets: dict[str, _RemovableWidget] = {}
+        for wid in ids:
+            self.widgets[wid] = _RemovableWidget(wid, self.widgets)
+
+    def query_one(self, selector: str, _type=None):
+        from textual.css.query import NoMatches
+
+        wid = selector.lstrip("#")
+        if wid not in self.widgets:
+            raise NoMatches(selector)
+        return self.widgets[wid]
+
+
+def test_selecting_a_settings_category_twice_does_not_raise():
+    """settings.py:171. Not an unused variable: NoMatches on the second click.
+
+    ``compose()`` yields ``#panel-content`` INSIDE ``#settings-panel``, and
+    ``_show_category`` clears that container of everything except
+    ``#panel-title``. The first selection therefore deleted ``#panel-content``,
+    and the second selection looked it up again. Textual's ``query_one`` raises
+    on a miss, so the method blew up on a widget it had itself removed, and the
+    Settings screen was single-use. Nothing read the result either way.
+    """
+    from netreaper.tui.screens.settings import SettingsScreen
+
+    tree = _FakeScreenTree(("settings-panel", "panel-title", "panel-content"))
+    screen = object.__new__(SettingsScreen)
+    screen.query_one = tree.query_one
+    screen._current_category = None
+    # The composers build real Textual widgets; the defect is upstream of the
+    # dispatch, so they are stubbed out to keep this hermetic.
+    for name in dir(SettingsScreen):
+        if name.startswith("_compose_"):
+            setattr(screen, name, lambda _panel: None)
+
+    screen._show_category("General")
+    assert "panel-content" not in tree.widgets, (
+        "the clear-out no longer removes #panel-content, so this test has "
+        "stopped reproducing the condition it exists to guard"
+    )
+    screen._show_category("General")  # second click: used to raise NoMatches
+
+
+def test_lfi_payloads_are_offered_as_urls_against_the_target():
+    """exploit.py:494. The URL was built for the operator and then dropped.
+
+    The screen says "test manually" and handed over six bare traversal strings
+    with no target attached, while the resolved URL sat in a local that nothing
+    read. The details column said the literal word "test" on every row.
+    """
+    from netreaper.tui.screens.exploit import ExploitScreen
+
+    target = "http://10.0.0.1/page.php?f="
+    rows: list[tuple[str, str, str]] = []
+    offered: list[str] = []
+
+    screen = object.__new__(ExploitScreen)
+    screen._preflight = None
+    screen._get_target = lambda: target
+    screen._write_output = lambda _m, level="info": None
+    screen._add_result = lambda t, e, d="": rows.append((t, e, d))
+    screen._set_payload_text = lambda text: offered.append(text)
+
+    asyncio.run(screen.action_lfi_test())
+
+    assert offered, "no payloads were offered at all"
+    lines = [ln for ln in offered[0].splitlines() if ln.strip()]
+    assert len(lines) >= 5, lines
+    assert all(ln.startswith(target) for ln in lines), (
+        "the payload area still offers bare payloads with no target:\n  "
+        + "\n  ".join(lines)
+    )
+    assert rows, "nothing was added to the results table"
+    assert all(detail.startswith(target) for _t, _p, detail in rows), (
+        "the details column is not the URL to test:\n  " + repr(rows)
+    )
+
+
+def test_no_local_is_assigned_and_then_never_read():
+    """The class, not the three instances. Checked through ruff (F841).
+
+    Two of the three findings under this rule were real defects rather than
+    tidiness, so the rule earns a standing guard rather than three pinned
+    exceptions.
+    """
+    import subprocess
+
+    ruff = SRC.parents[1] / ".venv" / "bin" / "ruff"
+    if not ruff.exists():
+        pytest.skip("ruff not available in this environment")
+    result = subprocess.run(
+        [
+            str(ruff),
+            "check",
+            str(SRC),
+            "--select",
+            "F841",
+            "--output-format",
+            "concise",
+        ],
+        check=False,  # ruff exits 1 when it finds something; that IS the result
+        capture_output=True,
+        text=True,
+    )
+    hits = [ln for ln in result.stdout.splitlines() if "F841" in ln]
+    assert not hits, "assigned and never read:\n  " + "\n  ".join(hits)

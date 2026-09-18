@@ -177,7 +177,7 @@ class NetreaperApp(App):
                 severity="error",
             )
 
-    def action_back(self) -> None:
+    async def action_back(self) -> None:
         # Never pop the last screen: that leaves a black terminal with no way
         # out but the quit binding, which is worse than doing nothing.
         if len(self.screen_stack) > 2:

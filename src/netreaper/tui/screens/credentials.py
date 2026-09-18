@@ -236,27 +236,25 @@ class CredentialsScreen(Screen):
             yield Button("Stop", id="btn-stop", variant="error", classes="action-button")
 
         # Center/Right: Results panel with tabs
-        with Vertical(id="results-panel"):
-            with TabbedContent(initial="input"):
-                with TabPane("Hash Input", id="input"):
-                    yield Label("Enter hashes or path to hash file:")
-                    yield TextArea(id="hash-input")
-                    yield Label("Or select a file:")
-                    yield Input(placeholder="Path to hash/capture file", id="input-hash-file")
-                    yield Button("Load File", id="btn-load-file")
+        with Vertical(id="results-panel"), TabbedContent(initial="input"):
+            with TabPane("Hash Input", id="input"):
+                yield Label("Enter hashes or path to hash file:")
+                yield TextArea(id="hash-input")
+                yield Label("Or select a file:")
+                yield Input(placeholder="Path to hash/capture file", id="input-hash-file")
+                yield Button("Load File", id="btn-load-file")
 
-                with TabPane("Progress", id="progress"):
-                    with Vertical(id="progress-container"):
-                        yield Label("Status: [dim]Idle[/]", id="label-status")
-                        yield ProgressBar(id="crack-progress", show_eta=True)
-                        yield Label("Speed: [dim]--[/]", id="label-speed")
-                        yield Label("Recovered: [dim]0/0[/]", id="label-recovered")
+            with TabPane("Progress", id="progress"), Vertical(id="progress-container"):
+                yield Label("Status: [dim]Idle[/]", id="label-status")
+                yield ProgressBar(id="crack-progress", show_eta=True)
+                yield Label("Speed: [dim]--[/]", id="label-speed")
+                yield Label("Recovered: [dim]0/0[/]", id="label-recovered")
 
-                with TabPane("Cracked", id="cracked"):
-                    yield DataTable(id="cracked-table")
+            with TabPane("Cracked", id="cracked"):
+                yield DataTable(id="cracked-table")
 
-                with TabPane("Potfile", id="potfile"):
-                    yield Static("Previously cracked passwords from potfile", id="potfile-content")
+            with TabPane("Potfile", id="potfile"):
+                yield Static("Previously cracked passwords from potfile", id="potfile-content")
 
         # Bottom: Output
         with Vertical(id="output-panel"):

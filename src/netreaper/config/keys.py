@@ -417,16 +417,18 @@ class APIKeyManager:
 
             url = info.test_endpoint.format(key=key)
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        return True, "API key is valid"
-                    elif response.status == 401:
-                        return False, "Invalid API key"
-                    elif response.status == 403:
-                        return False, "API key forbidden (may be rate limited)"
-                    else:
-                        return False, f"Unexpected response: {response.status}"
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(url, timeout=10) as response,
+            ):
+                if response.status == 200:
+                    return True, "API key is valid"
+                elif response.status == 401:
+                    return False, "Invalid API key"
+                elif response.status == 403:
+                    return False, "API key forbidden (may be rate limited)"
+                else:
+                    return False, f"Unexpected response: {response.status}"
 
         except ImportError:
             return True, "aiohttp not available for testing (key stored)"

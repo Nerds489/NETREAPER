@@ -588,10 +588,9 @@ class PreflightRunner:
 
         if not req:
             # Unknown tool - just check if it exists
-            if not shutil.which(tool_name):
-                if not await self.ensure_tool(tool_name):
-                    ctx.error = f"Tool {tool_name} not found and could not be installed"
-                    return ctx
+            if not shutil.which(tool_name) and not await self.ensure_tool(tool_name):
+                ctx.error = f"Tool {tool_name} not found and could not be installed"
+                return ctx
             ctx.ready = True
             return ctx
 
@@ -638,10 +637,9 @@ class PreflightRunner:
         ctx.tool = actual_tool
 
         # Step 2: Check root requirement
-        if req.needs_root:
-            if not await self.ensure_root():
-                ctx.error = "Root privileges required"
-                return ctx
+        if req.needs_root and not await self.ensure_root():
+            ctx.error = "Root privileges required"
+            return ctx
 
         # Step 3: Check target requirement
         if req.needs_target:
@@ -694,6 +692,7 @@ class PreflightRunner:
             try:
                 result = subprocess.run(
                     [actual_tool, "-I"],
+                    check=False,  # -I failing means no GPU, not a broken call
                     capture_output=True,
                     text=True,
                     timeout=10,

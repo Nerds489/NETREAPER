@@ -261,19 +261,22 @@ class SqlmapTool(BaseToolWrapper):
                     in_table_section = False
 
         # Parse dumped data
-        if "dumped to" in output.lower() or "entries" in output.lower():
-            # Look for CSV data in output dir
-            if self._output_dir and self._output_dir.exists():
-                for csv_file in self._output_dir.rglob("*.csv"):
-                    try:
-                        with open(csv_file) as f:
-                            content = f.read()
-                            results["data"].append({
-                                "file": csv_file.name,
-                                "content": content[:5000],  # Limit size
-                            })
-                    except OSError as e:
-                        logger.warning('Could not read sqlmap output file %s: %s', csv_file.name, e)
+        # Look for CSV data in the output dir
+        if (
+            ("dumped to" in output.lower() or "entries" in output.lower())
+            and self._output_dir
+            and self._output_dir.exists()
+        ):
+            for csv_file in self._output_dir.rglob("*.csv"):
+                try:
+                    with open(csv_file) as f:
+                        content = f.read()
+                        results["data"].append({
+                            "file": csv_file.name,
+                            "content": content[:5000],  # Limit size
+                        })
+                except OSError as e:
+                    logger.warning('Could not read sqlmap output file %s: %s', csv_file.name, e)
 
         # Check for various success indicators
         success_indicators = [

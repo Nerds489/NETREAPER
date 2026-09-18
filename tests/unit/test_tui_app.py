@@ -120,7 +120,7 @@ async def test_escape_at_the_root_does_not_leave_a_dead_terminal():
     async with app.run_test() as pilot:
         await pilot.pause()
         for _ in range(5):
-            app.action_back()
+            await app.action_back()
             await pilot.pause()
         assert app.screen.__class__.__name__ == "MainMenu"
 

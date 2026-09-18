@@ -168,7 +168,10 @@ class SettingsScreen(Screen):
         self._current_category = category
 
         title = self.query_one("#panel-title", Label)
-        content = self.query_one("#panel-content", Static)
+        # No lookup of `#panel-content` here. It is a child of `#settings-panel`
+        # and the clear-out below removes everything but `#panel-title`, so the
+        # second category selection raised NoMatches on a widget this method had
+        # itself deleted. Nothing used the result either way.
         panel = self.query_one("#settings-panel", ScrollableContainer)
 
         # Find category info

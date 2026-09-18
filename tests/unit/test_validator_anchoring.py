@@ -144,11 +144,14 @@ def _dollar_anchored_matches() -> list[str]:
         # every string constant assigned to a name, so a local pattern resolves
         assigned: dict[str, str] = {}
         for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
-                if isinstance(node.value.value, str):
-                    for t in node.targets:
-                        if isinstance(t, ast.Name):
-                            assigned[t.id] = node.value.value
+            if (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                for t in node.targets:
+                    if isinstance(t, ast.Name):
+                        assigned[t.id] = node.value.value
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
                 fn = node.value.func
                 if getattr(fn, "attr", None) == "compile" and node.value.args:
@@ -164,9 +167,12 @@ def _dollar_anchored_matches() -> list[str]:
             if getattr(node.func, "attr", None) not in ("match", "search"):
                 continue
             pattern = None
-            if node.args and isinstance(node.args[0], ast.Constant):
-                if isinstance(node.args[0].value, str):
-                    pattern = node.args[0].value
+            if (
+                node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                pattern = node.args[0].value
             if pattern is None:
                 base = getattr(node.func, "value", None)
                 vn = getattr(base, "id", None)

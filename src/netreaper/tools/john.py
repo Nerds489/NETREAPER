@@ -191,15 +191,17 @@ class JohnTool(BaseToolWrapper):
             # username:password or hash:password
             if ":" in line and not line.startswith("("):
                 parts = line.strip().split(":")
-                if len(parts) >= 2:
-                    # Check if it looks like a cracked result
-                    # Avoid parsing status lines
-                    if not any(skip in line.lower() for skip in ["loaded", "remaining", "node"]):
-                        result["cracked"].append({
-                            "hash_or_user": parts[0],
-                            "password": ":".join(parts[1:]),
-                        })
-                        continue
+                # A line shaped like a cracked result, that is not a status line.
+                # If it IS a status line this falls through WITHOUT `continue`
+                # and is re-offered to the checks below, which is deliberate.
+                if len(parts) >= 2 and not any(
+                    skip in line.lower() for skip in ["loaded", "remaining", "node"]
+                ):
+                    result["cracked"].append({
+                        "hash_or_user": parts[0],
+                        "password": ":".join(parts[1:]),
+                    })
+                    continue
 
             # Session status
             session_match = re.search(r'Session completed', line)

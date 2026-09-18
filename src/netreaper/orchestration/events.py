@@ -160,10 +160,15 @@ class NetreaperEventBus(AsyncIOEventEmitter):
         """Emit an event asynchronously."""
         self.emit(event, data or {})
 
-    def on(self, event: Events | str, handler: EventHandler) -> None:
-        """Register an event handler."""
+    def on(self, event: Events | str, handler: EventHandler | None = None):
+        """Register an event handler.
+
+        `handler` is optional to match EventEmitter.on, which returns a
+        decorator when called without one. Requiring it here silently broke
+        `@bus.on(Events.X)` usage, which is the base class's documented form.
+        """
         event_name = event.value if isinstance(event, Events) else event
-        super().on(event_name, handler)
+        return super().on(event_name, handler)
 
     def off(self, event: Events | str, handler: EventHandler) -> None:
         """Remove an event handler."""

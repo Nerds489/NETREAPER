@@ -11,7 +11,6 @@ from typing import Any, ClassVar
 
 from netreaper.core.exceptions import (
     SubprocessError,
-    TargetValidationError,
     ToolNotFoundError,
 )
 from netreaper.core.logging import get_logger
@@ -129,9 +128,13 @@ class BaseToolWrapper(ToolPlugin):
                 timeout=options.get("timeout", self.config.timeout),
                 dry_run=options.get("dry_run", False),
             )
-        except TargetValidationError:
-            # never swallow a scope-gate denial
-            raise
+        # No `except TargetValidationError: raise` here, deliberately. The
+        # handler below is narrow and TargetValidationError is not a subclass of
+        # either, so a scope-gate denial propagates on its own and the re-raise
+        # was dead code. test_static_analysis_findings pins that handler narrow;
+        # if it ever widens to `except Exception`, the re-raise must come back.
+        # chaining/executor.py and automation/handlers/cleanup.py DO need theirs,
+        # because `except Exception` follows them there.
         except (SubprocessError, ToolNotFoundError) as e:
             logger.error("Tool execution failed: %s", e)
             return PluginResult(success=False, data={}, errors=[str(e)])
