@@ -60,9 +60,9 @@ DOMAIN = "example.test"
 # get past argument parsing and into its own body.
 ARGV: dict[str, list[str]] = {
     "status": [],
-    "scan": ["--target", CIDR],
+    "scan": [CIDR],  # positional, not --target
     "config": ["show"],
-    "portscan": ["--target", HOST],
+    "portscan": [HOST],  # positional, not --target
     "engage status": [],
     "engage end": [],
     "plugin list": [],

@@ -27,7 +27,9 @@
 
 ## What is NETREAPER?
 
-NETREAPER is an offensive security framework that **does the thinking for you**. No more manually enabling monitor mode, finding interfaces, scanning for targets, or hunting for clients. Just run the attack — NETREAPER handles the rest.
+NETREAPER is an offensive security framework that plans the chain for you. Name a goal and an interface, and it resolves which tools are needed, in what order, and runs them behind a scope gate with a hash-chained audit trail.
+
+It does not pick your interface for you. Every command takes it explicitly; see Commands below.
 
 ```bash
 # Old way
@@ -38,7 +40,7 @@ airodump-ng -c 6 --bssid AA:BB:CC:DD:EE:FF wlan0mon  # find clients...
 aireplay-ng --deauth 0 -a AA:BB:CC:DD:EE:FF -c 11:22:33:44:55:66 wlan0mon
 
 # NETREAPER way
-netreaper wifi deauth          # done
+netreaper wifi auto -i wlan0mon --run    # resolve the chain and run it
 ```
 
 ---
@@ -72,11 +74,11 @@ sudo netreaper engage start \
     --confirm-tier single_target --confirm-tier broadcast \
     --confirm-tier mitm --accept-interception
 
-# 2. Work. NETREAPER resolves interface, monitor mode and target itself.
-sudo netreaper wifi scan         # scan for access points
-sudo netreaper wifi handshake    # capture a WPA handshake
-sudo netreaper wifi auto         # plan and run the whole chain to a password
-sudo netreaper scan              # discover the local network
+# 2. Work. Name the interface; NETREAPER resolves the tool chain.
+sudo netreaper wifi scan wlan0mon                       # scan for access points
+sudo netreaper wifi handshake wlan0mon AA:BB:CC:DD:EE:FF 6   # capture a handshake
+sudo netreaper wifi auto -i wlan0mon --run              # plan and run the chain
+sudo netreaper scan 192.168.1.0/24                      # scan the local network
 
 # 3. Revoke when you are done.
 sudo netreaper engage end
@@ -95,55 +97,52 @@ sudo netreaper engage end
 
 ---
 
-## Automation
+## Planning
 
-NETREAPER automatically handles requirements. No arguments needed — it figures it out:
+`wifi auto` is the part that does the thinking. Give it a goal capability and an
+interface and it resolves which tools are required, orders them by dependency,
+and previews the chain. It is a dry run unless you pass `--run`.
 
-| What You Run | What NETREAPER Does |
-|:-------------|:-------------------|
-| `netreaper scan` | Detects local network, runs nmap scan |
-| `netreaper wifi status` | Finds wireless interface, shows mode |
-| `netreaper wifi monitor on` | Selects interface, enables monitor mode |
-| `netreaper wifi scan` | Selects interface, enables monitor, scans APs |
-| `netreaper wifi deauth` | All above + selects AP + finds clients + attacks |
-| `netreaper wifi capture` | All above + captures handshakes to file |
-
-### How It Works
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  1. AUTO-INTERFACE    Find wireless adapters, pick the best one    │
-│  2. AUTO-MONITOR      Enable monitor mode if not already on        │
-│  3. AUTO-NETWORK      Detect local network for scanning            │
-│  4. AUTO-TARGET       Scan and select targets interactively        │
-│  5. AUTO-AP           Scan for access points, let you pick         │
-│  6. AUTO-CLIENT       Find connected clients on selected AP        │
-│  7. AUTO-INSTALL      Install missing tools on the fly             │
-└─────────────────────────────────────────────────────────────────────┘
+```bash
+netreaper wifi auto -i wlan0mon                      # preview the chain
+netreaper wifi auto -i wlan0mon --run                # run it
+netreaper wifi auto -i wlan0mon -g wifi.handshake    # a different goal
 ```
 
----
+Every step in the resolved chain goes through the same scope gate and the same
+audit trail as a hand-run command. Nothing in a chain is exempt.
+
+### What is NOT automatic
+
+This section previously advertised auto-selection of the interface, monitor
+mode, network, target, AP and client, and on-the-fly tool installation, in a
+table and a seven-box diagram. None of it was wired to the CLI.
+`AutoIfaceHandler` (`automation/handlers/iface.py`) does enumerate wireless
+adapters and can bring one into monitor mode, but `cli.py` never calls it, so
+every command needs its interface named. `tests/unit/test_readme_commands_exist.py`
+now runs every command on this page, so the page cannot drift from the CLI again.
 
 ## Commands
 
 ### Network Scanning
 
 ```bash
-netreaper scan                     # auto-detect network, scan it
-netreaper scan 192.168.1.0/24      # scan specific target
-netreaper scan -t 10.0.0.1         # scan single host
+netreaper scan 192.168.1.0/24      # scan a network (target is positional)
+netreaper scan 10.0.0.1 --type full    # scan one host; -t is --type, not target
+netreaper portscan 10.0.0.1            # port scan one host
 ```
 
 ### WiFi Operations
 
 ```bash
-netreaper wifi list                # list wireless interfaces
-netreaper wifi status              # show interface mode (auto-select)
-netreaper wifi monitor on          # enable monitor mode (auto-select)
-netreaper wifi monitor off         # disable monitor mode
-netreaper wifi scan                # scan for access points
-netreaper wifi deauth              # deauth attack (fully automated)
-netreaper wifi capture             # capture handshakes
+netreaper wifi monitor start wlan0       # enable monitor mode
+netreaper wifi monitor stop wlan0mon     # disable monitor mode
+netreaper wifi scan wlan0mon             # scan for access points
+netreaper wifi handshake wlan0mon AA:BB:CC:DD:EE:FF 6
+                                   # capture a handshake; --deauth N sends N
+                                   # deauth frames, --client targets one station
+netreaper wifi pmkid wlan0mon AA:BB:CC:DD:EE:FF 6
+                                   # clientless PMKID capture
 netreaper wifi wep <if> <bssid> <ch> --injection chopchop
                                    # WEP: arpreplay (default), chopchop,
                                    # fragment, caffe_latte, cfrag, interactive
@@ -155,7 +154,7 @@ netreaper wifi wep <if> <bssid> <ch> --injection chopchop
 netreaper status                   # show system info and tool status
 netreaper config show              # show configuration
 netreaper config set log_level DEBUG
-netreaper wizard first             # first-time setup
+netreaper engage status            # show the active authorisation
 ```
 
 ### Flags
@@ -163,10 +162,9 @@ netreaper wizard first             # first-time setup
 ```bash
 netreaper --help                   # show all commands
 netreaper --version                # show version
-netreaper --dry-run <cmd>          # preview without executing
-netreaper --quiet <cmd>            # suppress output
-netreaper --verbose <cmd>          # debug output
-netreaper --target <IP> scan       # specify target
+
+# --dry-run, --quiet, --verbose and --target were listed here as global flags.
+# None of them exist. Per-command options are in each command's --help.
 ```
 
 ---
