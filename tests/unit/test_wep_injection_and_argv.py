@@ -131,7 +131,8 @@ def test_the_mode_is_validated_before_any_capture_is_arranged():
     mid-attack, after setup, and behind a scope denial."""
 
     class _Boom:
-        async def capture_for_target(self, *a, **k):
+        @staticmethod
+        async def capture_for_target(*a, **k):
             raise AssertionError("capture must not start on a bad mode")
 
     with pytest.raises(ConfigurationError):

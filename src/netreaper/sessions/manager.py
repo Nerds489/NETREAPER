@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 from netreaper.core.logging import get_logger
@@ -344,12 +345,12 @@ class SessionManager:
 
 
 # Singleton instance
-_session_manager: SessionManager | None = None
-
-
+@lru_cache(maxsize=1)
 def get_session_manager() -> SessionManager:
-    """Get session manager instance."""
-    global _session_manager
-    if _session_manager is None:
-        _session_manager = SessionManager()
-    return _session_manager
+    """Get session manager instance.
+
+    See get_system_info in detection/distro.py: same lazy singleton, same
+    reason for lru_cache over a module-level `global`, and cache_clear() is a
+    seam rather than a private name to rebind.
+    """
+    return SessionManager()

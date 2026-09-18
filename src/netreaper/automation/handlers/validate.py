@@ -15,7 +15,8 @@ class AutoValidateHandler:
         self.error: str | None = None
         self.warning: str | None = None
 
-    async def can_fix(self) -> bool:
+    @staticmethod
+    async def can_fix() -> bool:
         """Validation doesn't fix, it validates."""
         return False
 

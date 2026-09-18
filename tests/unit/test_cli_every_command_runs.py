@@ -251,10 +251,12 @@ def no_exec(monkeypatch):
         returncode = 0
         pid = 4242
 
-        async def communicate(self):
+        @staticmethod
+        async def communicate():
             return (b"", b"")
 
-        async def wait(self):
+        @staticmethod
+        async def wait():
             return 0
 
         def kill(self):

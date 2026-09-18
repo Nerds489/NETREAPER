@@ -48,9 +48,16 @@ refused:
        place of the real object. Converting them to static methods changes the
        call they are standing in for, so the rule would break the tests it is
        reported against.
-  PYL-W0603 global statement, 3 occurrences, all lazily built process
-       singletons with a monkeypatch seam. Refused; pinned by
-       test_the_audit_trail_singleton_stays_injectable below.
+  PYL-W0603 global statement, 4 occurrences. Two were refused on a reason that
+       only held for one of them ("the seam four tests use"): only _TRAIL is
+       ever monkeypatched. Checked rather than assumed, and the other two are
+       converted. get_system_info and get_session_manager are lru_cache(1) now,
+       which is the same lazy singleton with cache_clear() in place of a
+       private name to rebind. What is left is two, each with its own reason:
+       audit.get_audit_trail, whose seam four tests really do use, and
+       db.get_db, which is async so a cache would memoise the coroutine rather
+       than the engine, and whose proposed autofix removes the singleton
+       outright.
   PYL-W0125 constant conditional, 2 occurrences. Correct, and the reason it is
        correct is worth keeping: pinned by
        test_every_screen_menu_entry_names_an_action_that_exists.
@@ -182,8 +189,6 @@ def test_the_tool_wrapper_handler_stays_narrow():
 
 def test_the_denial_really_does_propagate_out_of_the_tool_wrapper():
     """The behaviour the structural test above protects."""
-    import asyncio as _aio
-
     from netreaper.tools.base import BaseToolWrapper
 
     class _Denying(BaseToolWrapper):
@@ -207,10 +212,10 @@ def test_the_denial_really_does_propagate_out_of_the_tool_wrapper():
     class _Runner:
         run = staticmethod(_denied)
 
-    base_mod.get_process_runner = lambda: _Runner()
+    base_mod.get_process_runner = _Runner
     try:
         with pytest.raises(TargetValidationError):
-            _aio.run(tool.execute("10.0.0.1", {}))
+            asyncio.run(tool.execute("10.0.0.1", {}))
     finally:
         base_mod.get_process_runner = original
 
@@ -394,7 +399,8 @@ class _StubApp:
         """Swallowed. A bell is exactly the non-answer these tests exist to
         catch, so it must not fail the stub either."""
 
-    async def push_screen_wait(self, *a, **k):
+    @staticmethod
+    async def push_screen_wait(*a, **k):
         return None
 
 
@@ -590,7 +596,7 @@ def test_lfi_payloads_are_offered_as_urls_against_the_target():
     screen._get_target = lambda: target
     screen._write_output = lambda _m, level="info": None
     screen._add_result = lambda t, e, d="": rows.append((t, e, d))
-    screen._set_payload_text = lambda text: offered.append(text)
+    screen._set_payload_text = offered.append
 
     asyncio.run(screen.action_lfi_test())
 
@@ -704,17 +710,19 @@ def test_nmap_result_xml_is_not_parsed_through_the_stdlib():
 
 
 def test_the_audit_trail_singleton_stays_injectable():
-    """PYL-W0603 (global statement) at audit.py:713, refused, and this is why.
+    """PYL-W0603 (global statement) on audit.py, refused, and this is why.
 
-    The three `global` statements DeepSource flagged are lazily built process
-    singletons. Rewriting `get_audit_trail` as an lru_cache would drop the
-    `global` and also drop the seam four tests use to point the trail at a
-    tmp_path, which would mean the audit tests stopped testing the audit trail
-    the rest of the process actually uses. `get_db` is worse still: it is async,
-    so a cache would memoise the coroutine rather than the engine.
+    Rewriting `get_audit_trail` as an lru_cache would drop the `global` and
+    also drop the seam four tests in test_audit_export_and_chain.py use to
+    point the trail at a tmp_path, which would mean the audit tests stopped
+    testing the audit trail the rest of the process actually uses.
 
-    Minor severity, real cost, no correctness gain. Refused, and pinned so the
-    refusal is a decision rather than an oversight.
+    That reason was originally given for three functions. It is only true of
+    this one: grepping for each private name shows _TRAIL monkeypatched four
+    times and _system_info, _session_manager and _db_engine never. The first
+    two are lru_cache(1) now. get_db keeps its global for a different reason,
+    pinned separately below: it is async, so a cache memoises the coroutine
+    rather than the engine.
     """
     import netreaper.core.audit as audit_mod
 
@@ -925,7 +933,8 @@ def test_a_failed_group_signal_still_falls_back_to_the_process(monkeypatch, rais
     class _Proc:
         pid = 4242
 
-        def send_signal(self, sig):
+        @staticmethod
+        def send_signal(sig):
             sent.append(sig)
 
     def _boom(*_a, **_k):
@@ -948,7 +957,8 @@ def test_the_process_fallback_does_not_swallow_a_non_oserror(monkeypatch):
     class _Proc:
         pid = 4242
 
-        def send_signal(self, _sig):
+        @staticmethod
+        def send_signal(_sig):
             raise AssertionError("must not be reached")
 
     def _boom(*_a, **_k):
@@ -980,36 +990,24 @@ SELFLESS_BY_DESIGN: dict[str, str] = {
     # so the pair reads as one API rather than one override and one static.
     "NetreaperEventBus.on": "pyee EventEmitter.on override",
     "NetreaperEventBus.off": "pairs with on(), which is an override",
-    # Eight Auto*Handler classes share no base class and are duck-typed to the
-    # same protocol: can_fix / fix / get_ui_prompt. Converting the three that
-    # happen not to read self would make one protocol read three ways.
-    "AutoDataHandler.can_fix": "duck-typed handler protocol, 8 implementations",
-    "AutoKeysHandler.fix": "duck-typed handler protocol, 8 implementations",
-    "AutoValidateHandler.can_fix": "duck-typed handler protocol, 8 implementations",
-    # LootStorage's sibling methods all take self; delete alone does not, and a
-    # repository whose delete is static and whose list_by_type is not is worse
-    # than one that is uniform.
-    "LootStorage.delete": "uniform with the rest of the repository API",
 }
+#
+# Nothing else. Five entries that used to sit here were kept on a style
+# argument -- "a duck-typed protocol should read the same way in all eight
+# implementations", "a repository API should be uniform" -- and a style
+# argument is not worth a standing exception. They are @staticmethod now. What
+# is left is the one case a static analyser cannot see for itself: an override
+# of a base class that is not in this repository.
 
 
-def test_a_method_that_never_touches_self_is_static_or_listed():
-    """PYL-R0201 across src, as a decision rather than 28 open findings.
-
-    The rule is right about the fact and blind to the reason: it cannot see
-    Textual's Screen, pyee's EventEmitter, or a protocol that exists only
-    because eight classes happen to implement the same three method names. So
-    the fact is enforced here and each exception has to say which of those it
-    is.
-    """
+def _class_index(root):
+    """(method name -> classes defining it, class -> base names, path -> tree)."""
     import collections
 
     method_owners: dict[str, set[str]] = collections.defaultdict(set)
     class_bases: dict[str, list[str]] = {}
-    found: list[tuple[str, str]] = []
-
-    trees = {}
-    for path in sorted(SRC.rglob("*.py")):
+    trees: dict = {}
+    for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         trees[path] = tree
         for node in ast.walk(tree):
@@ -1021,15 +1019,35 @@ def test_a_method_that_never_touches_self_is_static_or_listed():
             for fn in node.body:
                 if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     method_owners[fn.name].add(node.name)
+    return method_owners, class_bases, trees
 
-    def ancestors(name: str, seen: set[str] | None = None) -> set[str]:
-        seen = seen if seen is not None else set()
-        for base in class_bases.get(name, []):
-            if base and base not in seen:
-                seen.add(base)
-                ancestors(base, seen)
-        return seen
 
+def _ancestors(name: str, class_bases: dict, seen: set[str] | None = None) -> set[str]:
+    seen = seen if seen is not None else set()
+    for base in class_bases.get(name, []):
+        if base and base not in seen:
+            seen.add(base)
+            _ancestors(base, class_bases, seen)
+    return seen
+
+
+def _is_selfless(fn) -> bool:
+    """An instance method whose body never mentions self, and is not decorated
+    into something where that is expected."""
+    if fn.name.startswith("__"):
+        return False
+    decorators = {getattr(d, "id", getattr(d, "attr", "")) for d in fn.decorator_list}
+    if decorators & {"staticmethod", "classmethod", "property", "abstractmethod"}:
+        return False
+    if not fn.args.args or fn.args.args[0].arg != "self":
+        return False
+    return not any(isinstance(n, ast.Name) and n.id == "self" for n in ast.walk(fn))
+
+
+def _selfless_methods(root) -> list[tuple[str, str]]:
+    """Every selfless method that is not an override of something in this repo."""
+    method_owners, class_bases, trees = _class_index(root)
+    found = []
     for path, tree in trees.items():
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
@@ -1037,37 +1055,39 @@ def test_a_method_that_never_touches_self_is_static_or_listed():
             for fn in node.body:
                 if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
-                if fn.name.startswith("__"):
+                if not _is_selfless(fn):
                     continue
-                decorators = {
-                    getattr(d, "id", getattr(d, "attr", "")) for d in fn.decorator_list
-                }
-                if decorators & {
-                    "staticmethod",
-                    "classmethod",
-                    "property",
-                    "abstractmethod",
-                }:
-                    continue
-                if not fn.args.args or fn.args.args[0].arg != "self":
-                    continue
-                if any(
-                    isinstance(n, ast.Name) and n.id == "self" for n in ast.walk(fn)
-                ):
-                    continue
-                # An override inside this repository is its own reason, and so
-                # is an override of a base this scan cannot see: Textual's
-                # Screen, pyee's EventEmitter and abc.ABC are not in src, so a
-                # class with an unknown base gets the benefit of the doubt and
-                # is listed by name below instead.
                 # method_owners is keyed by METHOD name and holds class names.
                 # The first cut of this line had the lookup the other way round
                 # (`fn.name in method_owners.get(ancestor)`), which is always
                 # false, so the guard reported every override in the repository.
                 # Exactly the class of defect it was written to catch.
-                if any(a in method_owners.get(fn.name, ()) for a in ancestors(node.name)):
+                #
+                # An override of a base this scan cannot see counts too:
+                # Textual's Screen and pyee's EventEmitter are not in src, so
+                # those are listed by name below instead.
+                if any(
+                    a in method_owners.get(fn.name, ())
+                    for a in _ancestors(node.name, class_bases)
+                ):
                     continue
                 found.append((f"{node.name}.{fn.name}", f"{path.name}:{fn.lineno}"))
+    return found
+
+
+def test_a_method_that_never_touches_self_is_static_or_listed():
+    """PYL-R0201 across src, as a decision rather than an open finding count.
+
+    The rule is right about the fact and blind to the reason: it cannot see
+    Textual's Screen or pyee's EventEmitter. So the fact is enforced here and
+    each exception has to say which of those it is.
+
+    An earlier version of this docstring claimed converting a duck-typed test
+    stub to a staticmethod would break the call it stands in for. That is
+    simply not true -- a staticmethod reached through an instance works fine --
+    and those stubs are converted now. What is left is overrides.
+    """
+    found = _selfless_methods(SRC)
 
     unlisted = [f"{q}  ({w})" for q, w in found if q not in SELFLESS_BY_DESIGN]
     assert not unlisted, (
@@ -1150,11 +1170,16 @@ def test_get_db_is_still_a_singleton():
     """
     src = (SRC / "db" / "engine.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
-    fn = next(
+    matches = [
         n
         for n in ast.walk(tree)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "get_db"
-    )
+    ]
+    # A list and an assert rather than next(): a bare next() raises
+    # StopIteration if get_db is ever renamed, which reads as a broken test
+    # rather than as the thing it is, which is that the function moved.
+    assert matches, "get_db has gone from db/engine.py; this guard needs re-pointing"
+    fn = matches[0]
     constructs = [
         n
         for n in ast.walk(fn)
@@ -1224,3 +1249,27 @@ def test_every_exporter_format_name_is_readable():
         assert isinstance(value, str) and value, f"{name}.format_name is {value!r}"
         checked += 1
     assert checked >= 2, f"only checked {checked} exporters; the scan is broken"
+
+
+def test_the_two_converted_singletons_are_still_singletons():
+    """PYL-W0603 on distro.py and sessions/manager.py, fixed rather than refused.
+
+    lru_cache(maxsize=1) is the same lazy singleton the `global` gave, and it
+    comes with cache_clear(), which is a better seam than rebinding a private
+    module name. Neither was ever monkeypatched, which is what made the
+    conversion safe and is the thing that was worth checking rather than
+    assuming.
+    """
+    from netreaper.detection.distro import get_system_info
+    from netreaper.sessions.manager import get_session_manager
+
+    for factory in (get_system_info, get_session_manager):
+        first = factory()
+        assert factory() is first, f"{factory.__name__} is no longer a singleton"
+        assert hasattr(factory, "cache_clear"), (
+            f"{factory.__name__} has lost its lru_cache, so cache_clear() is "
+            f"gone and there is no seam to reset it in a test"
+        )
+
+    get_system_info.cache_clear()
+    assert get_system_info() is not None

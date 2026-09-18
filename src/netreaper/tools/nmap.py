@@ -1,10 +1,12 @@
 """Nmap network scanner wrapper."""
 import re
-import xml.etree.ElementTree as ET  # noqa: S405 - types only; parsing goes through defusedxml
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:  # the annotation below needs the name; nothing here parses with it
+    from xml.etree.ElementTree import Element
 
 from pydantic import BaseModel
 
@@ -14,7 +16,7 @@ from netreaper.tools.base import BaseToolWrapper
 _DOCTYPE_RE = re.compile(rb"<!DOCTYPE", re.IGNORECASE)
 
 
-def _parse_scan_xml(path: Path) -> "ET.Element":
+def _parse_scan_xml(path: Path) -> "Element":
     """Parse an nmap XML result, refusing any document that declares a DTD.
 
     ElementTree does not resolve *external* entities, so this is not XXE file
@@ -31,8 +33,10 @@ def _parse_scan_xml(path: Path) -> "ET.Element":
     parser under different names across Python versions and a handler that
     silently fails to attach is worse than no defence at all.
 
-    ``xml.etree.ElementTree`` stays imported for the ``ET.Element`` type only.
-    Nothing in this module parses through it.
+    ``xml.etree.ElementTree`` is not imported at runtime at all. The return
+    annotation needs the ``Element`` name, so it is imported under
+    TYPE_CHECKING: a checker sees it, the interpreter never loads the module,
+    and there is no stdlib XML parser in this file to reach for by mistake.
     """
     from defusedxml.ElementTree import fromstring as _safe_fromstring
 

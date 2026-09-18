@@ -87,7 +87,7 @@ class _Frame:
 
 
 @dataclass
-class Pmkid:
+class CapturedPmkid:
     """A PMKID captured from an access point's EAPOL message 1."""
 
     bssid: str
@@ -315,16 +315,16 @@ def parse_handshakes(raw: bytes) -> list[Handshake]:
     return list(pairs.values())
 
 
-def parse_pmkids(raw: bytes) -> list[Pmkid]:
+def parse_pmkids(raw: bytes) -> list[CapturedPmkid]:
     """Return every distinct PMKID (from EAPOL message 1) in the capture."""
-    seen: dict[tuple[str, str], Pmkid] = {}
+    seen: dict[tuple[str, str], CapturedPmkid] = {}
     for frame in iter_dot11_frames(raw):
         parsed = _parse_dot11(frame)
         if parsed is None or parsed.pmkid is None:
             continue
         key = (parsed.bssid, parsed.client)
         if key not in seen:
-            seen[key] = Pmkid(
+            seen[key] = CapturedPmkid(
                 bssid=parsed.bssid, client=parsed.client, pmkid=parsed.pmkid
             )
     return list(seen.values())
@@ -335,12 +335,12 @@ def read_handshakes(path: str | Path) -> list[Handshake]:
     return parse_handshakes(Path(path).read_bytes())
 
 
-def read_pmkids(path: str | Path) -> list[Pmkid]:
+def read_pmkids(path: str | Path) -> list[CapturedPmkid]:
     """Parse PMKIDs from a .cap file on disk."""
     return parse_pmkids(Path(path).read_bytes())
 
 
-def pmkids_for(path: str | Path, bssid: str) -> list[Pmkid]:
+def pmkids_for(path: str | Path, bssid: str) -> list[CapturedPmkid]:
     """Return PMKIDs captured for a specific BSSID (case-insensitive)."""
     want = bssid.upper()
     return [p for p in read_pmkids(path) if p.bssid.upper() == want]

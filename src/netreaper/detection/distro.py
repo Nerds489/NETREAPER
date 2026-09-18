@@ -1,5 +1,6 @@
 """Linux distribution detection and package manager mapping."""
 import platform
+from functools import lru_cache
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -194,12 +195,12 @@ class SystemInfo:
 
 
 # Singleton for cached system info
-_system_info: SystemInfo | None = None
-
-
+@lru_cache(maxsize=1)
 def get_system_info() -> SystemInfo:
-    """Get cached system information."""
-    global _system_info
-    if _system_info is None:
-        _system_info = SystemInfo.detect()
-    return _system_info
+    """Get cached system information.
+
+    lru_cache rather than a module-level `global`. The behaviour is the same
+    lazy singleton, and it comes with `get_system_info.cache_clear()`, which is
+    a better seam for a test than reaching in and rebinding a private name.
+    """
+    return SystemInfo.detect()

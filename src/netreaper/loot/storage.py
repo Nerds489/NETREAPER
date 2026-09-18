@@ -148,7 +148,8 @@ class LootStorage:
                 results.append(item)
         return results
 
-    async def delete(self, loot_id: int) -> bool:
+    @staticmethod
+    async def delete(loot_id: int) -> bool:
         """Delete a loot entry."""
         db = await get_db()
         cursor = await db.execute("DELETE FROM loot WHERE id = ?", (loot_id,))
