@@ -71,7 +71,22 @@ class PreflightRunner:
     def __init__(self, app: "App", session: Any = None) -> None:
         self.app = app
         self.session = session
-        self.checker = _load_preflight_checker()(session)
+        self._checker: Any = None
+
+    @property
+    def checker(self) -> Any:
+        """Built on first use, not in __init__.
+
+        The previous version built it in the constructor, and the constructor is
+        called from on_mount() in credentials.py, traffic.py and exploit.py. So
+        moving the dangling import to "the point of use" moved the crash from
+        import time to screen-open time, which for three of the five screens is
+        the same thing from the operator's chair: the app died on opening them.
+        The real point of use is running a check, which is here.
+        """
+        if self._checker is None:
+            self._checker = _load_preflight_checker()(self.session)
+        return self._checker
 
     async def run_with_preflight(
         self,
@@ -89,16 +104,49 @@ class PreflightRunner:
         Returns:
             True if action was executed, False if cancelled or failed
         """
-        # Run preflight check
-        result = await self.checker.check(action)
+        # Preflight checks REQUIREMENTS (is the tool installed, is an
+        # interface up), not authorisation. The scope gate at the spawn seam is
+        # the safety control and runs regardless, and tools/base.py still
+        # refuses a binary that is not on PATH with a clear message. So when the
+        # checker is missing, the honest behaviour is to say so plainly and let
+        # the action proceed to those checks, rather than making the whole
+        # screen unusable over a convenience feature that was never written.
+        try:
+            checker = self.checker
+        except NotImplementedError:
+            logger.warning("preflight unavailable; running %s unchecked", action)
+            self.app.notify(
+                f"Requirement pre-checks are unavailable, so {action} will run "
+                f"without them. Authorisation and tool checks still apply.",
+                title="Preflight not available",
+                severity="warning",
+                timeout=6,
+            )
+            await callback()
+            return True
+
+        result = await checker.check(action)
 
         if result.all_met:
             # All good, run the action
             await callback()
             return True
 
-        # Show preflight modal
-        from netreaper.tui.modals.preflight_modal import PreflightModal
+        # netreaper.tui.modals.preflight_modal does not exist either: the
+        # modals package contains only __init__.py. Same dangling-reference
+        # family as PreflightChecker, and the same treatment.
+        try:
+            from netreaper.tui.modals.preflight_modal import PreflightModal
+        except ImportError:
+            logger.warning("preflight modal missing; reporting unmet requirements")
+            unmet = getattr(result, "unmet", None) or "requirements not met"
+            self.app.notify(
+                f"{action} cannot run: {unmet}",
+                title="Requirements not met",
+                severity="error",
+                timeout=8,
+            )
+            return False
 
         proceed = await self.app.push_screen_wait(
             PreflightModal(result, self.session)

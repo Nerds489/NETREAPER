@@ -130,7 +130,12 @@ STUB_BINARIES = (
 # the test below fails if an entry here has gained an ARGV entry, or stops
 # existing, so it cannot quietly become a dumping ground.
 NOT_SMOKE_RUN: dict[str, str] = {
-    "tui": "launches a full-screen Textual app and blocks on a real terminal",
+    # This reason used to read "launches a full-screen Textual app and blocks
+    # on a real terminal". It did not: netreaper.tui.app did not exist, so the
+    # command errored instantly. An exemption written from an assumption hid
+    # the fact that the tool's default interface had never worked. The app is
+    # real now and tests/unit/test_tui_app.py drives it headlessly.
+    "tui": "takes over the terminal; driven headlessly in test_tui_app.py instead",
     "engage start": "covered in depth by test_cli_authorisation_ladder.py",
 }
 
