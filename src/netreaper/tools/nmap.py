@@ -273,7 +273,8 @@ class NmapTool(BaseToolWrapper):
 
         return port_info
 
-    def _parse_text_output(self, output: str) -> dict[str, Any]:
+    @staticmethod
+    def _parse_text_output(output: str) -> dict[str, Any]:
         """Fallback text output parsing."""
         hosts = []
         current_host = None

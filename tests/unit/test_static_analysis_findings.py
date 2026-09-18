@@ -959,3 +959,230 @@ def test_the_process_fallback_does_not_swallow_a_non_oserror(monkeypatch):
 
     with pytest.raises(RuntimeError):
         ProcessRunner._signal(_Proc(), 15)
+
+
+# PYL-R0201 in src, reviewed rather than swept. Every method here never touches
+# self and is deliberately still an instance method. The reason is per entry,
+# because "it is an override" and "it is one of eight duck-typed
+# implementations" are different reasons and only one of them is visible to a
+# static analyser.
+SELFLESS_BY_DESIGN: dict[str, str] = {
+    # Textual calls compose() on the instance; Screen and App both define it,
+    # so these are overrides of an external base class that no analyser looking
+    # only at this repository can see.
+    "MainMenu.compose": "Textual Screen.compose override",
+    "CredentialsScreen.compose": "Textual Screen.compose override",
+    "HelpScreen.compose": "Textual Screen.compose override",
+    "SettingsScreen.compose": "Textual Screen.compose override",
+    "FirstRunWizard.compose": "Textual Screen.compose override",
+    "ScanWizard.compose": "Textual Screen.compose override",
+    # pyee defines EventEmitter.on. `off` is ours, and stays an instance method
+    # so the pair reads as one API rather than one override and one static.
+    "NetreaperEventBus.on": "pyee EventEmitter.on override",
+    "NetreaperEventBus.off": "pairs with on(), which is an override",
+    # Eight Auto*Handler classes share no base class and are duck-typed to the
+    # same protocol: can_fix / fix / get_ui_prompt. Converting the three that
+    # happen not to read self would make one protocol read three ways.
+    "AutoDataHandler.can_fix": "duck-typed handler protocol, 8 implementations",
+    "AutoKeysHandler.fix": "duck-typed handler protocol, 8 implementations",
+    "AutoValidateHandler.can_fix": "duck-typed handler protocol, 8 implementations",
+    # LootStorage's sibling methods all take self; delete alone does not, and a
+    # repository whose delete is static and whose list_by_type is not is worse
+    # than one that is uniform.
+    "LootStorage.delete": "uniform with the rest of the repository API",
+}
+
+
+def test_a_method_that_never_touches_self_is_static_or_listed():
+    """PYL-R0201 across src, as a decision rather than 28 open findings.
+
+    The rule is right about the fact and blind to the reason: it cannot see
+    Textual's Screen, pyee's EventEmitter, or a protocol that exists only
+    because eight classes happen to implement the same three method names. So
+    the fact is enforced here and each exception has to say which of those it
+    is.
+    """
+    import collections
+
+    method_owners: dict[str, set[str]] = collections.defaultdict(set)
+    class_bases: dict[str, list[str]] = {}
+    found: list[tuple[str, str]] = []
+
+    trees = {}
+    for path in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        trees[path] = tree
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            class_bases[node.name] = [
+                getattr(b, "id", getattr(b, "attr", "")) for b in node.bases
+            ]
+            for fn in node.body:
+                if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    method_owners[fn.name].add(node.name)
+
+    def ancestors(name: str, seen: set[str] | None = None) -> set[str]:
+        seen = seen if seen is not None else set()
+        for base in class_bases.get(name, []):
+            if base and base not in seen:
+                seen.add(base)
+                ancestors(base, seen)
+        return seen
+
+    for path, tree in trees.items():
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for fn in node.body:
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if fn.name.startswith("__"):
+                    continue
+                decorators = {
+                    getattr(d, "id", getattr(d, "attr", "")) for d in fn.decorator_list
+                }
+                if decorators & {
+                    "staticmethod",
+                    "classmethod",
+                    "property",
+                    "abstractmethod",
+                }:
+                    continue
+                if not fn.args.args or fn.args.args[0].arg != "self":
+                    continue
+                if any(
+                    isinstance(n, ast.Name) and n.id == "self" for n in ast.walk(fn)
+                ):
+                    continue
+                # An override inside this repository is its own reason, and so
+                # is an override of a base this scan cannot see: Textual's
+                # Screen, pyee's EventEmitter and abc.ABC are not in src, so a
+                # class with an unknown base gets the benefit of the doubt and
+                # is listed by name below instead.
+                # method_owners is keyed by METHOD name and holds class names.
+                # The first cut of this line had the lookup the other way round
+                # (`fn.name in method_owners.get(ancestor)`), which is always
+                # false, so the guard reported every override in the repository.
+                # Exactly the class of defect it was written to catch.
+                if any(a in method_owners.get(fn.name, ()) for a in ancestors(node.name)):
+                    continue
+                found.append((f"{node.name}.{fn.name}", f"{path.name}:{fn.lineno}"))
+
+    unlisted = [f"{q}  ({w})" for q, w in found if q not in SELFLESS_BY_DESIGN]
+    assert not unlisted, (
+        "method(s) that never touch self and are neither @staticmethod nor "
+        "listed in SELFLESS_BY_DESIGN with a reason:\n  " + "\n  ".join(unlisted)
+    )
+
+    stale = sorted(set(SELFLESS_BY_DESIGN) - {q for q, _ in found})
+    assert not stale, (
+        "SELFLESS_BY_DESIGN entries that no longer describe anything; delete "
+        "them so the list stays a record of live decisions:\n  " + "\n  ".join(stale)
+    )
+
+
+def test_every_name_in_every___all___actually_exists():
+    """PYL-E0603, and it was mine.
+
+    Renaming the two exception classes that shadowed builtins left
+    core/exceptions.py's own ``__all__`` still listing ``PermissionError`` and
+    ``TimeoutError``, so ``from netreaper.core.exceptions import *`` raised
+    AttributeError. Nothing caught it: the package imports fine, every other
+    module imports the names directly, and 745 tests passed. Only a star-import
+    or a linter that reads __all__ ever touches it.
+
+    The fix DeepSource proposed was to delete the two entries, which would have
+    left the renamed classes unexported. They are renamed here instead.
+    """
+    import importlib
+
+    offenders = []
+    for path in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if not (
+                isinstance(node, ast.Assign)
+                and any(getattr(t, "id", "") == "__all__" for t in node.targets)
+            ):
+                continue
+            try:
+                names = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                continue  # computed __all__; nothing static to check
+            dotted = ".".join(
+                path.with_suffix("").relative_to(SRC.parent).parts
+            ).removesuffix(".__init__")
+            try:
+                module = importlib.import_module(dotted)
+            except Exception as e:  # noqa: BLE001 - reported, not swallowed
+                offenders.append(f"{dotted}: will not import ({type(e).__name__}: {e})")
+                continue
+            missing = [n for n in names if not hasattr(module, n)]
+            if missing:
+                offenders.append(f"{dotted}: __all__ names that do not exist: {missing}")
+
+    assert not offenders, (
+        "__all__ promising names the module does not have; `import *` raises "
+        "AttributeError on every one of these:\n  " + "\n  ".join(offenders)
+    )
+
+
+# ── the autofixes that were refused, and why ──────────────────────────────────
+#
+# DeepSource proposes a patch alongside each finding. Most are fine and were
+# taken. Four were not, and three of those would have broken something. They
+# are pinned here rather than argued in a review comment, because the next
+# person to click Autofix gets a failing test instead of a regression.
+
+
+def test_get_db_is_still_a_singleton():
+    """The proposed autofix for PYL-W0603 on db/engine.py was:
+
+        async def get_db() -> DatabaseEngine:
+            db_engine = DatabaseEngine()
+            await db_engine.initialize()
+            return db_engine
+
+    That removes the `global` by removing the singleton. Every caller would get
+    its own engine, and initialize() re-runs the schema script on every call.
+    The rule is about the statement; the statement is doing something.
+    """
+    src = (SRC / "db" / "engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "get_db"
+    )
+    constructs = [
+        n
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "DatabaseEngine"
+    ]
+    assert constructs, "get_db no longer builds a DatabaseEngine at all"
+    guarded = any(isinstance(n, ast.If) for n in ast.walk(fn))
+    assert guarded, (
+        "get_db constructs a DatabaseEngine unconditionally: it is no longer a "
+        "singleton, so every caller gets its own engine and initialize() re-runs "
+        "the schema on every call"
+    )
+
+
+def test_nmap_does_not_import_a_name_defusedxml_does_not_have():
+    """The proposed autofix for BAN-B405 was:
+
+        from defusedxml.ElementTree import parse, Element
+
+    defusedxml.ElementTree has no `Element`. That import fails at module load,
+    which takes the whole nmap wrapper with it.
+    """
+    import defusedxml.ElementTree as safe_et
+
+    assert not hasattr(safe_et, "Element"), (
+        "defusedxml.ElementTree has gained an Element; this test can be removed"
+    )
+    src = (SRC / "tools" / "nmap.py").read_text(encoding="utf-8")
+    assert "from defusedxml.ElementTree import" not in src or "Element" not in src.split(
+        "from defusedxml.ElementTree import"
+    )[1].split("\n")[0], "nmap.py imports Element from defusedxml.ElementTree, which has none"

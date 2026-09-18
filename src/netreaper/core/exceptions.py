@@ -69,11 +69,11 @@ class PluginError(NetreaperError):
 __all__ = [
     "ConfigurationError",
     "NetreaperError",
+    "NetreaperPermissionError",
+    "NetreaperTimeoutError",
     "NetworkError",
-    "PermissionError",
     "PluginError",
     "SubprocessError",
     "TargetValidationError",
-    "TimeoutError",
     "ToolNotFoundError",
 ]

@@ -167,7 +167,8 @@ class WhatWebTool(BaseToolWrapper):
                 tech[out_key] = value[0] if isinstance(value, list) else value
         return tech
 
-    def _parse_text_output(self, output: str) -> dict[str, Any]:
+    @staticmethod
+    def _parse_text_output(output: str) -> dict[str, Any]:
         """Fallback text output parsing."""
         results = {
             "targets": [],

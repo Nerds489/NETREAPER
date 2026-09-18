@@ -172,7 +172,8 @@ class SqlmapTool(BaseToolWrapper):
             args += ["--os-cmd", os_cmd]
         return args
 
-    def _session_args(self, options: dict[str, Any]) -> list[str]:
+    @staticmethod
+    def _session_args(options: dict[str, Any]) -> list[str]:
         """Session handling and crawl behaviour, emitted after --output-dir."""
         args: list[str] = []
         if options.get("flush_session"):

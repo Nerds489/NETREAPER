@@ -89,12 +89,12 @@ class BaseToolWrapper(ToolPlugin):
     @abstractmethod
     def build_command(self, target: str, options: dict[str, Any]) -> list[str]:
         """Build command line arguments for the tool."""
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def parse_output(self, output: str) -> dict[str, Any]:
         """Parse tool output into structured data."""
-        ...
+        raise NotImplementedError
 
     async def execute(self, target: str, options: dict[str, Any]) -> PluginResult:
         """Execute the tool through the gated ProcessRunner and return results.

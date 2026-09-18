@@ -207,7 +207,8 @@ class MasscanTool(BaseToolWrapper):
             "hosts_found": len(hosts),
         }
 
-    def _parse_text_output(self, output: str) -> dict[str, Any]:
+    @staticmethod
+    def _parse_text_output(output: str) -> dict[str, Any]:
         """Parse masscan text output."""
         hosts_dict: dict[str, dict] = {}
 
