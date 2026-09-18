@@ -200,7 +200,6 @@ class SqlmapTool(BaseToolWrapper):
         "exploitable",
         "confirmed",
     )
-
     def parse_output(self, output: str) -> dict[str, Any]:
         """Parse sqlmap output."""
         lowered = output.lower()
@@ -230,33 +229,13 @@ class SqlmapTool(BaseToolWrapper):
         for match in self._INJECTION_RE.finditer(output):
             points.append({"parameter": match.group(1), "type": match.group(2)})
         return points
-        table_pattern = re.compile(r"\|\s+(\S+)\s+\|")
-        in_table_section = False
-        for line in output.splitlines():
-            if "Table" in line and "entries" not in line.lower():
-                in_table_section = True
-            elif in_table_section:
-                table_match = table_pattern.search(line)
-                if table_match and table_match.group(1) not in ["+", "-"]:
-                    results["tables"].append(table_match.group(1))
-                elif line.strip() == "":
-                    in_table_section = False
-
-        # Parse dumped data
-        if "dumped to" in output.lower() or "entries" in output.lower():
-            # Look for CSV data in output dir
-            if self._output_dir and self._output_dir.exists():
-                for csv_file in self._output_dir.rglob("*.csv"):
-                    try:
-                        with open(csv_file) as f:
-                            content = f.read()
-                            results["data"].append({
                                 "file": csv_file.name,
                                 "content": content[:5000],  # Limit size
                             })
                     except OSError as e:
                         logger.warning("Could not read sqlmap output file %s: %s", csv_file.name, e)
 
+        results: dict[str, Any] = {}
         # Check for various success indicators
         success_indicators = [
             "injectable",
