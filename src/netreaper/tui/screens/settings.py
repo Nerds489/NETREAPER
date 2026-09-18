@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -22,9 +21,6 @@ from netreaper.config.keys import API_SERVICES, APIService, api_key_manager
 from netreaper.config.settings import get_settings, reload_settings
 from netreaper.core.constants import LogLevel
 from netreaper.core.logging import get_logger
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 

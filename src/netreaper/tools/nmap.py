@@ -1,6 +1,6 @@
 """Nmap network scanner wrapper."""
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # noqa: S405 - types only; parsing goes through defusedxml
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -22,19 +22,27 @@ def _parse_scan_xml(path: Path) -> "ET.Element":
     that is written by one call and re-read by another, so a crafted or tampered
     result can expand to exhaust memory (billion laughs).
 
-    nmap never emits a DOCTYPE, so refusing one costs nothing and removes the
-    class without adding a defusedxml dependency. Checked on the bytes rather
-    than through a parser handler, because XMLParser exposes its underlying
-    expat parser under different names across Python versions and a handler
-    that silently fails to attach is worse than no defence at all.
+    Both defences, because they answer different questions. defusedxml refuses
+    entity expansion whatever the document says, which is the guarantee; the
+    DOCTYPE check refuses the document outright, which carries the extra meaning
+    that nmap never emits one, so a result file with a DTD in it was not
+    produced by the scan it claims to be. Checked on the bytes rather than
+    through a parser handler, because XMLParser exposes its underlying expat
+    parser under different names across Python versions and a handler that
+    silently fails to attach is worse than no defence at all.
+
+    ``xml.etree.ElementTree`` stays imported for the ``ET.Element`` type only.
+    Nothing in this module parses through it.
     """
+    from defusedxml.ElementTree import fromstring as _safe_fromstring
+
     raw = path.read_bytes()
     if _DOCTYPE_RE.search(raw):
         raise ValueError(
             f"{path} declares a DTD; nmap does not emit one, so this file was "
             f"not produced by the scan it claims to be"
         )
-    return ET.fromstring(raw)
+    return _safe_fromstring(raw)
 
 
 class NmapConfig(BaseModel):

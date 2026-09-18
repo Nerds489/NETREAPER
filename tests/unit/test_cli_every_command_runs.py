@@ -258,13 +258,14 @@ def no_exec(monkeypatch):
             return 0
 
         def kill(self):
-            pass
+            """A no-op on purpose: nothing here really spawned, so the test
+            asserts on what was ASKED for, not on a process dying."""
 
         def terminate(self):
-            pass
+            """See kill()."""
 
         def send_signal(self, _sig):
-            pass
+            """See kill()."""
 
     async def fake_exec(*cmd, **kwargs):
         spawned.append(list(cmd))

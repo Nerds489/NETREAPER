@@ -66,10 +66,8 @@ class MasscanTool(BaseToolWrapper):
                 - wait: Seconds to wait after sending
                 - retries: Number of retries
         """
-        cmd = []
-
         # Target
-        cmd.append(target)
+        cmd = [target]
 
         # Ports
         ports = options.get("ports", self.masscan_config.default_ports)

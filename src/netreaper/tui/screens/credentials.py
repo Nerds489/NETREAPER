@@ -5,7 +5,6 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
@@ -27,9 +26,6 @@ from netreaper.config.settings import get_settings
 from netreaper.core.logging import get_logger
 from netreaper.orchestration.events import Events
 from netreaper.tui.helpers.preflight_runner import PreflightRunner
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 

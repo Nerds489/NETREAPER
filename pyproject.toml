@@ -42,6 +42,11 @@ dependencies = [
     "cryptography>=41.0.0,<51",
     "keyring>=24.3.0",
     "tomli-w>=1.0.0",
+    # nmap XML results are re-read from disk by a different call than the one
+    # that wrote them, so they are parsed as untrusted input. Was arriving
+    # transitively; declared, because a defence is not a defence if a resolver
+    # can drop it.
+    "defusedxml>=0.7.1",
 ]
 
 [project.optional-dependencies]

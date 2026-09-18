@@ -217,8 +217,6 @@ SECRET = "Sup3rSecret!Pass"  # noqa: S105 - the fixture under test
 
 
 def _recorded(tmp_path, **kwargs) -> str:
-    from netreaper.core.audit import AuditTrail
-
     p = tmp_path / "audit.jsonl"
     AuditTrail(path=p).record(outcome="executed", targets=["10.0.0.1"], **kwargs)
     return p.read_text()

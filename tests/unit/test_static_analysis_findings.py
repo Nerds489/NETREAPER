@@ -37,6 +37,23 @@ ChainExecutor turns a TargetValidationError into `success=False, status=failed`
 and the denial disappears into a routine step failure. The third site
 (tools/base.py) has a narrow following handler, so the re-raise is redundant
 today, and it is kept as the guard against someone widening that handler later.
+
+THE BRANCH REPORT (76 findings on PR #58) added three more classes, two of them
+refused:
+
+  PYL-R0201 @staticmethod, 8 further occurrences. Refused again, and on this
+       branch the cost is concrete rather than theoretical: six of the eight are
+       duck-typed stubs -- FakeProc.communicate/wait, _StubApp.push_screen_wait,
+       _Boom.capture_for_target -- that exist to be called on an instance in
+       place of the real object. Converting them to static methods changes the
+       call they are standing in for, so the rule would break the tests it is
+       reported against.
+  PYL-W0603 global statement, 3 occurrences, all lazily built process
+       singletons with a monkeypatch seam. Refused; pinned by
+       test_the_audit_trail_singleton_stays_injectable below.
+  PYL-W0125 constant conditional, 2 occurrences. Correct, and the reason it is
+       correct is worth keeping: pinned by
+       test_every_screen_menu_entry_names_an_action_that_exists.
 """
 from __future__ import annotations
 
@@ -354,7 +371,8 @@ class _StubApp:
         self.notifications.append(str(message))
 
     def bell(self) -> None:
-        pass
+        """Swallowed. A bell is exactly the non-answer these tests exist to
+        catch, so it must not fail the stub either."""
 
     async def push_screen_wait(self, *a, **k):
         return None
@@ -597,3 +615,103 @@ def test_no_local_is_assigned_and_then_never_read():
     )
     hits = [ln for ln in result.stdout.splitlines() if "F841" in ln]
     assert not hits, "assigned and never read:\n  " + "\n  ".join(hits)
+
+
+# ── the branch report's remaining classes, and what was refused ───────────────
+
+
+def test_every_screen_menu_entry_names_an_action_that_exists():
+    """PYL-W0125 at exploit.py:149 and traffic.py:188, read properly.
+
+    DeepSource called `if action_method:` a constant condition. It is right that
+    it is constant, and this is why: every MENU_ITEMS entry resolves. That is
+    worth pinning rather than deleting, because the failure mode when it stops
+    being true is the one this repo keeps producing -- a click that does nothing
+    and says nothing. The dispatch now reports the miss; this makes sure there
+    is never one to report.
+    """
+    screens = SRC / "tui" / "screens"
+    checked = 0
+    missing: list[str] = []
+    for path in sorted(screens.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
+            menu = None
+            for node in cls.body:
+                if isinstance(node, ast.Assign) and any(
+                    getattr(t, "id", "") == "MENU_ITEMS" for t in node.targets
+                ):
+                    menu = node.value
+                elif (
+                    isinstance(node, ast.AnnAssign)
+                    and getattr(node.target, "id", "") == "MENU_ITEMS"
+                ):
+                    menu = node.value
+            if menu is None:
+                continue
+            actions = {
+                n.name
+                for n in cls.body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            for entry in ast.literal_eval(menu):
+                checked += 1
+                if f"action_{entry[2]}" not in actions:
+                    missing.append(f"{path.name}:{cls.name}.action_{entry[2]}")
+    assert checked >= 20, f"only found {checked} menu entries; the scan is broken"
+    assert not missing, (
+        "menu entries with no action behind them:\n  " + "\n  ".join(missing)
+    )
+
+
+def test_nmap_result_xml_is_not_parsed_through_the_stdlib():
+    """BAN-B405/BAN-B314. The result file is re-read by a different call than
+    the one that wrote it, so it is untrusted input by the time it is parsed.
+
+    The DOCTYPE refusal stays as well, and means something separate: nmap does
+    not emit one, so a result file that declares a DTD was not produced by the
+    scan it claims to be. This pins the parser, which is the part that holds
+    whether or not that regex is right.
+    """
+    src = (SRC / "tools" / "nmap.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    stdlib_calls = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "attr", None) in ("fromstring", "parse", "XML")
+        and getattr(getattr(node.func, "value", None), "id", None) == "ET"
+    ]
+    assert not stdlib_calls, (
+        f"xml.etree.ElementTree parses untrusted nmap output at line(s) "
+        f"{stdlib_calls}; use defusedxml.ElementTree"
+    )
+    assert "defusedxml" in src, "the defusedxml parser is gone from nmap.py"
+
+
+def test_the_audit_trail_singleton_stays_injectable():
+    """PYL-W0603 (global statement) at audit.py:713, refused, and this is why.
+
+    The three `global` statements DeepSource flagged are lazily built process
+    singletons. Rewriting `get_audit_trail` as an lru_cache would drop the
+    `global` and also drop the seam four tests use to point the trail at a
+    tmp_path, which would mean the audit tests stopped testing the audit trail
+    the rest of the process actually uses. `get_db` is worse still: it is async,
+    so a cache would memoise the coroutine rather than the engine.
+
+    Minor severity, real cost, no correctness gain. Refused, and pinned so the
+    refusal is a decision rather than an oversight.
+    """
+    import netreaper.core.audit as audit_mod
+
+    assert hasattr(audit_mod, "_TRAIL"), "the injection seam is gone"
+    sentinel = object()
+    original = audit_mod._TRAIL
+    try:
+        audit_mod._TRAIL = sentinel
+        assert audit_mod.get_audit_trail() is sentinel, (
+            "get_audit_trail no longer reads the module-level singleton, so "
+            "monkeypatching _TRAIL silently does nothing"
+        )
+    finally:
+        audit_mod._TRAIL = original

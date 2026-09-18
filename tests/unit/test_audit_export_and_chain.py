@@ -315,8 +315,6 @@ def test_an_anchor_one_entry_behind_is_tolerated_exactly_once(tmp_path):
     Deliberately an equality, not a >=. A tolerance expressed as slack is how
     the streaming-capture guard came to permit two ungated spawns.
     """
-    import json
-
     p = tmp_path / "audit.jsonl"
     t = AuditTrail(path=p)
     for i in range(4):
