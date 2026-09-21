@@ -12,7 +12,7 @@
 
 ```
 
-[![Version](https://img.shields.io/badge/version-11.0.0-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
+[![Version](https://img.shields.io/badge/version-12.0.0-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://kernel.org)
@@ -171,12 +171,17 @@ netreaper --version                # show version
 
 ## Interactive Mode
 
-> **Not available in v11.0.0.** The Textual TUI is deferred to v1.1 (issue #31), so running
-> `netreaper` with no arguments does not currently start a menu. Use `netreaper --help`, or
-> the commands above. The layout below is the planned design, not shipped behaviour.
+> **Ships in v12.0.0.** The Textual TUI exists now: `netreaper` with no arguments starts it,
+> and `netreaper tui` does the same thing explicitly. Earlier releases documented this menu
+> while `netreaper.tui.app` was absent, so the command failed with a misleading hint to install
+> a `[tui]` extra that would not have helped, because nothing was missing from the environment.
+> The categories below are the planned set; the shipped build covers a subset of them as
+> screens, and the command palette names the CLI equivalent for anything without a screen yet.
 
 ```bash
-netreaper --help                 # v11: the CLI is the interface
+netreaper                        # starts the TUI
+netreaper tui                    # the same thing, explicitly
+netreaper --help                 # the CLI, if you prefer it
 ```
 
 ```
@@ -360,7 +365,7 @@ this tool without authorisation is your own legal exposure, not a licence breach
 
 <div align="center">
 
-**NETREAPER** v11.0.0 • GPL-3.0-or-later
+**NETREAPER** v12.0.0 • GPL-3.0-or-later
 
 *The airwaves belong to those who listen*
 
