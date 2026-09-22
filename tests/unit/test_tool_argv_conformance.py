@@ -93,10 +93,23 @@ REAVER_FLAGS: dict[str, bool] = {
     "-v": FLAG, "-vv": FLAG, "-vvv": FLAG, "-q": FLAG,
 }
 
+# hashcat. Sourced from its own usage output. The attack-mode and hash-type
+# selectors take a number; the potfile and status switches take nothing.
+HASHCAT_FLAGS: dict[str, bool] = {
+    "-m": VALUE, "-a": VALUE,
+    "-o": VALUE, "--outfile": VALUE, "--outfile-format": VALUE,
+    "-w": VALUE, "--workload-profile": VALUE,
+    "-d": VALUE, "--backend-devices": VALUE,
+    "--session": VALUE, "--status-timer": VALUE,
+    "--potfile-disable": FLAG, "--quiet": FLAG, "--increment": FLAG,
+    "--show": FLAG, "--restore": FLAG, "--status": FLAG, "--force": FLAG,
+}
+
 SPECS: dict[str, dict[str, bool]] = {
     "aireplay-ng": AIREPLAY_FLAGS,
     "reaver": REAVER_FLAGS,
     "packetforge-ng": PACKETFORGE_FLAGS,
+    "hashcat": HASHCAT_FLAGS,
 }
 
 
@@ -320,3 +333,33 @@ def test_replaying_a_forged_frame_builds_a_command_aireplay_would_accept():
     problems = check_argv(argv)
     assert not problems, "\n  ".join(problems) + f"\n  {' '.join(argv)}"
     assert argv.count("-r") == 1, argv
+
+
+# ── hashcat ──────────────────────────────────────────────────────────────────
+
+
+def _hashcat_argv(**options) -> list[str]:
+    from netreaper.tools.hashcat import HashcatTool
+
+    options.setdefault("hash_mode", 22000)
+    return ["hashcat", *HashcatTool().build_command("hashes.22000", options)]
+
+
+def test_a_straight_crack_builds_a_command_hashcat_would_accept():
+    """hashfile + dictionary is two trailing operands."""
+    argv = _hashcat_argv(attack_mode=0, wordlist="/usr/share/wordlists/rockyou.txt")
+    problems = check_argv(argv, trailing_positionals=2)
+    assert not problems, "\n  ".join(problems) + f"\n  {' '.join(argv)}"
+
+
+def test_a_hybrid_crack_carries_three_operands():
+    """Mode 6 is hashfile + dictionary + mask."""
+    argv = _hashcat_argv(attack_mode=6, wordlist="words.txt", mask="?d?d")
+    problems = check_argv(argv, trailing_positionals=3)
+    assert not problems, "\n  ".join(problems) + f"\n  {' '.join(argv)}"
+
+
+def test_show_carries_only_the_hash_file():
+    argv = _hashcat_argv(show=True)
+    problems = check_argv(argv, trailing_positionals=1)
+    assert not problems, "\n  ".join(problems) + f"\n  {' '.join(argv)}"

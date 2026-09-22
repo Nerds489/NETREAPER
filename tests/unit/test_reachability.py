@@ -337,10 +337,6 @@ KNOWN_DANGLING: dict[str, str] = {
     "netreaper.automation.handlers.install": (
         "tool install handler for the preflight flow; same family, #31"
     ),
-    "netreaper.tools.hashcat": (
-        "hashcat wrapper for the credentials screen. John is wired and works; "
-        "the screen now says so rather than raising ImportError at the operator"
-    ),
     "netreaper.tools.nuclei": (
         "nuclei wrapper for the exploit screen; the screen now explains itself"
     ),
