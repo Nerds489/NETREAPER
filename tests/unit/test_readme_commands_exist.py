@@ -46,6 +46,10 @@ README = Path(__file__).resolve().parents[2] / "README.md"
 # proves that `wifi wep` and `--injection` exist.
 _PLACEHOLDER = re.compile(r"<[^>]+>")
 
+# Invocations that launch the interactive TUI instead of returning. Checked
+# with --help rather than executed; see the branch in the test below.
+_INTERACTIVE: frozenset[tuple[str, ...]] = frozenset({(), ("tui",)})
+
 
 def documented_commands() -> list[str]:
     text = README.read_text(encoding="utf-8")
@@ -119,6 +123,31 @@ def test_a_documented_command_is_one_the_cli_accepts(cmd):
         assert not missing, (
             f"README documents `{cmd}`, but `{' '.join(path)}` has no "
             f"{', '.join(missing)} option"
+        )
+        return
+
+    # A command that STARTS AN INTERACTIVE SESSION never returns. Bare
+    # `netreaper` and `netreaper tui` both launch the Textual application,
+    # which blocks on its own asyncio event loop waiting for a terminal
+    # CliRunner does not provide. The suite then HANGS rather than fails, and
+    # in CI that burns the entire six-hour job limit before anything reports.
+    #
+    # Not hypothetical: the v12.0.0 README truth-up added exactly these two
+    # lines, and main sat hung for two days, because a documentation-only
+    # change looks incapable of breaking a test. In this repository it is not,
+    # precisely because this file executes the README.
+    #
+    # They are still checked, with --help appended, which walks the same
+    # command path and exits without starting the app, so a typo like
+    # `netreaper tuii` still fails here. Bare `netreaper` is the application
+    # itself and has no command path left to resolve.
+    if tuple(argv) in _INTERACTIVE:
+        if not argv:
+            return
+        result = runner.invoke(app, [*argv, "--help"])
+        assert result.exit_code == 0, (
+            f"README documents `{cmd}`, but `{' '.join(argv)}` is not a command:\n"
+            + _plain(result.output).strip()[:200]
         )
         return
 
