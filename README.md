@@ -361,6 +361,20 @@ term of the licence.** GPL-3.0 does not restrict the field of use, and an open-s
 that tried to would stop being open source (clause 6 of the Open Source Definition). Using
 this tool without authorisation is your own legal exposure, not a licence breach.
 
+## Sponsor
+
+This is built and maintained by one person. If it saves you time, you can put something
+back:
+
+<p align="left">
+  <a href="https://github.com/sponsors/Nerds489"><img height="36" alt="Sponsor on GitHub" src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white"></a>
+  <a href="https://liberapay.com/Nerds489/donate"><img height="36" alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a>
+  <a href="https://www.buymeacoffee.com/abbeyandlaf"><img height="36" alt="Buy Me a Coffee" src="https://cdn.buymeacoffee.com/buttons/v2/default-violet.png"></a>
+</p>
+
+GitHub Sponsors, Liberapay and Buy Me a Coffee all reach the same person. Pick whichever
+one you already have an account with.
+
 ---
 
 <div align="center">
