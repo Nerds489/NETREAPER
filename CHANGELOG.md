@@ -2,6 +2,50 @@
 
 All notable changes to NETREAPER.
 
+## [12.0.1] - 2026-09-23
+
+Three commands reported success while doing the wrong thing, and no test was
+watching any of them. Documentation re-measured against the code it describes.
+
+### Fixed
+
+- **`bin/netreaper-install` could not run at all.** Its root resolver decided a
+  directory was a NETREAPER tree by testing for a `lib/` directory, which has
+  never been committed and which nothing in the script reads: the resolved root
+  is used for one thing, the VERSION file. A fresh clone exited 1 before parsing
+  an argument. The file was also tracked `100644`, so `sudo bin/netreaper-install`
+  would have failed on the execute bit regardless.
+- **`--dry-run` mutated the system, demanded root, and could not succeed.**
+  `pkg_update` had no guard so a dry run ran a real `apt-get update`; every
+  method's success test was `is_installed` *after* a simulated install, which is
+  always false, so it reported "no installation method available" for every tool
+  it would have installed.
+- **`utils` was installable but undocumented**, and `stress` and `utils` were
+  unreachable from the interactive menu. Usage and dispatcher now match exactly.
+- **`config set` kept values it had just rejected.** The write happened before
+  validation, so `config set logging.level DEBUG` printed a pydantic error and
+  stored the string, leaving every later load broken until the file was deleted
+  by hand. It also accepted keys outside the schema, because `Settings` is a
+  plain `BaseModel` and pydantic ignores extras. Both are now checked before
+  anything reaches disk, and the write is atomic.
+
+### Changed
+
+- **README rewritten against the CLI.** It claimed 124 tools where the catalogue
+  holds 102, documented `wifi monitor start` and `config reset` which do not
+  exist, listed flat config keys that are nested, credited `pipx` and `git clone`
+  as install methods that are never called, and covered 6 of 13 top-level
+  commands and 6 of 17 `wifi` subcommands.
+
+### Added
+
+- Three guards, all pytest, because CI runs pytest and shellcheck and never runs
+  the bats suite, which is itself broken and is why a dead installer went
+  unnoticed: `test_installer_runs_from_a_clone.py` (11),
+  `test_config_set_validates_before_writing.py` (9) and
+  `test_readme_tool_catalogue_matches.py` (5). Each was mutation-tested against
+  the defect it is meant to catch.
+
 ## [12.0.0] - 2026-09-18
 
 Safety-spine release. Four independent reviews of the v11 spine found controls
