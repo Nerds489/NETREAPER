@@ -381,6 +381,14 @@ class ToolRegistry:
             description="Windows/Samba enumeration",
             packages={"debian": "enum4linux", "arch": "enum4linux"},
         ),
+        "enum4linux-ng": ToolDefinition(
+            name="enum4linux-ng",
+            category=ToolCategory.SCANNING,
+            description="Windows/Samba enumeration, the Python rewrite",
+            packages={"debian": "enum4linux-ng", "arch": "enum4linux-ng"},
+            pip_package="enum4linux-ng",
+            url="https://github.com/cddmp/enum4linux-ng",
+        ),
         "smbclient": ToolDefinition(
             name="smbclient",
             category=ToolCategory.SCANNING,
@@ -465,6 +473,13 @@ class ToolRegistry:
         ),
 
         # ========== OSINT ==========
+        "subfinder": ToolDefinition(
+            name="subfinder",
+            category=ToolCategory.OSINT,
+            description="Passive subdomain enumeration",
+            packages={"debian": "subfinder", "arch": "subfinder"},
+            url="https://github.com/projectdiscovery/subfinder",
+        ),
         "theHarvester": ToolDefinition(
             name="theHarvester",
             category=ToolCategory.OSINT,
@@ -636,6 +651,10 @@ class ToolRegistry:
             category=ToolCategory.TRAFFIC,
             description="Network protocol analyzer",
             packages={"debian": "wireshark", "redhat": "wireshark", "arch": "wireshark-qt", "fedora": "wireshark"},
+            # tshark and tcpdump beside it both declare root, and the
+            # preflight declares it for all three. This one row disagreed
+            # with its own siblings; capture needs privilege either way.
+            requires_root=True,
         ),
         "ettercap": ToolDefinition(
             name="ettercap",
