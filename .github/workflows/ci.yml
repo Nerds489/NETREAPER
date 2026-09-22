@@ -11,6 +11,10 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
+    # A hung test used to run to the six-hour job ceiling and report as
+    # "cancelled", which reads like an infrastructure blip rather than a
+    # defect. Two PRs sat blocked for two days on exactly that.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -19,7 +23,9 @@ jobs:
       - name: Install (editable, with dev extras)
         run: python -m pip install -e ".[dev]"
       - name: Tests (import smoke + safety-gate contract + exporters)
-        run: python -m pytest tests/ -q
+        # --timeout makes a hang fail as a named test with a stack, instead of
+        # a killed job with no output to read.
+        run: python -m pytest tests/ -q --timeout=120
       - name: Lint (advisory during the migration)
         run: ruff check src tests || true
       - name: Type-check the safety spine (blocking)
@@ -45,6 +51,7 @@ jobs:
 
   bash:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - name: Bash syntax (blocking)
