@@ -60,6 +60,28 @@ AIREPLAY_FLAGS: dict[str, bool] = {
     "-x": VALUE, "-q": VALUE, "-Q": VALUE, "-y": VALUE, "-j": FLAG,
     "-D": FLAG, "-F": FLAG, "-R": FLAG,
     "--ignore-negative-one": FLAG,
+    # Source option: extract packets from this pcap. It is how a forged ARP
+    # gets replayed, so the WEP forge path depends on it being real.
+    "-r": VALUE,
+}
+
+# packetforge-ng. Mode selectors take no argument; everything else that
+# configures the frame takes one. Sourced from packetforge-ng's own usage
+# output, not from how it is usually typed.
+PACKETFORGE_FLAGS: dict[str, bool] = {
+    # modes
+    "--arp": FLAG, "-0": FLAG,
+    "--udp": FLAG, "-1": FLAG,
+    "--tcp": FLAG, "-2": FLAG,
+    "--custom": FLAG, "-3": FLAG,
+    "--null": FLAG, "-4": FLAG,
+    # frame construction
+    "-p": VALUE, "-a": VALUE, "-c": VALUE, "-h": VALUE,
+    "-k": VALUE, "-l": VALUE, "-t": VALUE, "-w": VALUE,
+    "-s": VALUE, "-n": VALUE,
+    "-j": FLAG, "-o": FLAG, "-e": FLAG,
+    # sources
+    "-y": VALUE, "-r": VALUE,
 }
 
 REAVER_FLAGS: dict[str, bool] = {
@@ -74,6 +96,7 @@ REAVER_FLAGS: dict[str, bool] = {
 SPECS: dict[str, dict[str, bool]] = {
     "aireplay-ng": AIREPLAY_FLAGS,
     "reaver": REAVER_FLAGS,
+    "packetforge-ng": PACKETFORGE_FLAGS,
 }
 
 
@@ -263,3 +286,37 @@ def test_every_iw_invocation_uses_a_real_command_group():
         "iw invocation(s) with no command group; iw parses the second word as a "
         "command, not an interface:\n  " + "\n  ".join(offenders)
     )
+
+
+# ── packetforge-ng, and the replay leg that consumes what it writes ──────────
+
+
+def test_the_forge_builds_a_command_packetforge_would_accept():
+    """packetforge-ng takes no positional arguments: everything is a flag."""
+    from netreaper.tools.packetforge import PacketforgeTool
+
+    argv = [
+        "packetforge-ng",
+        *PacketforgeTool().build_command(
+            "/tmp/replay_dec.xor",
+            {
+                "bssid": "AA:BB:CC:DD:EE:FF",
+                "source_mac": "11:22:33:44:55:66",
+                "dest_mac": "FF:FF:FF:FF:FF:FF",
+                "output": "/tmp/arp-request.cap",
+            },
+        ),
+    ]
+    problems = check_argv(argv, trailing_positionals=0)
+    assert not problems, "packetforge argv defects:\n  " + "\n  ".join(problems) + f"\n  {' '.join(argv)}"
+
+
+def test_replaying_a_forged_frame_builds_a_command_aireplay_would_accept():
+    """The last leg of the forge chain. -r must be real and must take a value."""
+    argv = _aireplay_argv(
+        __import__("netreaper.tools.aireplay", fromlist=["AttackMode"]).AttackMode.INTERACTIVE,
+        read_file="/tmp/arp-request.cap",
+    )
+    problems = check_argv(argv)
+    assert not problems, "\n  ".join(problems) + f"\n  {' '.join(argv)}"
+    assert argv.count("-r") == 1, argv
