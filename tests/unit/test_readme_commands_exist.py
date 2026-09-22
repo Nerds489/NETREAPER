@@ -169,6 +169,12 @@ def test_a_documented_command_is_one_the_cli_accepts(cmd):
         r"Missing argument '[^']*'",
         r"Missing option '[^']*'",
         r"Got unexpected extra argument[^\n]*",
+        # An action passed as a free `str` argument: Click accepts any string,
+        # so `wifi monitor start` and `config reset` were documented for
+        # releases while being no more real than a misspelt command. They are
+        # usage errors now, and this is the signature.
+        r"is not a valid [a-z ]+",
+        r"needs a key[^\n]*",
     ):
         m = re.search(pattern, out)
         if m:
