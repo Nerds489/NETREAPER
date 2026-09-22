@@ -147,6 +147,31 @@ def status():
     console.print(f"[dim]{available}/{len(tools)} tools available[/dim]")
 
 
+def _one_of(value: str, choices: tuple[str, ...], *, what: str) -> str:
+    """Validate a free-string action argument as a USAGE error.
+
+    `config` and `wifi monitor` take their action as a plain `str` argument, so
+    Click accepts anything and the command discovers the problem itself, deep
+    in its own body. Both then exited 1, which reads as "it ran and failed"
+    rather than "that is not a thing you can type".
+
+    The difference matters because tests/unit/test_readme_commands_exist.py
+    treats any non-2 exit as success: a command that parses and then refuses
+    for want of an engagement is correctly documented. So an invalid action
+    that exited 1 was indistinguishable from a working command in a bare
+    environment, and the README documented `wifi monitor start` and `config
+    reset` through several releases with that guard green. Neither exists.
+
+    typer.BadParameter is Click's usage error and exits 2, the same as an
+    unknown option, which is exactly what a bad action value is.
+    """
+    if value not in choices:
+        raise typer.BadParameter(
+            f"{value!r} is not a valid {what}. Choose one of: {', '.join(choices)}"
+        )
+    return value
+
+
 def _coerce(value: str):
     low = value.lower()
     if low in ("true", "false"):
@@ -278,6 +303,16 @@ def config(
     """Manage configuration."""
     from netreaper.config.settings import get_settings, reload_settings
 
+    _one_of(action, ("show", "list", "get", "set"), what="config action")
+    if action == "get" and not key:
+        raise typer.BadParameter(
+            "config get needs a key, e.g. config get logging.level"
+        )
+    if action == "set" and (not key or value is None):
+        raise typer.BadParameter(
+            "config set needs a key and a value, e.g. config set logging.level 10"
+        )
+
     settings = get_settings()
 
     if action in ("show", "list"):
@@ -295,9 +330,10 @@ def config(
         _persist_config(key, value)
         reload_settings()
         console.print(f"[green]set[/green] {key} = {_coerce(value)}")
-    else:
-        console.print("[red]usage:[/red] config show | get <key> | set <key> <value>")
-        raise typer.Exit(1)
+    else:  # pragma: no cover - _one_of and the checks above cover every path
+        raise typer.BadParameter(
+            "usage: config show | get <key> | set <key> <value>"
+        )
 
 
 # Engagement (authorisation) commands
@@ -581,6 +617,9 @@ def wifi_monitor(
     interface: str = typer.Argument(..., help="Wireless interface"),
 ):
     """Manage monitor mode."""
+    # Up front, before asyncio.run and before the imports below: a typo should
+    # not cost you an event loop, and it must exit 2 rather than 1.
+    _one_of(action, ("enable", "disable", "status"), what="monitor action")
 
     async def manage_monitor():
         from netreaper.wireless.monitor import (
@@ -605,9 +644,10 @@ def wifi_monitor(
             console.print(f"In monitor mode: {mon_status.get('is_monitor')}")
             console.print(f"Supports monitor: {mon_status.get('supports_monitor')}")
             console.print(f"Supports injection: {mon_status.get('supports_injection')}")
-        else:
-            console.print("[red]Invalid action. Use: enable, disable, or status[/red]")
-            raise typer.Exit(1)
+        else:  # pragma: no cover - _one_of above rejects anything else
+            raise typer.BadParameter(
+                f"{action!r} is not a valid monitor action"
+            )
 
     asyncio.run(manage_monitor())
 

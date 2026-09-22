@@ -22,6 +22,17 @@ watching any of them. Documentation re-measured against the code it describes.
   it would have installed.
 - **`utils` was installable but undocumented**, and `stress` and `utils` were
   unreachable from the interactive menu. Usage and dispatcher now match exactly.
+- **An action that does not exist exited 1, so the docs guard could not see
+  it.** `config` and `wifi monitor` take their action as a plain `str`, so Click
+  accepts anything and the command discovers the problem in its own body.
+  `test_readme_commands_exist.py` fails only on exit 2 and deliberately treats
+  every other exit as a command that parsed and then refused for environmental
+  reasons, so `wifi monitor start wlan0` (invalid) and `wifi monitor enable
+  wlan0` (valid, no such adapter) were indistinguishable. That is how the README
+  documented `wifi monitor start` and `config reset` through several releases
+  with CI green. A bad action value is a usage error and now exits 2, `wifi
+  monitor` validates before it starts an event loop, and the docs guard gained
+  the matching signature.
 - **`config set` kept values it had just rejected.** The write happened before
   validation, so `config set logging.level DEBUG` printed a pydantic error and
   stored the string, leaving every later load broken until the file was deleted
