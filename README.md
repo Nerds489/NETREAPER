@@ -17,9 +17,9 @@
 [![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://kernel.org)
 
-**Offensive Security Framework** | **124 Tools** | **Zero Configuration** | **Just Works**
+**Offensive security framework** • **102 tools** • **Deny by default** • **Audited**
 
-[Installation](#installation) • [Quick Start](#quick-start) • [Commands](#commands) • [Tools](#tool-arsenal)
+[Install](#installation) • [The engagement](#the-engagement) • [Commands](#commands) • [Tools](#tool-catalogue)
 
 </div>
 
@@ -27,21 +27,82 @@
 
 ## What is NETREAPER?
 
-NETREAPER is an offensive security framework that plans the chain for you. Name a goal and an interface, and it resolves which tools are needed, in what order, and runs them behind a scope gate with a hash-chained audit trail.
-
-It does not pick your interface for you. Every command takes it explicitly; see Commands below.
+NETREAPER plans the chain for you. Name a goal and an interface, and it works out which
+tools are needed, in what order, and runs them behind a scope gate that logs every step to
+a hash chain.
 
 ```bash
-# Old way
+# By hand
 airmon-ng check kill
 airmon-ng start wlan0
-airodump-ng wlan0mon          # wait, watch, copy BSSID...
-airodump-ng -c 6 --bssid AA:BB:CC:DD:EE:FF wlan0mon  # find clients...
+airodump-ng wlan0mon                                     # wait, watch, copy the BSSID
+airodump-ng -c 6 --bssid AA:BB:CC:DD:EE:FF wlan0mon      # wait again, find a client
 aireplay-ng --deauth 0 -a AA:BB:CC:DD:EE:FF -c 11:22:33:44:55:66 wlan0mon
 
-# NETREAPER way
-netreaper wifi auto -i wlan0mon --run    # resolve the chain and run it
+# NETREAPER
+netreaper wifi auto -i wlan0mon --run
 ```
+
+It knows 102 tools across nine categories, drives 14 of them through native adapters that
+parse their output rather than shelling out and hoping, and refuses to touch anything you
+have not put in scope.
+
+Two things it deliberately does not do. It does not choose your adapter or bring up monitor
+mode behind your back: every command takes its interface by name. And it never prompts you
+mid-run for permission, because a prompt at three in the morning is not consent. Everything
+dangerous is authorised up front or refused.
+
+---
+
+## The engagement
+
+NETREAPER is deny by default. With no active engagement, every targeted action fails
+closed. This is the part of the tool most worth understanding before you use it.
+
+```bash
+sudo netreaper engage start \
+    --operator "your name" --ref "ROE-001" \
+    --essid "YourNetwork" --bssid AA:BB:CC:DD:EE:FF \
+    --max-tier mitm --hours 8 \
+    --confirm-tier single_target --confirm-tier broadcast \
+    --confirm-tier mitm --accept-interception
+```
+
+**Scope** is what you may touch: `--cidr`, `--bssid`, `--essid` and `--hostname` put things
+in, `--deny` carves them back out, and anything unlisted is refused. Protected and reserved
+address ranges are refused outright, in bare and CIDR notation both.
+
+**Tiers** are blast radius. Every gated action declares one.
+
+| Tier | Value | What it covers |
+|:--|:--|:--|
+| `passive` | 0 | Read-only recon. No packets reach the target |
+| `active_scan` | 1 | Scans and probes against a named target |
+| `single_target` | 2 | One client or AP, such as a directed deauth |
+| `broadcast` | 3 | Mass or broadcast traffic: mdk4 amok, beacon floods, DoS |
+| `mitm` | 4 | Evil twin, MITM, traffic interception |
+
+**A ceiling is not a confirmation, and this trips people up.** `--max-tier` says what this
+engagement *may* reach. `--confirm-tier` says you meant it. Anything at `single_target` or
+above needs both. `mitm` additionally needs `--accept-interception`, which records an
+acknowledgement that you are about to intercept third-party traffic. `broadcast` can never
+be confirmed mid-run.
+
+**Engagements expire.** `--hours` defaults to 12 and is capped at 48. `netreaper engage
+status` shows the current scope, ceiling and expiry; `netreaper engage end` revokes it.
+
+**Everything is logged.** Every spawn appends to a hash-chained trail at
+`~/.netreaper/logs/audit.jsonl`, mode `0600`, recording the outcome as one of `denied`,
+`dry-run`, `executed` or `spawn-error`. A refusal is written before the exception is
+raised, so a denial leaves a record too. Credentials are stripped at the sink, including
+ones a tool announces itself, such as aircrack-ng's `KEY FOUND!`. A companion anchor file
+records the chain length and head, because a prefix of a valid chain is also a valid
+chain, and truncation would otherwise be invisible.
+
+Be clear about what that is worth: the chain and the engagement's consent hash are both
+unkeyed and on the same disk as the thing they attest. They make casual editing and
+accidental loss obvious. They do not stop someone with write access who is willing to
+recompute two files, and the source says so in as many words.
 
 ---
 
@@ -50,299 +111,312 @@ netreaper wifi auto -i wlan0mon --run    # resolve the chain and run it
 ```bash
 git clone https://github.com/Nerds489/NETREAPER.git
 cd NETREAPER
-
-# Install NETREAPER (the Python CLI)
-pip install .
-# or, isolated:  pipx install .
-
-# Install the security tools (optional)
-sudo bin/netreaper-install all
+pip install .            # or, isolated:  pipx install .
 ```
+
+```bash
+sudo bin/netreaper-install all        # the security tools themselves
+```
+
+`pip install .` gives you the `netreaper` command. The tools it drives are separate, which
+is what the installer is for. `netreaper status` tells you which of them are present, and
+`bin/netreaper-install --dry-run all` shows what would be fetched and how, without root and
+without touching anything.
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
-# 1. Authorise a scope. Every targeted action is denied without one.
-#    --max-tier is the CEILING (what may be reached).
-#    --confirm-tier is the CONFIRMATION (that you meant it). T2+ needs both.
-sudo netreaper engage start \
-    --operator "your name" --ref "ROE-001" \
-    --essid "YourNetwork" --bssid AA:BB:CC:DD:EE:FF \
-    --max-tier mitm --hours 8 \
-    --confirm-tier single_target --confirm-tier broadcast \
-    --confirm-tier mitm --accept-interception
+# 1. Authorise a scope. Without one, every targeted action is denied.
+sudo netreaper engage start --operator "your name" --ref "ROE-001" \
+    --essid "YourNetwork" --bssid AA:BB:CC:DD:EE:FF --hours 8 \
+    --max-tier single_target --confirm-tier single_target
 
-# 2. Work. Name the interface; NETREAPER resolves the tool chain.
-sudo netreaper wifi scan wlan0mon                       # scan for access points
-sudo netreaper wifi handshake wlan0mon AA:BB:CC:DD:EE:FF 6   # capture a handshake
-sudo netreaper wifi auto -i wlan0mon --run              # plan and run the chain
-sudo netreaper scan 192.168.1.0/24                      # scan the local network
+# 2. Work. Name the interface; NETREAPER resolves the rest.
+sudo netreaper wifi monitor enable wlan0
+sudo netreaper wifi scan wlan0mon
+sudo netreaper wifi handshake wlan0mon AA:BB:CC:DD:EE:FF 6
+sudo netreaper scan 192.168.1.0/24
 
 # 3. Revoke when you are done.
 sudo netreaper engage end
 ```
 
-> **The engagement is not optional.** NETREAPER is deny-by-default: with no active
-> engagement every targeted action fails closed, by design. `engage status` shows the
-> current scope, tier ceiling and expiry.
-
-> **A ceiling is not a confirmation.** `--max-tier` says what this engagement *may*
-> reach; `--confirm-tier` says you intended it. Anything at SINGLE_TARGET or above
-> needs the tier pre-confirmed, MITM additionally needs `--accept-interception`, and
-> BROADCAST can never be confirmed mid-run. Nothing prompts: a confirmation is
-> recorded in the authorisation up front, inside its consent hash, or the action is
-> refused. An engagement lasts at most 48 hours.
-
 ---
 
 ## Planning
 
-`wifi auto` is the part that does the thinking. Give it a goal capability and an
-interface and it resolves which tools are required, orders them by dependency,
-and previews the chain. It is a dry run unless you pass `--run`.
+`wifi plan` resolves a goal into a chain of capabilities and prints it. `wifi auto` does
+the same and then runs it. Both work backwards from what you want to what you have.
 
 ```bash
+netreaper wifi plan wifi.password                    # what would it take?
+netreaper wifi plan wifi.password --have wifi.handshake   # given I already have this
 netreaper wifi auto -i wlan0mon                      # preview the chain
 netreaper wifi auto -i wlan0mon --run                # run it
-netreaper wifi auto -i wlan0mon -g wifi.handshake    # a different goal
+netreaper wifi auto -i wlan0mon -g wifi.handshake --run   # a different goal
 ```
 
-Every step in the resolved chain goes through the same scope gate and the same
-audit trail as a hand-run command. Nothing in a chain is exempt.
+`wifi auto` is a dry run unless you pass `--run`. Every step of a resolved chain goes
+through the same scope gate and the same audit trail as a command you typed yourself.
+Nothing in a chain is exempt, and a chain cannot reach a tier the engagement has not
+confirmed.
 
-### What is NOT automatic
-
-This section previously advertised auto-selection of the interface, monitor
-mode, network, target, AP and client, and on-the-fly tool installation, in a
-table and a seven-box diagram. None of it was wired to the CLI.
-`AutoIfaceHandler` (`automation/handlers/iface.py`) does enumerate wireless
-adapters and can bring one into monitor mode, but `cli.py` never calls it, so
-every command needs its interface named. `tests/unit/test_readme_commands_exist.py`
-now runs every command on this page, so the page cannot drift from the CLI again.
+---
 
 ## Commands
 
-### Network Scanning
+### Wireless
 
 ```bash
-netreaper scan 192.168.1.0/24      # scan a network (target is positional)
-netreaper scan 10.0.0.1 --type full    # scan one host; -t is --type, not target
-netreaper portscan 10.0.0.1            # port scan one host
-```
-
-### WiFi Operations
-
-```bash
-netreaper wifi monitor start wlan0       # enable monitor mode
-netreaper wifi monitor stop wlan0mon     # disable monitor mode
-netreaper wifi scan wlan0mon             # scan for access points
+netreaper wifi monitor enable wlan0        # enable, disable or status
+netreaper wifi scan wlan0mon               # find APs and clients; -t sets the window
 netreaper wifi handshake wlan0mon AA:BB:CC:DD:EE:FF 6
-                                   # capture a handshake; --deauth N sends N
-                                   # deauth frames, --client targets one station
+                                           # WPA/WPA2 capture; -d deauth frames,
+                                           # -c targets one client, -a capture rounds
 netreaper wifi pmkid wlan0mon AA:BB:CC:DD:EE:FF 6
-                                   # clientless PMKID capture
-netreaper wifi wep <if> <bssid> <ch> --injection chopchop
-                                   # WEP: arpreplay (default), chopchop,
-                                   # fragment, caffe_latte, cfrag, interactive
+                                           # clientless PMKID, emits a hashcat 22000 hash
+netreaper wifi wps AA:BB:CC:DD:EE:FF -i wlan0mon -c 6
+                                           # pixie-dust then PIN list; --compute for
+                                           # offline PIN candidates only
+netreaper wifi wep wlan0mon AA:BB:CC:DD:EE:FF 6 --injection chopchop
+                                           # arpreplay (default), chopchop, fragment,
+                                           # caffe_latte, cfrag, interactive
+netreaper wifi crack <capture.cap> <bssid> <wordlist>
+                                           # offline, aircrack-ng
 ```
+
+Rogue APs and interception. All of these sit at `mitm`, so they need the tier confirmed
+and `--accept-interception` on the engagement.
+
+```bash
+netreaper wifi eviltwin wlan0 "YourNetwork" 6          # rogue AP; Ctrl-C tears it down
+netreaper wifi enterprise wlan0 "CorpWiFi" 6           # rogue WPA-Enterprise, hashcat 5500
+netreaper wifi downgrade wlan0 "YourNetwork" 6         # WPA2 twin of a WPA3 transition AP
+netreaper wifi arpspoof wlan0 192.168.1.1 192.168.1.50 # bidirectional ARP-spoof MITM
+```
+
+Reconnaissance and evasion.
+
+```bash
+netreaper wifi wpa3 wlan0mon AA:BB:CC:DD:EE:FF      # classify WPA3/SAE, OWE, Dragonblood
+netreaper wifi hidden wlan0mon AA:BB:CC:DD:EE:FF 6  # reveal a cloaked ESSID
+netreaper wifi mac-random wlan0 --vendor apple      # randomise the adapter MAC
+netreaper wifi mac-clone wlan0 AA:BB:CC:DD:EE:FF 6  # clone an AP's BSSID and channel
+```
+
+### Network
+
+```bash
+netreaper scan 192.168.1.0/24              # target is positional; -t is --type
+netreaper scan 10.0.0.1 --type full        # quick, standard (default) or full
+netreaper portscan 10.0.0.1 -p 1-1024      # fast sweep via masscan
+```
+
+### Web, credentials and OSINT
+
+```bash
+netreaper web dirs https://example.com            # directory discovery (gobuster)
+netreaper web fingerprint https://example.com     # identify technologies (whatweb)
+netreaper creds attack 10.0.0.1 -s ssh -l root -P rockyou.txt
+                                                  # ssh, ftp, smb, rdp or mysql (hydra)
+netreaper osint subdomains example.com            # passive enumeration (subfinder)
+```
+
+### Automotive
+
+```bash
+netreaper can interfaces                   # list SocketCAN interfaces
+netreaper can dump vcan0 -s 30             # read and decode; -n stops after N frames
+```
+
+Read-only by design. The CAN module drives `candump`, `cansniffer` and `cantools`, and
+refuses `cansend`, `cangen`, `canplayer` and `canfdtest` by name. It cannot transmit.
 
 ### System
 
 ```bash
-netreaper status                   # show system info and tool status
-netreaper config show              # show configuration
-netreaper config set log_level DEBUG
-netreaper engage status            # show the active authorisation
+netreaper status                           # system info and tool availability
+netreaper engage status                    # the active authorisation
+netreaper config show                      # show, get <key> or set <key> <value>
+netreaper plugin list                      # loaded plugins
+netreaper resources list                   # external sources, how used, licence
+netreaper --help                           # everything
+netreaper --version
 ```
 
-### Flags
+Per-command options live in each command's `--help`. There are no global `--dry-run`,
+`--quiet`, `--verbose` or `--target` flags.
+
+---
+
+## Interactive mode
 
 ```bash
-netreaper --help                   # show all commands
-netreaper --version                # show version
-
-# --dry-run, --quiet, --verbose and --target were listed here as global flags.
-# None of them exist. Per-command options are in each command's --help.
+netreaper            # no arguments starts the TUI
+netreaper tui        # the same call, explicitly
 ```
+
+A Textual terminal UI. Five screens ship: **Traffic Analysis**, **Credential Attacks**,
+**Exploitation**, **Settings** and **Help**. Everything else lives on the CLI, and the
+main menu says so rather than pretending otherwise: pick an item with no screen and it
+names the command that does the job.
+
+`Ctrl+P` opens the command palette. `?` opens help, `Ctrl+Q` quits, and `j`/`k` move on
+the main menu.
+
+The wireless and scanning work is CLI-only by design. There is a great deal of it, and
+`netreaper wifi --help` is a better interface for seventeen subcommands than a menu would
+be.
 
 ---
 
-## Interactive Mode
+## Tool catalogue
 
-> **Ships in v12.0.0.** The Textual TUI exists now: `netreaper` with no arguments starts it,
-> and `netreaper tui` does the same thing explicitly. Earlier releases documented this menu
-> while `netreaper.tui.app` was absent, so the command failed with a misleading hint to install
-> a `[tui]` extra that would not have helped, because nothing was missing from the environment.
-> The categories below are the planned set; the shipped build covers a subset of them as
-> screens, and the command palette names the CLI equivalent for anything without a screen yet.
+102 tools across nine categories. NETREAPER can detect, install and report on every one.
+The 14 marked with an asterisk it also drives through a native adapter, which means it
+parses their output and feeds the result into the next step rather than printing it and
+leaving you to read.
+
+**Wireless** (18)  
+`aircrack-ng` `airodump-ng`* `aireplay-ng`* `packetforge-ng`* `airmon-ng` `hostapd` `dnsmasq` `reaver`* `bully` `wash` `wifite` `hcxdumptool` `hcxpcapngtool` `mdk4` `fern-wifi-cracker` `kismet` `iw` `macchanger`
+
+**Scanning** (11)  
+`nmap`* `masscan`* `rustscan` `netdiscover` `arp-scan` `unicornscan` `nbtscan` `enum4linux` `enum4linux-ng` `smbclient` `onesixtyone`
+
+**Credentials** (11)  
+`hashcat`* `john`* `hydra`* `medusa` `ncrack` `cewl` `crunch` `ophcrack` `mimikatz` `responder` `secretsdump.py`
+
+**OSINT** (13)  
+`subfinder`* `theHarvester` `whois` `dnsrecon` `dnsenum` `sublist3r` `amass` `maltego` `spiderfoot` `shodan` `recon-ng` `exiftool` `metagoofil`
+
+**Recon** (12)  
+`nikto`* `whatweb`* `dirb` `gobuster`* `feroxbuster` `ffuf` `wfuzz` `wpscan` `joomscan` `wafw00f` `sslyze` `sslscan`
+
+**Traffic** (12)  
+`tcpdump` `tshark` `wireshark` `ettercap` `bettercap` `arpspoof` `mitmproxy` `dnsspoof` `sslstrip` `scapy` `netcat` `socat`
+
+**Exploit** (10)  
+`msfconsole` `searchsploit` `sqlmap`* `nuclei` `commix` `beef-xss` `evil-winrm` `crackmapexec` `empire` `covenant`
+
+**Stress** (5)  
+`hping3` `iperf3` `slowloris` `siege` `ab`
+
+**Utility** (10)  
+`curl` `wget` `git` `python3` `pip3` `proxychains` `tor` `openvpn` `tmux` `screen`
+
+`netreaper status` reports which of them are present on this machine.
+
+---
+
+## Tool installer
+
+`bin/netreaper-install` installs the tools above across nine categories: `scanning`,
+`wireless`, `web`, `exploit`, `osint`, `creds`, `traffic`, `stress`, `utils`. It also
+takes `all`, `essentials`, `status` and `menu`, and honours `--dry-run`, `--verbose`,
+`--force`, `--offline` and `--no-verify`.
+
+It works out your package manager and falls back through a chain: the native manager
+(apt, dnf, yum, pacman, zypper, apk, xbps, emerge, nix, eopkg, rpm-ostree), then AUR,
+pip, go, cargo, a GitHub release, gem, snap and flatpak. Distro families it detects are
+Debian, Red Hat, Arch, SUSE, Alpine, Void, Gentoo, NixOS and Solus, including immutable
+systems and WSL.
 
 ```bash
-netreaper                        # starts the TUI
-netreaper tui                    # the same thing, explicitly
-netreaper --help                 # the CLI, if you prefer it
+bin/netreaper-install status               # what is present, by category (no root)
+sudo bin/netreaper-install all             # everything
+sudo bin/netreaper-install essentials      # the short list
+sudo bin/netreaper-install wireless        # one category
+bin/netreaper-install --dry-run all        # preview; no root, writes nothing
 ```
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  [1] WIRELESS      WPA/WPA2/WPS/Evil Twin/Deauth/PMKID             │
-│  [2] SCANNING      Port scans, service detection, host discovery   │
-│  [3] CREDENTIALS   Password cracking, brute force, responder       │
-│  [4] OSINT         Email harvesting, subdomain enum, recon         │
-│  [5] RECON         Web fuzzing, directory brute force, CMS scans   │
-│  [6] TRAFFIC       Packet capture, MITM, ARP spoofing              │
-│  [7] EXPLOIT       Metasploit, SQLMap, searchsploit                │
-│  [8] STRESS        Load testing, SYN floods                        │
-│  [9] STATUS        System info, tool status                        │
-│  [0] EXIT                                                          │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Tool Arsenal
-
-124 security tools across 9 categories:
-
-### Wireless
-`aircrack-ng` `airmon-ng` `airodump-ng` `aireplay-ng` `reaver` `bully` `wifite` `hcxdumptool` `hcxtools` `mdk4` `hostapd` `dnsmasq` `kismet` `pixiewps` `cowpatty` `wash` `macchanger` `iw`
-
-### Scanning
-`nmap` `masscan` `rustscan` `zmap` `enum4linux` `nbtscan` `onesixtyone` `smbclient` `smbmap` `ldapsearch` `snmpwalk` `nfs-utils`
-
-### Credentials
-`hashcat` `john` `hydra` `medusa` `responder` `impacket` `crackmapexec` `evil-winrm` `kerbrute` `patator` `crowbar` `thc-pptp-bruter` `hash-identifier`
-
-### OSINT
-`theHarvester` `subfinder` `amass` `recon-ng` `sherlock` `holehe` `spiderfoot` `maltego` `shodan` `censys` `emailharvester` `whois` `dnsrecon` `fierce` `dmitry`
-
-### Recon
-`gobuster` `ffuf` `feroxbuster` `dirb` `dirbuster` `nikto` `nuclei` `wpscan` `whatweb` `wafw00f` `httpx` `httprobe` `aquatone` `eyewitness` `gowitness` `arjun`
-
-### Traffic
-`tcpdump` `wireshark` `tshark` `ettercap` `bettercap` `mitmproxy` `arpspoof` `dnsspoof` `sslstrip` `netsniff-ng`
-
-### Exploit
-`metasploit` `sqlmap` `searchsploit` `commix` `xsser` `beef-xss` `social-engineer-toolkit` `veil` `empire` `covenant` `chisel` `ligolo-ng`
-
-### Stress
-`hping3` `slowloris` `siege` `ab` `wrk` `iperf3` `stress-ng` `t50`
-
-### Utility
-`curl` `wget` `git` `proxychains` `tor` `socat` `netcat` `tmux` `screen` `jq` `yq` `xxd` `binwalk` `foremost` `steghide` `exiftool` `pwncat` `rlwrap` `sshpass` `fcrackzip`
-
----
-
-## Tool Installer
-
-```bash
-sudo bin/netreaper-install status       # show installed tools and status
-sudo bin/netreaper-install all          # install everything
-sudo bin/netreaper-install essentials   # essential tools only
-sudo bin/netreaper-install wireless     # install a category (wireless, web, exploit, osint, ...)
-sudo bin/netreaper-install --dry-run all # preview without installing
-```
-
-Installation methods: `apt` `dnf` `pacman` `zypper` `apk` `pipx` `pip` `go` `cargo` `gem` `snap` `flatpak` `github releases` `git clone`
-
----
-
-## Supported Distros
-
-| Family | Distributions |
-|:-------|:--------------|
-| **Debian** | Debian, Ubuntu, Kali, Parrot, Linux Mint |
-| **Red Hat** | Fedora, RHEL, Rocky, AlmaLinux, CentOS |
-| **Arch** | Arch, Manjaro, BlackArch, EndeavourOS |
-| **SUSE** | openSUSE Leap, Tumbleweed |
-| **Alpine** | Alpine Linux |
-| **Void** | Void Linux |
-
----
-
-## Wireless Attacks
-
-| Attack | Description |
-|:-------|:------------|
-| **WPS Pixie-Dust** | Offline WPS PIN recovery |
-| **WPS Brute Force** | Online PIN enumeration |
-| **WPA Handshake** | 4-way handshake capture + crack |
-| **PMKID** | Clientless WPA attack |
-| **Deauth** | Client disconnection |
-| **Evil Twin** | Rogue AP with captive portal |
-| **Beacon Flood** | Fake network spam |
-| **WEP** | Legacy encryption attacks |
-
-### Recommended Adapters
-
-| Chipset | Driver | Injection |
-|:--------|:-------|:---------:|
-| Atheros AR9271 | ath9k_htc | ✓ |
-| Ralink RT3070 | rt2800usb | ✓ |
-| Realtek RTL8812AU | rtl8812au | ✓ |
-| MediaTek MT7612U | mt76x2u | ✓ |
+`--dry-run` needs no privileges and reports the method it would use for each tool, so you
+can see what a real run would do before committing to it.
 
 ---
 
 ## Configuration
 
 ```bash
-netreaper config show              # all settings
-netreaper config get log_level     # get value
-netreaper config set key value     # set value
-netreaper config reset             # restore defaults
+netreaper config show                      # the whole tree as JSON
+netreaper config get logging.level         # one dotted key
+netreaper config set <key> <value>         # e.g. logging.level 10
 ```
 
-| Setting | Default | Description |
-|:--------|:--------|:------------|
-| `log_level` | INFO | DEBUG, INFO, WARNING, ERROR |
-| `file_logging` | true | Write logs to file |
-| `confirm_dangerous` | true | **Not implemented.** Nothing reads it outside the TUI settings screen, and nothing prompts anywhere. Confirmation is `--confirm-tier` on the engagement |
-| `warn_public_ip` | true | **Not implemented.** Nothing reads it outside the TUI settings screen. Protected and reserved ranges are refused outright by the scope gate, in both bare and CIDR notation |
+Settings are nested, and `get`/`set` take the dotted path.
+
+`set` validates before it writes. A key outside the schema is refused with the nearest
+match suggested, a value of the wrong type is refused with the reason, and in both cases
+the file on disk is left exactly as it was. Log levels are integers: 10 debug, 20 info,
+30 warning, 40 error.
+
+| Section | Keys |
+|:--|:--|
+| `database` | `path`, `wal_mode`, `busy_timeout` |
+| `logging` | `level`, `file_logging`, `log_dir`, `max_file_size`, `backup_count` |
+| `wireless` | `monitor_interface_prefix`, `deauth_count`, `deauth_delay`, `channel_hop_interval`, `handshake_timeout` |
+| `scanning` | `default_scan_type`, `default_ports`, `timing_template`, `max_concurrent_hosts` |
+| `credentials` | `default_wordlist`, `hashcat_workload` |
+| `safety` | `confirm_dangerous`, `warn_public_ip`, `require_authorization`, `dry_run`, `unsafe_mode` |
+| `ui` | `theme`, `show_banner`, `animation_speed`, `vim_bindings` |
+
+Two `safety` keys are inert. `confirm_dangerous` and `warn_public_ip` are read by the TUI
+settings screen and nothing else. Confirmation is `--confirm-tier` on the engagement, and
+protected ranges are refused by the scope gate whether or not you ask for a warning.
+Neither setting can weaken the gate, which is the point.
 
 ---
 
 ## Requirements
 
-| Requirement | Details |
-|:------------|:--------|
-| **OS** | Linux (kernel 4.x+) |
-| **Python** | 3.11+ |
-| **Privileges** | Root for wireless/packet capture |
-| **WiFi Adapter** | Monitor mode + injection (for wireless attacks) |
+| | |
+|:--|:--|
+| **OS** | Linux, kernel 4.x or newer |
+| **Python** | 3.11 or newer |
+| **Privileges** | Root for wireless work and packet capture |
+| **Adapter** | Monitor mode and injection, for the wireless attacks |
+
+Recommended chipsets, all of which do injection: Atheros AR9271 (`ath9k_htc`), Ralink
+RT3070 (`rt2800usb`), Realtek RTL8812AU (`rtl8812au`), MediaTek MT7612U (`mt76x2u`).
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 NETREAPER/
-├── src/netreaper/         # Python package (the CLI + core)
-│   ├── cli.py             # `netreaper` entry point (Typer)
-│   ├── core/              # process seam, logging, validation
-│   ├── safety/            # engagement scope gate (deny-by-default)
-│   ├── wireless/          # scan, monitor, handshake, pmkid, wps,
-│   │                      #   wep, eviltwin, enterprise, advanced
-│   └── tools/             # external-tool adapters
-├── bin/netreaper-install  # security-tool installer
-├── tests/                 # pytest suite (+ installer bats)
-└── pyproject.toml         # packaging; `netreaper` console script
+├── src/netreaper/
+│   ├── cli.py             # the `netreaper` entry point (Typer)
+│   ├── core/              # process seam, hash-chained audit, logging, validation
+│   ├── safety/            # the scope gate: engagement, tiers, protected ranges
+│   ├── wireless/          # scan, monitor, handshake, pmkid, wps, wep, eviltwin,
+│   │                      #   enterprise, wpa3, hidden, evasion
+│   ├── tools/             # 14 native tool adapters, plus read-only CAN
+│   ├── automation/        # capability planner and tool requirements
+│   ├── detection/         # the 102-tool catalogue
+│   ├── db/                # SQLite schema and async engine
+│   └── tui/               # Textual UI, 5 screens
+├── bin/netreaper-install  # the security-tool installer
+├── completions/           # bash, zsh and fish completions
+├── tests/                 # 876 tests across 54 files, plus installer bats
+└── pyproject.toml         # hatchling; the `netreaper` console script
 ```
+
+Every spawn goes through one seam, `core/process.py`, which is where the scope gate is
+consulted and the audit entry is written. That is why no command can quietly skip either.
 
 ---
 
 ## Legal
 
-> **For authorized security testing only.**
+> **For authorised security testing only.**
 >
-> Unauthorized access to computer systems is illegal. You are responsible for ensuring proper authorization before use.
+> Unauthorised access to computer systems is illegal. Making sure you have permission is
+> your responsibility, not this tool's.
 >
-> Authorized uses:
-> - Penetration testing with written permission
-> - Security research on systems you own
-> - Educational environments
-> - CTF competitions
+> Authorised uses: penetration testing with written permission, security research on
+> systems you own, educational environments, and CTF competitions.
 
 ## Licence
 
@@ -356,7 +430,7 @@ only in one file.
 including commercially. If you distribute it or anything derived from it, you must pass on
 those same freedoms and make the corresponding source available under GPL-3.0-or-later.
 
-**The "authorized security testing only" notice above is a condition we ask of you, not a
+**The "authorised security testing only" notice above is a condition we ask of you, not a
 term of the licence.** GPL-3.0 does not restrict the field of use, and an open-source licence
 that tried to would stop being open source (clause 6 of the Open Source Definition). Using
 this tool without authorisation is your own legal exposure, not a licence breach.
