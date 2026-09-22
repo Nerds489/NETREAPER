@@ -106,12 +106,3 @@ __all__ = [
     "to_cidr",
     "to_port_list",
 ]
-
-
-def initialize_chains() -> None:
-    """Initialize the chaining system with built-in chains.
-
-    Call this at application startup to register all built-in chains.
-    """
-    from netreaper.chaining.builtin import register_all_builtin_chains
-    register_all_builtin_chains()

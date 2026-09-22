@@ -22,9 +22,15 @@ this repo's comments have satisfied a regex before:
 
 ``DataBinding`` is the declared mechanism for threading one step's output into
 the next step's input, and nothing reads it. ``transforms.py`` and ``paths.py``
-are 588 lines and 36 transforms that nothing invokes. The built-in chains in
-``chaining/builtin/`` declare eleven ``DataBinding(...)`` between them, so those
-chains READ as though they thread data between steps, and they do not.
+are 588 lines and 36 transforms that nothing invokes.
+
+``chaining/builtin/`` used to declare eleven ``DataBinding(...)`` across its
+scanning and web chains, so those chains READ as though they threaded data
+between steps while doing nothing at all. That package has been deleted: its
+registrar had no caller, the manifest planner replaced the mechanism, and its
+wireless, credentials and recon modules were three-line stubs that registered
+nothing. The declarations went with it. The mechanism did not, which is why
+this guard still matters.
 
 What IS wired is the other design: ``wifi auto`` resolves a goal through
 ``manifest_registry`` and ``resolve_chain``, compiles it with ``plan_to_chain``
@@ -33,9 +39,9 @@ covered (91-100%) and each step dispatches to its manifest's own runner. It
 never touches DataBinding.
 
 So this file does two things. It records the inert state, so nobody reads
-``builtin/scanning.py`` and believes its eight bindings do something. And it
-fails the moment the wiring appears without a validator in front of it, because
-that is the moment the injection stops being theoretical.
+``transforms.py`` and believes its 36 transforms feed something. And it fails
+the moment the wiring appears without a validator in front of it, because that
+is the moment the injection stops being theoretical.
 """
 from __future__ import annotations
 
@@ -47,7 +53,7 @@ import pytest
 SRC = Path(__file__).resolve().parents[2] / "src" / "netreaper"
 
 # Declarations. A DataBinding written here is describing intent, not consuming.
-DECLARATION_SITES = ("chaining/models.py", "chaining/builtin/", "chaining/__init__.py")
+DECLARATION_SITES = ("chaining/models.py", "chaining/__init__.py")
 
 BINDING_FIELDS = ("target_option", "source_path")
 
@@ -169,21 +175,16 @@ def test_apply_transform_is_still_unreachable_or_guarded():
 
 # ── record the inert state so nobody mistakes it for working ─────────────────
 
-
-def test_the_declared_bindings_outnumber_their_readers():
-    """builtin/ declares bindings that read as though they thread data."""
-    declared = 0
-    for path in (SRC / "chaining").rglob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if (
-                isinstance(node, ast.Call)
-                and getattr(node.func, "id", None) == "DataBinding"
-            ):
-                declared += 1
-    readers = len(_consumers(_attribute_reads("target_option")))
-    if readers:
-        return  # wiring has landed; the guard above is the one that matters now
-    assert declared > 0, "DataBinding declarations vanished; drop this file"
+# test_the_declared_bindings_outnumber_their_readers lived here and counted the
+# DataBinding(...) calls in chaining/, asserting they outnumbered their readers.
+# Every one of them was in chaining/builtin/, which has been deleted, so it
+# ended with `assert declared > 0, "DataBinding declarations vanished; drop
+# this file"` and it was right about its own subject.
+#
+# The file stays because the rest of it did not depend on those declarations.
+# DataBinding still exists in models.py and the 36 transforms still exist, so
+# the wiring guard above still fires on the change that creates the risk. What
+# went away is the misleading appearance of data flow, not the mechanism.
 
 
 def test_the_wired_chain_path_is_the_manifest_one():
