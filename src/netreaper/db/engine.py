@@ -1,8 +1,9 @@
 """Async SQLite database engine."""
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
 import aiosqlite
 
@@ -30,11 +31,23 @@ class DatabaseEngine:
             await db.execute("PRAGMA synchronous=NORMAL")
             await db.execute("PRAGMA foreign_keys=ON")
 
-            # Create schema
+            # Create schema.
+            #
+            # This used to be guarded by `if schema_path.exists()`, and the file
+            # did not exist. initialize() therefore created NO tables and logged
+            # "Database initialized" anyway, while sessions/manager.py,
+            # loot/storage.py and orchestration/handlers.py were all already
+            # issuing statements against five tables that were never there.
+            # A missing schema is not a condition to shrug at: without it every
+            # consumer fails later, further away, with "no such table".
             schema_path = Path(__file__).parent / "schema.sql"
-            if schema_path.exists():
-                schema_sql = schema_path.read_text()
-                await db.executescript(schema_sql)
+            if not schema_path.exists():
+                raise FileNotFoundError(
+                    f"database schema missing at {schema_path}. The engine "
+                    f"cannot create the sessions, targets, loot, "
+                    f"tool_executions or audit_log tables without it."
+                )
+            await db.executescript(schema_path.read_text())
 
             await db.commit()
             logger.info('Database initialized at %s', self.db_path)
