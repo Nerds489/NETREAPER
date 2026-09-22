@@ -195,8 +195,16 @@ class AireplayTool(BaseToolWrapper):
         if client:
             args += ["-c", client]
 
-        # Source MAC (spoof)
-        source = options.get("source")
+        # Source MAC (spoof).
+        #
+        # Accepts "source" or "source_mac". The named helpers on this class all
+        # pass "source", but the lazily-dispatched strategies in wireless/wep.py
+        # passed "source_mac", which nothing read: caffe-latte, cfrag and
+        # interactive replay therefore emitted no -h at all and ran with no
+        # source MAC set. Identical in shape to the ignore_negative /
+        # ignore_negative_ack mismatch fixed below, so it is fixed the same way
+        # rather than by renaming one caller and waiting for the next one.
+        source = options.get("source", options.get("source_mac"))
         if source:
             args += ["-h", source]
 
@@ -327,6 +335,10 @@ class AireplayTool(BaseToolWrapper):
         if options.get("broadcast"):
             cmd.append("-b")
 
+        # Replaying a packet built earlier (a forged ARP) is -r, which
+        # _common_args already emits from the "read_file" option. Emitting it
+        # here too would put -r in the argv twice.
+
         return cmd
 
     @staticmethod
@@ -418,6 +430,20 @@ class AireplayTool(BaseToolWrapper):
                 result["arp_captured"] = int(arp_match.group(1))
                 result["packets_sent"] = int(arp_match.group(2))
                 result["success"] = True
+                continue
+
+            # Keystream and plaintext written by chopchop/fragment. Both were
+            # printed on every successful run and neither was ever read, so the
+            # PRGA these attacks exist to recover was announced and dropped.
+            keystream_match = re.search(r'Saving keystream in (\S+)', line)
+            if keystream_match:
+                result["keystream_file"] = keystream_match.group(1)
+                result["success"] = True
+                continue
+
+            plaintext_match = re.search(r'Saving plaintext in (\S+)', line)
+            if plaintext_match:
+                result["plaintext_file"] = plaintext_match.group(1)
                 continue
 
             # General packet sent

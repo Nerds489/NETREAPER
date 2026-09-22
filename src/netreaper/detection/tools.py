@@ -226,6 +226,12 @@ class ToolRegistry:
             packages={"debian": "aircrack-ng", "redhat": "aircrack-ng", "arch": "aircrack-ng", "fedora": "aircrack-ng"},
             requires_root=True,
         ),
+        "packetforge-ng": ToolDefinition(
+            name="packetforge-ng",
+            category=ToolCategory.WIRELESS,
+            description="Forge a frame from a recovered WEP keystream",
+            packages={"debian": "aircrack-ng", "redhat": "aircrack-ng", "arch": "aircrack-ng", "fedora": "aircrack-ng"},
+        ),
         "airmon-ng": ToolDefinition(
             name="airmon-ng",
             category=ToolCategory.WIRELESS,
