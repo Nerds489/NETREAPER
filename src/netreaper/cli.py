@@ -1,5 +1,6 @@
 """NETREAPER CLI interface using Typer."""
 import asyncio
+import contextlib
 from pathlib import Path
 
 import typer
@@ -146,6 +147,31 @@ def status():
     console.print(f"[dim]{available}/{len(tools)} tools available[/dim]")
 
 
+def _one_of(value: str, choices: tuple[str, ...], *, what: str) -> str:
+    """Validate a free-string action argument as a USAGE error.
+
+    `config` and `wifi monitor` take their action as a plain `str` argument, so
+    Click accepts anything and the command discovers the problem itself, deep
+    in its own body. Both then exited 1, which reads as "it ran and failed"
+    rather than "that is not a thing you can type".
+
+    The difference matters because tests/unit/test_readme_commands_exist.py
+    treats any non-2 exit as success: a command that parses and then refuses
+    for want of an engagement is correctly documented. So an invalid action
+    that exited 1 was indistinguishable from a working command in a bare
+    environment, and the README documented `wifi monitor start` and `config
+    reset` through several releases with that guard green. Neither exists.
+
+    typer.BadParameter is Click's usage error and exits 2, the same as an
+    unknown option, which is exactly what a bad action value is.
+    """
+    if value not in choices:
+        raise typer.BadParameter(
+            f"{value!r} is not a valid {what}. Choose one of: {', '.join(choices)}"
+        )
+    return value
+
+
 def _coerce(value: str):
     low = value.lower()
     if low in ("true", "false"):
@@ -160,20 +186,76 @@ def _coerce(value: str):
         return value
 
 
+def _settings_key_paths() -> list[str]:
+    """Every dotted key the Settings schema actually defines."""
+    from pydantic import BaseModel
+
+    from netreaper.config.settings import Settings
+
+    out: list[str] = []
+
+    def walk(model: type[BaseModel], prefix: str = "") -> None:
+        for name, field in model.model_fields.items():
+            annotation = field.annotation
+            if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                walk(annotation, f"{prefix}{name}.")
+            else:
+                out.append(f"{prefix}{name}")
+
+    walk(Settings)
+    return out
+
+
 def _persist_config(dotted_key: str, value: str) -> None:
-    """Write a dotted key into the user config.toml (creating it if needed)."""
-    import tomllib
+    """Write a dotted key into the user config.toml, but only if it validates.
+
+    This used to write first and validate afterwards, via the reload_settings()
+    call in its caller. Two ways that went wrong, both of which cost a real
+    config file:
+
+      the wrong type   `config set logging.level DEBUG` printed a pydantic
+                       error AND stored the string. Every later load then
+                       failed on it, so `config show` was broken until the file
+                       was deleted by hand. A command that rejects your input
+                       must not keep it.
+      the wrong key    Settings is a plain BaseModel, so pydantic ignores extra
+                       keys. `config set key value` therefore "succeeded",
+                       silently writing a top-level `key = "value"` that no
+                       consumer reads. The README's own example did exactly
+                       this, on every machine that ran the docs test.
+
+    So: the key is checked against the schema, the whole candidate config is
+    validated as a unit, and only then does anything reach disk. The write is
+    atomic, because a config truncated by a crash is the same outage as a
+    config poisoned by a bad value.
+    """
+    import os
+    import tempfile
 
     import tomli_w
+    from pydantic import ValidationError
 
+    from netreaper.config.settings import (
+        _DEFAULTS_PATH,
+        Settings,
+        _deep_merge,
+        _load_toml,
+    )
     from netreaper.core.constants import NETREAPER_CONFIG_DIR
 
+    valid = _settings_key_paths()
+    if dotted_key not in valid:
+        import difflib
+
+        near = difflib.get_close_matches(dotted_key, valid, n=3, cutoff=0.5)
+        hint = f" Did you mean: {', '.join(near)}?" if near else ""
+        raise typer.BadParameter(
+            f"unknown setting {dotted_key!r}; it is not in the schema.{hint}"
+        )
+
     cfg_path = NETREAPER_CONFIG_DIR / "config.toml"
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict = {}
-    if cfg_path.exists():
-        with cfg_path.open("rb") as fh:
-            data = tomllib.load(fh)
+    data: dict = _load_toml(cfg_path)
+
     parts = dotted_key.split(".")
     node = data
     for part in parts[:-1]:
@@ -181,8 +263,35 @@ def _persist_config(dotted_key: str, value: str) -> None:
         if not isinstance(node, dict):
             raise typer.BadParameter(f"{dotted_key!r} conflicts with a non-table value")
     node[parts[-1]] = _coerce(value)
-    with cfg_path.open("wb") as fh:
-        tomli_w.dump(data, fh)
+
+    # Validate the WHOLE candidate, layered exactly as _build_settings does it,
+    # so the check matches what the next load will actually attempt.
+    try:
+        Settings(**_deep_merge(_load_toml(_DEFAULTS_PATH), data))
+    except ValidationError as exc:
+        parts = []
+        for e in exc.errors():
+            loc = ".".join(str(p) for p in e["loc"])
+            # Naming the key again when it is the key we were given reads as
+            # "logging.level rejected: logging.level: ...".
+            parts.append(e["msg"] if loc == dotted_key else f"{loc}: {e['msg']}")
+        detail = "; ".join(parts)
+        # Outcome first: Rich truncates a long message inside the usage box,
+        # and "nothing was written" is the part the operator must not miss.
+        raise typer.BadParameter(
+            f"nothing written. {dotted_key} rejected: {detail}"
+        ) from None
+
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=cfg_path.parent, prefix=".config.", suffix=".toml")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            tomli_w.dump(data, fh)
+        os.replace(tmp, cfg_path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 @app.command()
@@ -193,6 +302,16 @@ def config(
 ):
     """Manage configuration."""
     from netreaper.config.settings import get_settings, reload_settings
+
+    _one_of(action, ("show", "list", "get", "set"), what="config action")
+    if action == "get" and not key:
+        raise typer.BadParameter(
+            "config get needs a key, e.g. config get logging.level"
+        )
+    if action == "set" and (not key or value is None):
+        raise typer.BadParameter(
+            "config set needs a key and a value, e.g. config set logging.level 10"
+        )
 
     settings = get_settings()
 
@@ -211,9 +330,10 @@ def config(
         _persist_config(key, value)
         reload_settings()
         console.print(f"[green]set[/green] {key} = {_coerce(value)}")
-    else:
-        console.print("[red]usage:[/red] config show | get <key> | set <key> <value>")
-        raise typer.Exit(1)
+    else:  # pragma: no cover - _one_of and the checks above cover every path
+        raise typer.BadParameter(
+            "usage: config show | get <key> | set <key> <value>"
+        )
 
 
 # Engagement (authorisation) commands
@@ -497,6 +617,9 @@ def wifi_monitor(
     interface: str = typer.Argument(..., help="Wireless interface"),
 ):
     """Manage monitor mode."""
+    # Up front, before asyncio.run and before the imports below: a typo should
+    # not cost you an event loop, and it must exit 2 rather than 1.
+    _one_of(action, ("enable", "disable", "status"), what="monitor action")
 
     async def manage_monitor():
         from netreaper.wireless.monitor import (
@@ -521,9 +644,10 @@ def wifi_monitor(
             console.print(f"In monitor mode: {mon_status.get('is_monitor')}")
             console.print(f"Supports monitor: {mon_status.get('supports_monitor')}")
             console.print(f"Supports injection: {mon_status.get('supports_injection')}")
-        else:
-            console.print("[red]Invalid action. Use: enable, disable, or status[/red]")
-            raise typer.Exit(1)
+        else:  # pragma: no cover - _one_of above rejects anything else
+            raise typer.BadParameter(
+                f"{action!r} is not a valid monitor action"
+            )
 
     asyncio.run(manage_monitor())
 

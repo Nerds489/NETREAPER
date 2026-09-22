@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #═══════════════════════════════════════════════════════════════════════════════
 #
-#    NETREAPER UNIVERSAL ARSENAL INSTALLER v10.0.0
+#    NETREAPER UNIVERSAL ARSENAL INSTALLER
 #    Truly distro-agnostic tool installation
 #
 #    Copyright (c) 2025 Nerds489
@@ -21,16 +21,30 @@ set -o pipefail
 # NETREAPER_ROOT RESOLUTION
 #═══════════════════════════════════════════════════════════════════════════════
 
-# Resolve NETREAPER_ROOT with symlink support
+# Resolve NETREAPER_ROOT with symlink support.
+#
+# This used to test for a `lib/` directory and exit 1 when it found none. No
+# `lib/` has ever been committed, and nothing here sources anything from one:
+# the resolved root is read for exactly one thing, the VERSION file below. So a
+# fresh clone died on a marker that does not exist, gating a version string, and
+# `netreaper-install` could not run at all from a checkout.
+#
+# The marker is now the file actually consumed. Failing to find it is not fatal
+# either, because the only consequence is an unknown version number.
+#
 # Checks in order:
 #   1. NETREAPER_ROOT environment variable (if set and valid)
 #   2. Script's actual location (following symlinks)
 #   3. /usr/local/share/netreaper (system install)
 #   4. /opt/netreaper (alternative system install)
 #   5. ~/.local/share/netreaper (user install)
+_is_netreaper_root() {
+    [[ -f "$1/VERSION" ]]
+}
+
 _resolve_netreaper_root() {
     # 1. Environment variable (highest priority)
-    if [[ -n "${NETREAPER_ROOT:-}" ]] && [[ -d "$NETREAPER_ROOT/lib" ]]; then
+    if [[ -n "${NETREAPER_ROOT:-}" ]] && _is_netreaper_root "$NETREAPER_ROOT"; then
         echo "$NETREAPER_ROOT"
         return 0
     fi
@@ -47,39 +61,29 @@ _resolve_netreaper_root() {
     local parent_dir
     parent_dir="$(dirname "$script_dir")"
 
-    if [[ -d "$parent_dir/lib" ]]; then
+    if _is_netreaper_root "$parent_dir"; then
         echo "$parent_dir"
         return 0
     fi
 
-    # 3. System installation (/usr/local/share/netreaper)
-    if [[ -d "/usr/local/share/netreaper/lib" ]]; then
-        echo "/usr/local/share/netreaper"
-        return 0
-    fi
-
-    # 4. Alternative system location (/opt/netreaper)
-    if [[ -d "/opt/netreaper/lib" ]]; then
-        echo "/opt/netreaper"
-        return 0
-    fi
-
-    # 5. User installation
-    if [[ -d "${HOME}/.local/share/netreaper/lib" ]]; then
-        echo "${HOME}/.local/share/netreaper"
-        return 0
-    fi
+    # 3-5. Installed locations
+    local candidate
+    for candidate in /usr/local/share/netreaper /opt/netreaper "${HOME}/.local/share/netreaper"; do
+        if _is_netreaper_root "$candidate"; then
+            echo "$candidate"
+            return 0
+        fi
+    done
 
     # Failed to resolve
     return 1
 }
 
-# Set NETREAPER_ROOT
-NETREAPER_ROOT="$(_resolve_netreaper_root)" || {
-    echo "[FATAL] Cannot locate NETREAPER installation." >&2
-    echo "Checked: NETREAPER_ROOT env, script directory, /usr/local/share/netreaper, /opt/netreaper, ~/.local/share/netreaper" >&2
-    exit 1
-}
+# A missing root costs us the version string and nothing else, so it is a
+# warning rather than an exit. Every install path below works without it.
+if ! NETREAPER_ROOT="$(_resolve_netreaper_root)"; then
+    NETREAPER_ROOT=""
+fi
 export NETREAPER_ROOT
 
 #═══════════════════════════════════════════════════════════════════════════════
@@ -89,11 +93,12 @@ export NETREAPER_ROOT
 # Script metadata
 SCRIPT_NAME="netreaper-install"
 
-# Version from VERSION file
-if [[ -f "$NETREAPER_ROOT/VERSION" ]]; then
-    VERSION=$(cat "$NETREAPER_ROOT/VERSION" | tr -d '[:space:]')
+# Version from the VERSION file. Hardcoding a fallback is how this drifted to
+# 10.0.0 while the repository was on 12; "unknown" is honest and cannot go stale.
+if [[ -n "$NETREAPER_ROOT" ]] && [[ -f "$NETREAPER_ROOT/VERSION" ]]; then
+    VERSION=$(tr -d '[:space:]' < "$NETREAPER_ROOT/VERSION")
 else
-    VERSION="10.0.0"
+    VERSION="unknown"
 fi
 
 # Cache directory for offline mode
@@ -983,6 +988,14 @@ declare -A GITHUB_REPOS=(
 
 # Update package lists
 pkg_update() {
+    # Every other install path guards on DRY_RUN; this one did not, so
+    # `--dry-run` still ran a real `apt-get update` / `pacman -Sy` during
+    # preflight. A dry run that mutates the system is not a dry run.
+    if [[ $DRY_RUN -eq 1 ]]; then
+        _debug "DRY-RUN: Would refresh package lists via $PKG_MANAGER"
+        return 0
+    fi
+
     _info "Updating package lists..."
 
     case "$PKG_MANAGER" in
@@ -1462,6 +1475,16 @@ verify_tool() {
 # Install a tool with fallback chain
 # Args: $1 = tool name
 # Returns: 0 on success, 1 on failure
+# Under --dry-run nothing is written, so asking "is the tool present now?"
+# after a simulated install can only ever answer no. Every method therefore
+# fell through and --dry-run reported "no installation method available" for
+# every tool that was not already there, which is the opposite of what it is
+# for. The re-check is meaningful only when something was really installed.
+_install_verified() {
+    [[ $DRY_RUN -eq 1 ]] && return 0
+    is_installed "$1"
+}
+
 install_tool() {
     local tool="$1"
     [[ -z "$tool" ]] && return 1
@@ -1482,7 +1505,7 @@ install_tool() {
     pkg=$(get_pkg_name "$tool")
     if [[ -n "$pkg" ]]; then
         if pkg_install "$pkg"; then
-            if is_installed "$tool"; then
+            if _install_verified "$tool"; then
                 method_used="$PKG_MANAGER"
             fi
         fi
@@ -1491,7 +1514,7 @@ install_tool() {
     # METHOD 2: AUR (Arch-based only)
     if [[ -z "$method_used" && -n "$AUR_HELPER" ]]; then
         if aur_install "$tool"; then
-            if is_installed "$tool"; then
+            if _install_verified "$tool"; then
                 method_used="$AUR_HELPER"
             fi
         fi
@@ -1502,7 +1525,7 @@ install_tool() {
         local pip_pkg="${PIP_PACKAGES[$tool]:-}"
         if [[ -n "$pip_pkg" ]] || [[ -z "$pkg" ]]; then
             if pip_install "${pip_pkg:-$tool}"; then
-                if is_installed "$tool"; then
+                if _install_verified "$tool"; then
                     method_used="pip"
                 fi
             fi
@@ -1513,7 +1536,7 @@ install_tool() {
     if [[ -z "$method_used" ]]; then
         if [[ -n "${GO_PACKAGES[$tool]:-}" ]]; then
             if go_install "$tool"; then
-                if is_installed "$tool"; then
+                if _install_verified "$tool"; then
                     method_used="go"
                 fi
             fi
@@ -1524,7 +1547,7 @@ install_tool() {
     if [[ -z "$method_used" ]]; then
         if [[ -n "${CARGO_PACKAGES[$tool]:-}" ]]; then
             if cargo_install "$tool"; then
-                if is_installed "$tool"; then
+                if _install_verified "$tool"; then
                     method_used="cargo"
                 fi
             fi
@@ -1535,7 +1558,7 @@ install_tool() {
     if [[ -z "$method_used" ]]; then
         if [[ -n "${GITHUB_REPOS[$tool]:-}" ]]; then
             if github_install "$tool"; then
-                if is_installed "$tool"; then
+                if _install_verified "$tool"; then
                     method_used="github"
                 fi
             fi
@@ -1547,7 +1570,7 @@ install_tool() {
         case "$tool" in
             wpscan)
                 if gem_install "$tool"; then
-                    if is_installed "$tool"; then
+                    if _install_verified "$tool"; then
                         method_used="gem"
                     fi
                 fi
@@ -1558,7 +1581,7 @@ install_tool() {
     # METHOD 8: Snap/Flatpak (last resort)
     if [[ -z "$method_used" ]]; then
         if snap_install "$tool"; then
-            if is_installed "$tool"; then
+            if _install_verified "$tool"; then
                 method_used="snap"
             fi
         fi
@@ -1566,7 +1589,7 @@ install_tool() {
 
     if [[ -z "$method_used" && "$OFFLINE_MODE" -eq 0 ]]; then
         if flatpak_install "$tool"; then
-            if is_installed "$tool"; then
+            if _install_verified "$tool"; then
                 method_used="flatpak"
             fi
         fi
@@ -1574,7 +1597,15 @@ install_tool() {
 
     # Check result
     if [[ -n "$method_used" ]]; then
-        # Verify the tool actually works
+        # Verify the tool actually works. Nothing was installed on a dry run,
+        # so there is nothing to verify and the claim is the method, not the
+        # outcome.
+        if [[ $DRY_RUN -eq 1 ]]; then
+            _ok "$tool ${C_GRAY}(would install via $method_used)${C_RESET}"
+            INSTALLED_TOOLS+=("$tool")
+            INSTALL_METHODS[$tool]="$method_used"
+            return 0
+        fi
         if verify_tool "$tool"; then
             _ok "$tool ${C_GRAY}($method_used)${C_RESET}"
             INSTALLED_TOOLS+=("$tool")
@@ -1800,9 +1831,18 @@ show_status() {
 #═══════════════════════════════════════════════════════════════════════════════
 
 show_summary() {
+    # A dry run must not report that it installed anything. Same counts, honest
+    # labels.
+    local title="INSTALLATION SUMMARY"
+    local verb="Installed: "
+    if [[ $DRY_RUN -eq 1 ]]; then
+        title="DRY RUN SUMMARY (nothing was installed)"
+        verb="Would install:"
+    fi
+
     echo
     echo -e "    ${C_CYAN}═══════════════════════════════════════════════════════════════${C_RESET}"
-    echo -e "                        ${C_BOLD}INSTALLATION SUMMARY${C_RESET}"
+    echo -e "                        ${C_BOLD}${title}${C_RESET}"
     echo -e "    ${C_CYAN}═══════════════════════════════════════════════════════════════${C_RESET}"
     echo
 
@@ -1810,7 +1850,7 @@ show_summary() {
     local n_skipped=${#SKIPPED_TOOLS[@]}
     local n_failed=${#FAILED_TOOLS[@]}
 
-    echo -e "    ${C_GREEN}[OK]${C_RESET}   Installed:  ${C_GREEN}${n_installed}${C_RESET}"
+    echo -e "    ${C_GREEN}[OK]${C_RESET}   ${verb}  ${C_GREEN}${n_installed}${C_RESET}"
     echo -e "    ${C_GRAY}[SKIP]${C_RESET} Skipped:    ${C_GRAY}${n_skipped}${C_RESET} ${C_GRAY}(already installed)${C_RESET}"
     echo -e "    ${C_RED}[FAIL]${C_RESET} Failed:     ${C_RED}${n_failed}${C_RESET}"
     echo
@@ -1844,7 +1884,11 @@ show_summary() {
     fi
 
     if [[ $n_failed -eq 0 ]]; then
-        echo -e "    ${C_GREEN}All tools installed successfully!${C_RESET}"
+        if [[ $DRY_RUN -eq 1 ]]; then
+            echo -e "    ${C_GREEN}Every tool has an installation method. Re-run without --dry-run to install.${C_RESET}"
+        else
+            echo -e "    ${C_GREEN}All tools installed successfully!${C_RESET}"
+        fi
     fi
 
     echo
@@ -1954,6 +1998,13 @@ TOOLEOF
 
 check_root() {
     if [[ $EUID -ne 0 ]]; then
+        # A dry run installs nothing, so demanding root to preview what WOULD
+        # be installed only stopped people checking before they committed.
+        if [[ $DRY_RUN -eq 1 ]]; then
+            _debug "DRY-RUN: skipping the root requirement; nothing will be written"
+            return 0
+        fi
+
         # On immutable systems, allow user-local installation
         if [[ $IS_IMMUTABLE -eq 1 ]]; then
             _warn "Running without root on immutable system - using user-local installation mode"
@@ -2035,6 +2086,8 @@ show_menu() {
         echo -e "    ${C_GRAY}[7]${C_RESET} Install CREDS       ${C_GRAY}hashcat, john, hydra...${C_RESET}"
         echo -e "    ${C_GRAY}[8]${C_RESET} Install OSINT       ${C_GRAY}theharvester, recon-ng...${C_RESET}"
         echo -e "    ${C_GRAY}[9]${C_RESET} Install TRAFFIC     ${C_GRAY}tcpdump, wireshark...${C_RESET}"
+        echo -e "    ${C_GRAY}[10]${C_RESET} Install STRESS     ${C_GRAY}hping3, iperf3, siege...${C_RESET}"
+        echo -e "    ${C_GRAY}[11]${C_RESET} Install UTILS      ${C_GRAY}proxychains, tor, socat...${C_RESET}"
         echo
         echo -e "    ${C_GRAY}[S]${C_RESET} Show status"
         echo -e "    ${C_GRAY}[Q]${C_RESET} Quit"
@@ -2057,6 +2110,8 @@ show_menu() {
             7) preflight_checks; install_category "creds"; show_summary ;;
             8) preflight_checks; install_category "osint"; show_summary ;;
             9) preflight_checks; install_category "traffic"; show_summary ;;
+            10) preflight_checks; install_category "stress"; show_summary ;;
+            11) preflight_checks; install_category "utils"; show_summary ;;
             [sS]) detect_system; show_status ;;
             [qQ]) exit 0 ;;
             *) _warn "Invalid option" ;;
@@ -2089,6 +2144,7 @@ Commands:
     osint        Install OSINT tools
     traffic      Install traffic analysis tools
     stress       Install stress testing tools
+    utils        Install utility tools
     status       Show installation status
     menu         Interactive menu (default)
 
