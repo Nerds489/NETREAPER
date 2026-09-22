@@ -145,10 +145,10 @@ _progress(){ echo -ne "    ${C_CYAN}[....]${C_RESET} $*\r"; }
 # STATISTICS TRACKING
 #═══════════════════════════════════════════════════════════════════════════════
 
-declare -a INSTALLED_TOOLS=()
-declare -a FAILED_TOOLS=()
-declare -a SKIPPED_TOOLS=()
-declare -A INSTALL_METHODS=()  # tool -> method used
+declare -ga INSTALLED_TOOLS=()
+declare -ga FAILED_TOOLS=()
+declare -ga SKIPPED_TOOLS=()
+declare -gA INSTALL_METHODS=()  # tool -> method used
 
 #═══════════════════════════════════════════════════════════════════════════════
 # DISTRO DETECTION (Comprehensive)
@@ -913,7 +913,7 @@ get_pkg_name() {
 # GO TOOL MAPPINGS (for go install fallback)
 #═══════════════════════════════════════════════════════════════════════════════
 
-declare -A GO_PACKAGES=(
+declare -gA GO_PACKAGES=(
     [gobuster]="github.com/OJ/gobuster/v3@latest"
     [ffuf]="github.com/ffuf/ffuf/v2@latest"
     [nuclei]="github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"
@@ -937,7 +937,7 @@ declare -A GO_PACKAGES=(
 # PIP TOOL MAPPINGS
 #═══════════════════════════════════════════════════════════════════════════════
 
-declare -A PIP_PACKAGES=(
+declare -gA PIP_PACKAGES=(
     [theharvester]="theHarvester"
     [sqlmap]="sqlmap"
     [wifite]="wifite"
@@ -957,7 +957,7 @@ declare -A PIP_PACKAGES=(
 # CARGO TOOL MAPPINGS
 #═══════════════════════════════════════════════════════════════════════════════
 
-declare -A CARGO_PACKAGES=(
+declare -gA CARGO_PACKAGES=(
     [rustscan]="rustscan"
     [feroxbuster]="feroxbuster"
     [ripgrep]="ripgrep"
@@ -969,7 +969,7 @@ declare -A CARGO_PACKAGES=(
 # GITHUB RELEASE MAPPINGS
 #═══════════════════════════════════════════════════════════════════════════════
 
-declare -A GITHUB_REPOS=(
+declare -gA GITHUB_REPOS=(
     [rustscan]="RustScan/RustScan"
     [nuclei]="projectdiscovery/nuclei"
     [httpx]="projectdiscovery/httpx"
@@ -1718,7 +1718,7 @@ setup_repos() {
 # TOOL CATEGORIES
 #═══════════════════════════════════════════════════════════════════════════════
 
-declare -A CATEGORIES=(
+declare -gA CATEGORIES=(
     [scanning]="nmap masscan rustscan zmap arp-scan netdiscover hping3 fping"
     [wireless]="aircrack-ng reaver bully pixiewps wifite bettercap mdk3 mdk4 hostapd cowpatty hcxdumptool hcxtools kismet"
     [web]="nikto sqlmap dirb gobuster ffuf wpscan whatweb nuclei httpx subfinder amass dirsearch"

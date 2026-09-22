@@ -2,6 +2,50 @@
 
 All notable changes to NETREAPER.
 
+## [12.0.2] - 2026-09-23
+
+The bats suite reported 20/20 while testing nothing, and CI never ran it either
+way.
+
+### Fixed
+
+- **`installer.bats` could not fail.** Its `setup()` called `set +e` twice and
+  the second should have been `set -e`. bats detects a failed assertion through
+  errexit's ERR trap, so with errexit off a failing `[ ... ]` is a no-op that
+  still reports ok. Measured on bats 1.14: under `set +e` a bare `false`
+  reports ok, `return 1` reports ok, and only `exit 1` still fails.
+- **Six names in that file have no referent in the installer.**
+  `verify_tool_installed` is `verify_tool`, `get_package_name` is
+  `get_pkg_name`, `detect_distro_family` does not exist because `detect_distro`
+  sets globals and echoes nothing, `SUCCESS_TOOLS` is `INSTALLED_TOOLS`, and
+  `TOOL_SEARCH_PATHS` and `TOOLS` were never defined in any form. All 11 tests
+  naming them reported ok.
+- **The installer's arrays were not declared global**, so sourcing it from
+  inside a bats function made every one of them function-local and they
+  vanished when `setup()` returned. Its scalars already used `declare -g`; the
+  arrays now agree. No behavioural change: `main` runs at top level in
+  production, where both forms are identical.
+
+### Added
+
+- **Bats runs in CI, blocking.** It never has. A suite that does not run is
+  worse than no suite, because it reads like coverage.
+- An errexit canary in `installer.bats`, written with `exit 1` because neither
+  a failed assertion nor `return 1` can report the problem it detects.
+- `tests/unit/test_bats_suite_is_real.py` (14 tests): every function and
+  variable the bats files reference must exist in the installer, no bats file
+  may leave errexit off, the canary must be present and must use `exit 1`, CI
+  must install and run bats, and the bats step must not be weakened with
+  `|| true`. Verified against the real historical file restored from git: it
+  fails on all four counts.
+
+### Changed
+
+- `installer.bats` rewritten against the installer's actual API: root
+  resolution, `get_pkg_name`, `get_binary_name`, `is_installed`, `verify_tool`,
+  `--no-verify`, `detect_distro`, `detect_package_manager`, the `CATEGORIES`
+  catalogue, the `DRY_RUN` guards and the command line. 20 tests to 32.
+
 ## [12.0.1] - 2026-09-23
 
 Three commands reported success while doing the wrong thing, and no test was
