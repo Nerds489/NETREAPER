@@ -59,7 +59,18 @@ jobs:
           for f in $(git ls-files '*.sh') bin/netreaper-install; do
             echo "bash -n $f"; bash -n "$f"
           done
+      - name: Install shellcheck and bats
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck bats
+
       - name: ShellCheck (advisory)
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck -S error bin/netreaper-install $(git ls-files '*.sh') || true
+        run: shellcheck -S error bin/netreaper-install $(git ls-files '*.sh') || true
+
+      # Blocking, and new. These tests existed and CI never ran them, so
+      # nobody noticed that installer.bats called six functions and variables
+      # that do not exist in the installer, nor that its setup() left errexit
+      # off, which made every assertion in the file a no-op that still
+      # reported ok. 20 green tests, nothing tested, a completely unrunnable
+      # installer underneath. A suite that does not run is worse than no suite,
+      # because it reads like coverage.
+      - name: Bats (blocking)
+        run: bats tests/
