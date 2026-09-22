@@ -1,5 +1,6 @@
 """NETREAPER CLI interface using Typer."""
 import asyncio
+import contextlib
 from pathlib import Path
 
 import typer
@@ -160,20 +161,76 @@ def _coerce(value: str):
         return value
 
 
+def _settings_key_paths() -> list[str]:
+    """Every dotted key the Settings schema actually defines."""
+    from pydantic import BaseModel
+
+    from netreaper.config.settings import Settings
+
+    out: list[str] = []
+
+    def walk(model: type[BaseModel], prefix: str = "") -> None:
+        for name, field in model.model_fields.items():
+            annotation = field.annotation
+            if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                walk(annotation, f"{prefix}{name}.")
+            else:
+                out.append(f"{prefix}{name}")
+
+    walk(Settings)
+    return out
+
+
 def _persist_config(dotted_key: str, value: str) -> None:
-    """Write a dotted key into the user config.toml (creating it if needed)."""
-    import tomllib
+    """Write a dotted key into the user config.toml, but only if it validates.
+
+    This used to write first and validate afterwards, via the reload_settings()
+    call in its caller. Two ways that went wrong, both of which cost a real
+    config file:
+
+      the wrong type   `config set logging.level DEBUG` printed a pydantic
+                       error AND stored the string. Every later load then
+                       failed on it, so `config show` was broken until the file
+                       was deleted by hand. A command that rejects your input
+                       must not keep it.
+      the wrong key    Settings is a plain BaseModel, so pydantic ignores extra
+                       keys. `config set key value` therefore "succeeded",
+                       silently writing a top-level `key = "value"` that no
+                       consumer reads. The README's own example did exactly
+                       this, on every machine that ran the docs test.
+
+    So: the key is checked against the schema, the whole candidate config is
+    validated as a unit, and only then does anything reach disk. The write is
+    atomic, because a config truncated by a crash is the same outage as a
+    config poisoned by a bad value.
+    """
+    import os
+    import tempfile
 
     import tomli_w
+    from pydantic import ValidationError
 
+    from netreaper.config.settings import (
+        _DEFAULTS_PATH,
+        Settings,
+        _deep_merge,
+        _load_toml,
+    )
     from netreaper.core.constants import NETREAPER_CONFIG_DIR
 
+    valid = _settings_key_paths()
+    if dotted_key not in valid:
+        import difflib
+
+        near = difflib.get_close_matches(dotted_key, valid, n=3, cutoff=0.5)
+        hint = f" Did you mean: {', '.join(near)}?" if near else ""
+        raise typer.BadParameter(
+            f"unknown setting {dotted_key!r}; it is not in the schema.{hint}"
+        )
+
     cfg_path = NETREAPER_CONFIG_DIR / "config.toml"
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict = {}
-    if cfg_path.exists():
-        with cfg_path.open("rb") as fh:
-            data = tomllib.load(fh)
+    data: dict = _load_toml(cfg_path)
+
     parts = dotted_key.split(".")
     node = data
     for part in parts[:-1]:
@@ -181,8 +238,35 @@ def _persist_config(dotted_key: str, value: str) -> None:
         if not isinstance(node, dict):
             raise typer.BadParameter(f"{dotted_key!r} conflicts with a non-table value")
     node[parts[-1]] = _coerce(value)
-    with cfg_path.open("wb") as fh:
-        tomli_w.dump(data, fh)
+
+    # Validate the WHOLE candidate, layered exactly as _build_settings does it,
+    # so the check matches what the next load will actually attempt.
+    try:
+        Settings(**_deep_merge(_load_toml(_DEFAULTS_PATH), data))
+    except ValidationError as exc:
+        parts = []
+        for e in exc.errors():
+            loc = ".".join(str(p) for p in e["loc"])
+            # Naming the key again when it is the key we were given reads as
+            # "logging.level rejected: logging.level: ...".
+            parts.append(e["msg"] if loc == dotted_key else f"{loc}: {e['msg']}")
+        detail = "; ".join(parts)
+        # Outcome first: Rich truncates a long message inside the usage box,
+        # and "nothing was written" is the part the operator must not miss.
+        raise typer.BadParameter(
+            f"nothing written. {dotted_key} rejected: {detail}"
+        ) from None
+
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=cfg_path.parent, prefix=".config.", suffix=".toml")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            tomli_w.dump(data, fh)
+        os.replace(tmp, cfg_path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 @app.command()
