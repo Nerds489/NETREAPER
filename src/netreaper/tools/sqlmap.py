@@ -187,6 +187,14 @@ class SqlmapTool(BaseToolWrapper):
 
         if options.get("random_agent"):
             args.append("--random-agent")
+
+        proxy = options.get("proxy")
+        if proxy:
+            args += ["--proxy", proxy]
+        return args
+
+    # ── output ───────────────────────────────────────────────────────────────
+
     _INJECTION_RE: ClassVar = re.compile(r"Parameter:\s+(\S+)\s+\(([^)]+)\)")
     _TABLE_CELL_RE: ClassVar = re.compile(r"\|\s+(\S+)\s+\|")
     _SINGLE_FIELDS: ClassVar[tuple[tuple[str, str], ...]] = (
@@ -204,7 +212,6 @@ class SqlmapTool(BaseToolWrapper):
         """Parse sqlmap output."""
         lowered = output.lower()
         injection_points = self._parse_injection_points(output)
-        injection_points.extend(self._find_injection_points_with_regex(output))
         results: dict[str, Any] = {
             "vulnerable": bool(injection_points)
             or any(i in lowered for i in self._SUCCESS_INDICATORS),
@@ -215,6 +222,12 @@ class SqlmapTool(BaseToolWrapper):
             "data": self._collect_dumped_csv(lowered),
         }
         results.update(self._extract_single_fields(output))
+        results["summary"] = {
+            "vulnerable": results["vulnerable"],
+            "injection_points": len(results["injection_points"]),
+            "databases_found": len(results["databases"]),
+            "tables_found": len(results["tables"]),
+        }
         return results
 
     def _extract_single_fields(self, output: str) -> dict[str, Any]:
@@ -223,37 +236,6 @@ class SqlmapTool(BaseToolWrapper):
             match = re.search(pattern, output)
             fields[key] = match.group(1) if match else None
         return fields
-
-    def _find_injection_points_with_regex(self, output: str) -> list[dict[str, str]]:
-        points: list[dict[str, str]] = []
-        for match in self._INJECTION_RE.finditer(output):
-            points.append({"parameter": match.group(1), "type": match.group(2)})
-        return points
-
-        results: dict[str, Any] = {}
-        # Check for various success indicators
-        success_indicators = [
-            "injectable",
-            "vulnerability",
-            "exploitable",
-            "confirmed",
-        ]
-        for indicator in success_indicators:
-            if indicator in output.lower():
-                results["vulnerable"] = True
-                break
-        for key, pattern in self._SINGLE_FIELDS:
-            match = re.search(pattern, output)
-            if match:
-                results[key] = match.group(1).strip()
-
-        results["summary"] = {
-            "vulnerable": results["vulnerable"],
-            "injection_points": len(results["injection_points"]),
-            "databases_found": len(results["databases"]),
-            "tables_found": len(results["tables"]),
-        }
-        return results
 
     def _parse_injection_points(self, output: str) -> list[dict[str, str]]:
         return [
