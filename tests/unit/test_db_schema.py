@@ -36,12 +36,17 @@ import pytest
 SRC = Path(__file__).resolve().parents[2] / "src" / "netreaper"
 SCHEMA = SRC / "db" / "schema.sql"
 
-# The modules that write to the database, and nothing else.
+# The modules that touch the database. Writers, plus export/manager.py, which is
+# read-only but whose SELECTs went unchecked here for so long that one queried
+# an audit_log.session_id / timestamp the schema never had, silently returning
+# nothing. Its FROM-tables are covered now; it adds no INSERTs, so the write-set
+# check below is unchanged.
 CONSUMERS = (
     "sessions/manager.py",
     "loot/storage.py",
     "orchestration/handlers.py",
     "chaining/state_cache.py",
+    "export/manager.py",
 )
 
 _INSERT = re.compile(r"INSERT\s+INTO\s+(\w+)\s*\(([^)]*)\)", re.I | re.S)

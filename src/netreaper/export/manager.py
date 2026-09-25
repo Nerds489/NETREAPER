@@ -255,18 +255,24 @@ class ExportManager:
                 logger.debug("Failed to fetch tool executions for session %s: %s", session_id, e)
 
             try:
+                # audit_log is the orchestrator's PROCESS-WIDE event log: the
+                # schema gives it no session_id and its time column is
+                # created_at, not timestamp. The old query filtered on a
+                # session_id that does not exist and ordered by a timestamp that
+                # does not exist, so every call raised and this section was
+                # always empty. Unfiltered and ordered by the real column now;
+                # process-wide, like the chain below, not per-session.
                 audit = await self.db.fetch_all(
-                    "SELECT * FROM audit_log WHERE session_id = ? ORDER BY timestamp",
-                    (session_id,)
+                    "SELECT * FROM audit_log ORDER BY created_at"
                 ) or []
             except Exception as e:
-                logger.debug("Failed to fetch audit log for session %s: %s", session_id, e)
+                logger.debug("Failed to fetch audit log: %s", e)
 
         # The hash-chained trail is the real record of what was spawned, denied,
-        # dry-run or errored against which targets, and until now it reached no
+        # dry-run or errored against which targets, and until #44 it reached no
         # deliverable at all: the report rendered only the DB audit_log, whose
-        # INSERT omits session_id while this query filters on it, so that section
-        # was always empty. Render the chain itself and state whether it verifies.
+        # query filtered on a session_id the table does not have (fixed just
+        # above). Render the chain itself and state whether it verifies.
         trail = get_audit_trail()
         audit_trail = [asdict(e) for e in trail.entries]
         chain = {
