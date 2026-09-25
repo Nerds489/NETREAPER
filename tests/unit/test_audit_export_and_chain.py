@@ -352,3 +352,68 @@ def test_the_anchor_is_owner_only(tmp_path):
     AuditTrail(path=p).record(outcome="executed", tool="t", argv=["t"])
     mode = stat.S_IMODE(p.with_suffix(p.suffix + ".anchor").stat().st_mode)
     assert mode == 0o600, f"anchor is {oct(mode)}; it names the trail's head"
+
+
+# ── the DB audit_log section actually populates now (the query matched no
+#    schema, so it silently returned nothing) ──────────────────────────────────
+
+
+def test_the_export_audit_log_query_runs_against_the_real_schema(tmp_path):
+    """The bug that survived because export SELECTs were never run against the
+    schema in a test: the query filtered on audit_log.session_id and ordered by
+    `timestamp`, neither of which exists, so it raised into a debug-logged
+    try/except and the section was always empty.
+
+    A real engine + a real audit_log row proves the query now matches the schema
+    and the row reaches the export. If the column mismatch returns, `audit` is []
+    and this fails.
+    """
+    from netreaper.db.engine import DatabaseEngine
+    from netreaper.export.manager import ExportManager
+
+    async def run():
+        engine = DatabaseEngine(tmp_path / "t.db")
+        await engine.initialize()
+        try:
+            await engine.execute(
+                "INSERT INTO audit_log (level, category, message, details) "
+                "VALUES (?, ?, ?, ?)",
+                ("info", "vuln", "found something", "{}"),
+            )
+            return await ExportManager(db=engine)._gather_session_data("sess_x")
+        finally:
+            await engine.close()
+
+    data = asyncio.run(run())
+    assert len(data["audit_log"]) == 1, "audit_log section is empty; the query does not match the schema"
+    assert data["audit_log"][0]["message"] == "found something"
+
+
+def test_the_export_audit_log_is_process_wide_not_session_filtered(tmp_path):
+    """audit_log has no session_id, so the section is process-wide by design
+    (like the hash chain). A row is returned regardless of the session asked for."""
+    from netreaper.db.engine import DatabaseEngine
+    from netreaper.export.manager import ExportManager
+
+    async def run():
+        engine = DatabaseEngine(tmp_path / "t.db")
+        await engine.initialize()
+        try:
+            await engine.execute(
+                "INSERT INTO audit_log (level, category, message, details) "
+                "VALUES (?, ?, ?, ?)",
+                ("warning", "scan", "event", "{}"),
+            )
+            mgr = ExportManager(db=engine)
+            # One row, two different session ids: the process-wide row shows for
+            # both, because audit_log carries no session to filter on.
+            return (
+                await mgr._gather_session_data("sess_a"),
+                await mgr._gather_session_data("sess_b"),
+            )
+        finally:
+            await engine.close()
+
+    a, b = asyncio.run(run())
+    assert len(a["audit_log"]) == 1
+    assert len(b["audit_log"]) == 1

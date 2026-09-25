@@ -2,6 +2,25 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.6] - 2026-09-25
+
+### Fixed
+
+- **The exported report's `audit_log` section was always empty**, and silently
+  so. `ExportManager._gather_session_data` queried
+  `SELECT * FROM audit_log WHERE session_id = ? ORDER BY timestamp`, but the
+  `audit_log` table has neither column (it is the orchestrator's process-wide
+  event log, keyed by `created_at`, with no session). The query raised straight
+  into a debug-logged `try/except`, so every export dropped the section without a
+  word. It is now `SELECT * FROM audit_log ORDER BY created_at`, process-wide like
+  the hash chain beside it, and a row reaches the report.
+- **Guarded so it cannot come back.** `export/manager.py` is added to
+  `test_db_schema.py`'s consumer set (it is read-only, so it adds no writes to
+  check but its FROM-tables are now verified against the schema), and a new test
+  runs `_gather_session_data` against a real database with a real `audit_log` row,
+  which the old query would have returned empty. That the SELECT was never run
+  against the schema in a test is why the mismatch survived.
+
 ## [12.1.5] - 2026-09-25
 
 The optional container image and Realtek DKMS provisioning (#94, #33 slice 5).
