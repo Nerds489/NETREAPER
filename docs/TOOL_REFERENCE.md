@@ -1,13 +1,26 @@
-# NETREAPER Tool Reference (v10.0.0)
+# NETREAPER Tool Reference
 
-NETREAPER wraps 70+ tools behind one interface. Run it via `netreaper` after `pip install .` (the Python CLI); run with no arguments for the interactive menu, or use the CLI shortcuts below:
-- `netreaper scan <target> (--quick|--full|--vuln|--stealth)`
-- `netreaper wifi --monitor <iface>`
-- `netreaper crack <capture> --hashcat`
-- `netreaper session start|resume <name>|export`
-- `netreaper status`, `netreaper install`, `netreaper help`, `netreaper --version`
+NETREAPER drives its tool catalogue behind one interface. This page maps the
+tools to what they do; the **authoritative command reference is the top-level
+[README](../README.md)**, which the CLI's own tests keep in step with the code.
+Run the CLI via `netreaper` after `pip install .`, or `netreaper` with no
+arguments for the TUI.
 
-Install tooling with `sudo netreaper-install essentials|all|<category>` and confirm with `netreaper status`.
+The real command surface (see the README for options and details):
+- `netreaper scan <target> --type quick|standard|full` — network scan
+- `netreaper wifi monitor enable <iface>` then `wifi scan` / `wifi handshake` / `wifi wep` / `wifi auto`
+- `netreaper wifi crack <capture> <bssid> <wordlist>` — offline WPA crack
+- `netreaper web auto <url>`, `netreaper ble plan`, `netreaper can dump <iface>`
+- `netreaper status`, `netreaper config`, `netreaper engage`, `netreaper --version`
+
+Install tooling with `sudo bin/netreaper-install essentials|all|<category>` and
+confirm with `netreaper status`.
+
+> An earlier version of this page was headed v10.0.0 and documented
+> `session`, `crack --hashcat`, `install` and `help` subcommands plus
+> `--quick`/`--monitor` flags, none of which exist. The commands above are the
+> real ones; the per-tool "Menu" notes further down predate the current TUI and
+> are indicative, not literal.
 
 ## Recon & Discovery
 | Tool | Purpose | Access in NETREAPER |
@@ -43,7 +56,7 @@ Install tooling with `sudo netreaper-install essentials|all|<category>` and conf
 ## Credentials & Access
 | Tool | Purpose | Access in NETREAPER |
 |------|---------|----------------------|
-| hashcat | GPU hash cracking | CLI: `netreaper crack <capture_or_hashfile> --hashcat` |
+| hashcat | GPU hash cracking | CLI: `netreaper wifi crack <cap> <bssid> <wordlist>` for WPA; the credentials screen for arbitrary hashes |
 | john | CPU hash cracking | Menu: Credentials -> John |
 | hydra | Online brute force (SSH/HTTP/DB) | Menu: Credentials -> Hydra |
 | medusa | Parallel brute force | Menu: Credentials -> Medusa |

@@ -2,6 +2,29 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.7] - 2026-09-25
+
+### Fixed
+
+- **The docs/ folder documented commands and files that do not exist.**
+  `docs/TOOL_REFERENCE.md` was headed v10.0.0 and described `netreaper session`,
+  `netreaper crack`, `netreaper install` and `netreaper help` with
+  `--quick`/`--monitor` flags, none of which are real; `docs/README.md` indexed
+  two files (`NETREAPER-GIT-HOWTO.md`, `NETREAPER-FORGOTTEN-FEATURES.md`) that
+  were never in the folder; and `ENVIRONMENT_VARIABLES.md` / `SUPPORT.md` linked
+  to `QUICKREF.md` / `HOWTO.md` / `TROUBLESHOOTING.md`, also absent. Same
+  documenting-fiction defect the top-level README carried before its rewrite.
+  The command examples now match the real CLI, the indexes and see-also links
+  point at files that exist, and the top-level README is named as the
+  authoritative command reference.
+
+### Added
+
+- `test_docs_reference_real_commands.py`: a `netreaper <word>` named in any
+  `docs/*.md` must be a registered command, and a Markdown link to a sibling doc
+  must resolve. The lighter docs-folder equivalent of the README command guard;
+  it found the dead links above.
+
 ## [12.1.6] - 2026-09-25
 
 ### Fixed
