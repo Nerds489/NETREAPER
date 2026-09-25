@@ -113,7 +113,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "E501", "E402"]  # tests: allow assert, long lines, local imports
+"tests/*" = ["S101", "E501", "E402", "S603", "S607"]  # tests: assert, long lines, local imports, and subprocess to fixed commands (git/bash)
 
 [tool.mypy]
 python_version = "3.11"

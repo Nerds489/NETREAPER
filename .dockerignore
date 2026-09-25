@@ -1,0 +1,13 @@
+# Keep the build context (and image) lean: pip install . needs pyproject.toml,
+# VERSION, README.md, src/ and bin/, nothing else here.
+.git
+.venv
+venv
+**/__pycache__
+*.pyc
+.pytest_cache
+htmlcov
+.coverage
+tests
+docker
+*.log
