@@ -1,4 +1,5 @@
 """Nmap network scanner wrapper."""
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +11,7 @@ if TYPE_CHECKING:  # the annotation below needs the name; nothing here parses wi
 
 from pydantic import BaseModel
 
-from netreaper.plugins.base import Capability, PluginMetadata, PluginType
+from netreaper.plugins.base import Capability, PluginMetadata, PluginResult, PluginType
 from netreaper.tools.base import BaseToolWrapper
 
 _DOCTYPE_RE = re.compile(rb"<!DOCTYPE", re.IGNORECASE)
@@ -90,7 +91,13 @@ class NmapTool(BaseToolWrapper):
             Capability.SERVICE_ENUM,
             Capability.VULN_SCAN,
         ],
-        requires_root=True,  # For some scan types
+        # Root is NOT a property of nmap; it is a property of the scan. The
+        # default `standard` scan is a connect scan that runs unprivileged, so
+        # the base flag is False and the per-invocation truth lives in
+        # needs_root() below, enforced in execute(). A blanket True here forced
+        # the two registries to disagree (see test_registry_reconciliation) and
+        # would have blocked a standard scan that needs no privilege.
+        requires_root=False,
         external_tools=["nmap"],
         config_schema=NmapConfig,
     )
@@ -105,10 +112,64 @@ class NmapTool(BaseToolWrapper):
         "vuln": ["--script", "vuln"],
     }
 
+    # nmap needs raw sockets (root, or CAP_NET_RAW) for the half-open and
+    # protocol scans and for OS detection; a plain connect scan (-sT, the
+    # unprivileged default) and -sV do not. Derived from the flags build_command
+    # actually emits, so "which scans need root" cannot drift from what runs.
+    _ROOT_FLAGS: ClassVar[frozenset[str]] = frozenset({
+        "-sS", "-sA", "-sF", "-sX", "-sN", "-sM",
+        "-sW", "-sY", "-sU", "-sO", "-O", "-A",
+    })
+
+    def needs_root(self, options: dict[str, Any] | None = None) -> bool:
+        """Whether THIS invocation needs root, keyed on the scan it will build.
+
+        Root is per-invocation, not per-tool: `standard`/`quick`/`vuln` are
+        connect scans that run unprivileged, while `stealth` (-sS), `udp` (-sU)
+        and `full` (-A, which implies -O) need raw sockets, as does turning on
+        OS detection on any scan. Resolved from the same options and config
+        defaults `build_command` uses, so it stays true to what will run.
+        """
+        options = options or {}
+        scan_type = options.get("scan_type", "standard")
+        flags: set[str] = set(self.SCAN_TYPES.get(scan_type, []))
+        if options.get("os_detection", self.nmap_config.os_detection):
+            flags.add("-O")
+        extra = options.get("extra_args") or []
+        if isinstance(extra, str):
+            extra = extra.split()
+        flags.update(extra)
+        return bool(flags & self._ROOT_FLAGS)
+
     def __init__(self, nmap_config: NmapConfig | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.nmap_config = nmap_config or NmapConfig()
         self._output_file: Path | None = None
+
+    async def execute(self, target: str, options: dict[str, Any]) -> PluginResult:
+        """Refuse a privileged scan up front when unprivileged, then run.
+
+        A scan that needs raw sockets fails inside nmap with a terse "you
+        requested a scan type which requires root privileges" if it is spawned
+        without them. Catching it here names the scan type and the fix, and never
+        reaches the process seam. A dry run is exempt: it spawns nothing, so
+        previewing a stealth plan without root is fine.
+        """
+        if (
+            not options.get("dry_run")
+            and self.needs_root(options)
+            and os.geteuid() != 0
+        ):
+            scan_type = options.get("scan_type", "standard")
+            return PluginResult(
+                success=False,
+                data={},
+                errors=[
+                    f"nmap {scan_type} scan needs root (raw sockets); re-run with "
+                    f"sudo, or use --type standard for an unprivileged scan"
+                ],
+            )
+        return await super().execute(target, options)
 
     def build_command(self, target: str, options: dict[str, Any]) -> list[str]:
         """Build nmap command."""
