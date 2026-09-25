@@ -43,10 +43,13 @@ from netreaper.detection.tools import ToolRegistry
 # finding. Fixing it properly means a per-invocation requirement, the same
 # shape as the manifest tier that was forwarded per-step rather than declared
 # once. Until then the disagreement is pinned here so it stays visible.
-PER_INVOCATION_ROOT: dict[str, str] = {
-    "nmap": "3 of 4 scan types need root; `standard` does not. Needs a "
-            "per-invocation requirement, not a per-tool boolean.",
-}
+# Resolved in #90: nmap's root need is now per-invocation, computed by
+# NmapTool.needs_root() from the scan type and enforced in NmapTool.execute().
+# Both registries carry the honest base (a standard connect scan needs no root),
+# so nmap no longer disagrees and no longer belongs here. This map is empty now,
+# and the guard below keeps it that way: a NEW disagreement must be argued for,
+# not skipped.
+PER_INVOCATION_ROOT: dict[str, str] = {}
 
 
 def test_every_tool_the_preflight_knows_can_also_be_installed():

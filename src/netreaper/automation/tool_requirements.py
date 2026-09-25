@@ -48,7 +48,12 @@ TOOL_REQUIREMENTS: dict[str, ToolRequirement] = {
     # === SCANNING TOOLS ===
     "nmap": ToolRequirement(
         tool="nmap",
-        needs_root=True,  # For SYN scans, OS detection
+        # The DEFAULT (standard) scan is a connect scan and needs no root; only
+        # -sS/-sU/-A style scans and OS detection do. That is per-invocation, so
+        # it lives in NmapTool.needs_root() and is enforced in NmapTool.execute(),
+        # not as a blanket boolean here. A blanket True blocked a standard scan
+        # that would have worked (see #90).
+        needs_root=False,
         needs_target=True,
         target_type="cidr",
         fallbacks=["rustscan", "masscan"],
