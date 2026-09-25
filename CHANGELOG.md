@@ -2,6 +2,29 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.4] - 2026-09-25
+
+BLE joins the planner as a new domain, manifests-first (#92, #33 slice 3).
+
+### Added
+
+- **`ble/` domain and `ble plan`.** A capability chain `scan_le_devices` ->
+  `enumerate_gatt` the planner resolves and previews, following automotive's
+  manifests-first pattern plus a CLI verb like web's. `netreaper ble plan
+  [goal] [--have ...]` prints the backward-chained plan.
+- `enumerate_gatt` is `requires_confirmation`: connecting to a device and walking
+  its GATT table is active, unlike a passive LE scan. The flag is enforced at the
+  process seam by `manifest_step_runner` (a test proves an unconfirmed run is
+  refused and a confirmed one proceeds), not merely rendered as a badge.
+
+### Note
+
+- No live BLE adapter ships yet, on purpose. A correct adapter needs on-hardware
+  verification and bluetoothctl is an interactive REPL, so the runners are
+  planning-only (like automotive's hardware steps); `ble plan` previews the chain
+  and wiring real, tested adapters is a follow-up. This keeps the slice honest
+  rather than shipping a parser for output that cannot be verified here.
+
 ## [12.1.3] - 2026-09-25
 
 ffuf and nuclei are now real, reachable tools, not catalogue rows with no adapter
