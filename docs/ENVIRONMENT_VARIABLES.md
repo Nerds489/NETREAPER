@@ -127,6 +127,5 @@ Environment variables take precedence over configuration file settings.
 
 ## See Also
 
-- [QUICKREF.md](QUICKREF.md) - Quick reference guide
-- [HOWTO.md](HOWTO.md) - Common tasks and procedures
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Problem solving guide
+- [The top-level README](../README.md) - the authoritative command reference
+- [TOOL_REFERENCE.md](TOOL_REFERENCE.md) - the tool catalogue
