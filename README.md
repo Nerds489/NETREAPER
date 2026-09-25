@@ -12,7 +12,7 @@
 
 ```
 
-[![Version](https://img.shields.io/badge/version-12.0.2-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
+[![Version](https://img.shields.io/badge/version-12.1.0-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://kernel.org)
@@ -162,6 +162,13 @@ netreaper wifi auto -i wlan0mon -g wifi.handshake --run   # a different goal
 through the same scope gate and the same audit trail as a command you typed yourself.
 Nothing in a chain is exempt, and a chain cannot reach a tier the engagement has not
 confirmed.
+
+When you give `wifi auto` a target with `-t`, it remembers the durable results it
+obtained for that target and skips them next time: crack a network once and a later run
+short-circuits instead of re-running the chain. Only durable facts are cached (a recovered
+password, a handshake whose capture file still exists), never a live monitor interface or
+a scan that goes stale. Pass `--refresh` to ignore and clear that cache for the target,
+which is also how you reset after a network's password changes.
 
 ---
 
@@ -453,7 +460,7 @@ one you already have an account with.
 
 <div align="center">
 
-**NETREAPER** v12.0.2 • GPL-3.0-or-later
+**NETREAPER** v12.1.0 • GPL-3.0-or-later
 
 *The airwaves belong to those who listen*
 

@@ -41,6 +41,7 @@ CONSUMERS = (
     "sessions/manager.py",
     "loot/storage.py",
     "orchestration/handlers.py",
+    "chaining/state_cache.py",
 )
 
 _INSERT = re.compile(r"INSERT\s+INTO\s+(\w+)\s*\(([^)]*)\)", re.I | re.S)
@@ -204,6 +205,11 @@ def test_the_sql_extraction_is_not_vacuous():
     """
     sql = _consumer_sql()
     tables = {m.group(1).lower() for m in _INSERT.finditer(sql)}
-    assert tables == {"sessions", "targets", "loot", "tool_executions", "audit_log"}, (
-        f"expected the five known writes, extracted {sorted(tables)}"
-    )
+    assert tables == {
+        "sessions",
+        "targets",
+        "loot",
+        "tool_executions",
+        "audit_log",
+        "available_state",
+    }, f"expected the six known writes, extracted {sorted(tables)}"
