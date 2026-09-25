@@ -2,6 +2,35 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.5] - 2026-09-25
+
+The optional container image and Realtek DKMS provisioning (#94, #33 slice 5).
+This completes the five-slice platform roadmap from #33.
+
+### Added
+
+- **`docker/Dockerfile`**, two stages: `cli` (NETREAPER installed, small) and
+  `full` (`cli` + the tool arsenal via the bundled installer, heavy, built on
+  demand). It runs the installed `netreaper` console script, and `.dockerignore`
+  keeps `.venv`/`.git` out of the build. Verified during development: the `cli`
+  image builds and `netreaper --version`, the web/ble planners and
+  `netreaper-install --dry-run` all run inside it.
+- **`docker/dkms-drivers.sh`**: provisions the injection-capable Realtek drivers
+  (`rtl8812au`, `rtl8814au`, `rtl8821au`) on the host via DKMS, taking the
+  Debian/Ubuntu `realtek-rtl88xxau-dkms` shortcut when available.
+- **`docker/README.md`**: build/run recipe, including the `--net=host
+  --cap-add=NET_ADMIN --cap-add=NET_RAW --device` a container needs for wireless
+  work (deliberately not baked into the image), and the note that `pip install .`
+  stays the baseline.
+
+### Note
+
+- The image build and the DKMS module build cannot be verified in the authoring
+  environment (no kernel headers, no adapter), and the docs say so. The `cli`
+  image was built and exercised; the `full` image and the DKMS build need a real
+  host. Static guards pin the artefacts' shape so they cannot reference tools or
+  drivers that do not exist.
+
 ## [12.1.4] - 2026-09-25
 
 BLE joins the planner as a new domain, manifests-first (#92, #33 slice 3).
