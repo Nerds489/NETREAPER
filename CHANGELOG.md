@@ -2,6 +2,28 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.3] - 2026-09-25
+
+ffuf and nuclei are now real, reachable tools, not catalogue rows with no adapter
+(#93, #33 slice 4). Unblocked by the web-recon chain from #91.
+
+### Added
+
+- **`tools/ffuf.py` and `tools/nuclei.py` adapters**, mirroring the existing
+  gobuster/nikto shape (argv contract, JSON/JSONL parsing, no root).
+- **Wired into the web planner as DISTINCT capabilities**: ffuf provides
+  `web.fuzz`, nuclei provides `web.templated_findings`. They do not collide with
+  gobuster's `web.paths` or nikto's `web.findings`, because the planner allows one
+  provider per capability and these are genuinely different techniques (chosen
+  option 1 from the #93 discussion; no planner change). `web auto -g web.fuzz` and
+  `-g web.templated_findings` plan them, fingerprint-first like the rest.
+
+### Fixed
+
+- The nuclei adapter also resolves a pre-existing dangling import: the exploit TUI
+  screen imported `netreaper.tools.nuclei`, which did not exist. It does now, so
+  the module leaves `KNOWN_DANGLING`.
+
 ## [12.1.2] - 2026-09-25
 
 The backward-chaining planner reaches its first non-wireless domain (#33 slice 2,

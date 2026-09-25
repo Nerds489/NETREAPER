@@ -46,6 +46,22 @@ WEB_MANIFESTS: tuple[ToolManifest, ...] = (
         provides=("web.findings",),
         requires=("web.fingerprint",),
     ),
+    # ffuf and nuclei each provide a DISTINCT capability, not web.paths /
+    # web.findings: the planner allows one provider per capability, and these are
+    # genuinely different techniques from gobuster (wordlist path brute) and nikto
+    # (built-in checks). See #93.
+    ToolManifest(
+        name="fuzz_web",
+        domain="web",
+        provides=("web.fuzz",),
+        requires=("web.fingerprint",),
+    ),
+    ToolManifest(
+        name="scan_templates",
+        domain="web",
+        provides=("web.templated_findings",),
+        requires=("web.fingerprint",),
+    ),
 )
 
 
