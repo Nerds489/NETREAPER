@@ -1,30 +1,23 @@
 # NETREAPER Documentation
 
-This folder contains internal documentation for NETREAPER development and maintenance.
+Internal documentation for NETREAPER development and maintenance. The
+authoritative command reference is the top-level [`README.md`](../README.md); the
+files here are supporting material.
 
 ## Files
 
 | Document | Description |
 |----------|-------------|
-| `NETREAPER-GIT-HOWTO.md` | Git workflow, release pipeline, VERSION sync checklist, gh CLI usage, panic recovery |
-| `NETREAPER-FORGOTTEN-FEATURES.md` | Complete specification of 67 features across 17 categories (architecture, wireless, installer, etc.) |
+| [`TOOL_REFERENCE.md`](TOOL_REFERENCE.md) | The tool catalogue and how each is reached |
+| [`ENVIRONMENT_VARIABLES.md`](ENVIRONMENT_VARIABLES.md) | Environment variables NETREAPER reads |
+| [`RELEASING.md`](RELEASING.md) | The tag-triggered release pipeline |
+| [`SUPPORT.md`](SUPPORT.md) | Where to get help |
+| [`NOTICE.txt`](NOTICE.txt) | Copyright notice |
 
-## Quick Links
-
-- **Version bump?** → See VERSION SYNC CHECKLIST in GIT-HOWTO
-- **New feature?** → Check if it's already spec'd in FORGOTTEN-FEATURES
-- **Release?** → Follow Release Flow in GIT-HOWTO
-- **Hotfix?** → Follow Hotfix Flow in GIT-HOWTO
-- **Tests failing on version?** → You forgot to sync all VERSION locations
-
-## Installation
-
-Copy these files to your NETREAPER repo:
-
-```bash
-cp *.md ~/NETREAPER/docs/
-```
+The previous index listed `NETREAPER-GIT-HOWTO.md` and
+`NETREAPER-FORGOTTEN-FEATURES.md`; neither has ever existed in this folder, so the
+links were dead. Release mechanics live in `RELEASING.md`.
 
 ---
 
-© 2025 Nerds489
+© 2025-2026 Nerds489
