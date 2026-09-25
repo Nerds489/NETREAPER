@@ -60,9 +60,18 @@ def test_an_unknown_goal_names_itself():
         resolve_chain("web.nonexistent", build_web_registry(None))
 
 
-def test_the_manifest_set_declares_the_three_web_capabilities():
+def test_the_manifest_set_declares_the_web_capabilities():
     provided = {c for m in WEB_MANIFESTS for c in m.provides}
-    assert provided == {"web.fingerprint", "web.paths", "web.findings"}
+    assert provided == {
+        "web.fingerprint",
+        "web.paths",
+        "web.findings",
+        "web.fuzz",
+        "web.templated_findings",
+    }
+    # Each capability has exactly one provider: ffuf and nuclei get distinct
+    # capabilities rather than colliding with gobuster/nikto (#93).
+    assert len(provided) == len(WEB_MANIFESTS)
     # None is destructive: recon reads, it does not attack.
     assert not any(m.destructive for m in WEB_MANIFESTS)
 
@@ -99,6 +108,8 @@ def _fake_registry(calls: list[str], *, fail: str | None = None):
         "fingerprint_web": "web.fingerprint",
         "enumerate_paths": "web.paths",
         "scan_web": "web.findings",
+        "fuzz_web": "web.fuzz",
+        "scan_templates": "web.templated_findings",
     }
     reg = ManifestRegistry()
     for m in WEB_MANIFESTS:
@@ -158,3 +169,34 @@ def test_build_web_registry_tolerates_none_for_planning():
     """`web plan`-style callers build a runnerless registry; it must still resolve."""
     reg = build_web_registry(None)
     assert reg.find_provider("web.fingerprint") is not None
+
+
+# ── ffuf / nuclei as distinct capabilities (#93) ─────────────────────────────
+
+
+def test_fuzz_and_templates_are_distinct_goals_not_collisions():
+    """ffuf provides web.fuzz and nuclei web.templated_findings, so they plan on
+    their own without colliding with gobuster's web.paths / nikto's web.findings."""
+    reg = build_web_registry(None)
+    assert [m.name for m in resolve_chain("web.fuzz", reg).steps] == [
+        "fingerprint_web",
+        "fuzz_web",
+    ]
+    assert [m.name for m in resolve_chain("web.templated_findings", reg).steps] == [
+        "fingerprint_web",
+        "scan_templates",
+    ]
+
+
+def test_cli_web_auto_fuzz_goal_plans_ffuf():
+    result = runner.invoke(app, ["web", "auto", "http://example.com", "-g", "web.fuzz"])
+    assert result.exit_code == 0
+    assert "fuzz_web" in result.stdout
+
+
+def test_cli_web_auto_templates_goal_plans_nuclei():
+    result = runner.invoke(
+        app, ["web", "auto", "http://example.com", "-g", "web.templated_findings"]
+    )
+    assert result.exit_code == 0
+    assert "scan_templates" in result.stdout

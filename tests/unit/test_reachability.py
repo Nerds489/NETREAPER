@@ -182,6 +182,7 @@ REACHABLE_FROM = (
     SRC / "wireless",
     SRC / "chaining",
     SRC / "automotive",
+    SRC / "web",
     SRC / "mobile",
     SRC / "automation",
     SRC / "tui",
@@ -336,9 +337,6 @@ KNOWN_DANGLING: dict[str, str] = {
     ),
     "netreaper.automation.handlers.install": (
         "tool install handler for the preflight flow; same family, #31"
-    ),
-    "netreaper.tools.nuclei": (
-        "nuclei wrapper for the exploit screen; the screen now explains itself"
     ),
 }
 

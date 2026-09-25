@@ -37,6 +37,8 @@ class WebContext:
     fingerprint: Any = None
     paths: Any = field(default=None)
     findings: Any = field(default=None)
+    fuzz: Any = field(default=None)
+    templated_findings: Any = field(default=None)
 
 
 def build_web_registry(ctx: WebContext | None = None) -> ManifestRegistry:
@@ -80,10 +82,31 @@ def build_web_registry(ctx: WebContext | None = None) -> ManifestRegistry:
         ctx.findings = res.data
         return {"web.findings": ctx.findings}
 
+    async def r_fuzz(_state: dict, _target: str) -> dict[str, Any]:
+        from netreaper.tools.ffuf import FfufTool
+
+        opts = {"wordlist": ctx.wordlist} if ctx.wordlist else {}
+        res = await FfufTool().execute(ctx.target, opts)
+        if not res.success:
+            raise PluginError(f"fuzzing failed: {_why(res)}")
+        ctx.fuzz = res.data
+        return {"web.fuzz": ctx.fuzz}
+
+    async def r_templates(_state: dict, _target: str) -> dict[str, Any]:
+        from netreaper.tools.nuclei import NucleiTool
+
+        res = await NucleiTool().execute(ctx.target, {})
+        if not res.success:
+            raise PluginError(f"template scan failed: {_why(res)}")
+        ctx.templated_findings = res.data
+        return {"web.templated_findings": ctx.templated_findings}
+
     runners = {
         "fingerprint_web": r_fingerprint,
         "enumerate_paths": r_paths,
         "scan_web": r_findings,
+        "fuzz_web": r_fuzz,
+        "scan_templates": r_templates,
     }
     for m in WEB_MANIFESTS:
         reg.register(dataclasses.replace(m, runner=runners[m.name]))
