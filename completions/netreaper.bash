@@ -32,7 +32,7 @@ _netreaper() {
     local osint_cmds="subdomains"
     local plugin_cmds="list"
     local resources_cmds="list show"
-    local web_cmds="dirs fingerprint"
+    local web_cmds="auto dirs fingerprint"
     local wifi_cmds="arpspoof auto crack downgrade enterprise eviltwin handshake hidden mac-clone mac-random monitor plan pmkid scan tear wep wpa3 wps"
 
     local words_to_offer=""

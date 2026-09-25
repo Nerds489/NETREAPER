@@ -70,6 +70,7 @@ ARGV: dict[str, list[str]] = {
     "resources show": ["--name", "can-utils"],
     "web dirs": ["--target", f"http://{HOST}"],
     "web fingerprint": ["--target", f"http://{HOST}"],
+    "web auto": [f"http://{HOST}"],  # positional URL; dry run resolves the plan, no spawn
     "osint subdomains": ["--domain", DOMAIN],
     "creds attack": ["--target", HOST],
     "can interfaces": [],
