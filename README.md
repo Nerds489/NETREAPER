@@ -12,7 +12,7 @@
 
 ```
 
-[![Version](https://img.shields.io/badge/version-12.1.1-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
+[![Version](https://img.shields.io/badge/version-12.1.2-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://kernel.org)
@@ -460,7 +460,7 @@ one you already have an account with.
 
 <div align="center">
 
-**NETREAPER** v12.1.1 • GPL-3.0-or-later
+**NETREAPER** v12.1.2 • GPL-3.0-or-later
 
 *The airwaves belong to those who listen*
 

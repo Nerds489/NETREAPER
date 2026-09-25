@@ -1515,6 +1515,68 @@ def web_fingerprint(target: str = typer.Argument(..., help="Target URL")):
     console.print(res.stdout if hasattr(res, "stdout") else res)
 
 
+@web_app.command("auto")
+def web_auto(
+    target: str = typer.Argument(..., help="Target URL"),
+    goal: str = typer.Option("web.findings", "--goal", "-g", help="Goal capability"),
+    wordlist: str = typer.Option(
+        None, "--wordlist", "-w", help="Wordlist for path enumeration"
+    ),
+    run: bool = typer.Option(
+        False, "--run", help="Execute the chain (default: dry-run preview)"
+    ),
+):
+    """Resolve a web-recon goal and auto-run its chain (dry run unless --run).
+
+    The first non-wireless planner path: fingerprint the target, then enumerate
+    paths and scan for findings. Every step runs through the same scope gate and
+    audit trail as `web dirs` / `web fingerprint`.
+    """
+
+    async def _auto():
+        from netreaper.chaining.executor import ChainExecutor
+        from netreaper.chaining.manifest import MissingCapabilityError, resolve_chain
+        from netreaper.chaining.plan_exec import manifest_step_runner, plan_to_chain
+        from netreaper.core.exceptions import PluginError, TargetValidationError
+        from netreaper.web.autochain import WebContext, build_web_registry
+
+        ctx = WebContext(target=target, wordlist=wordlist)
+        reg = build_web_registry(ctx)
+        try:
+            plan = resolve_chain(goal, reg)
+        except MissingCapabilityError as exc:
+            console.print(f"[red]Cannot plan {goal!r}: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        console.print(plan.render())
+        if not plan.steps:
+            return
+        if not run:
+            console.print("[cyan]Dry run — re-run with --run to execute.[/cyan]")
+            return
+        try:
+            result = await ChainExecutor(
+                step_runner=manifest_step_runner(reg)
+            ).execute(plan_to_chain(plan))
+        except TargetValidationError as exc:
+            console.print(f"[red]Denied by scope gate: {exc}[/red]")
+            raise typer.Exit(2) from exc
+        except PluginError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(1) from exc
+        if result.success:
+            console.print("[green]Web recon chain completed.[/green]")
+        else:
+            failed = [s.tool for s in result.steps.values()
+                      if s.status.value == "failed"]
+            console.print(
+                f"[yellow]Chain did not complete; step(s) failed: "
+                f"{', '.join(failed) or '?'}[/yellow]"
+            )
+            raise typer.Exit(1)
+
+    asyncio.run(_auto())
+
+
 @app.command("portscan")
 def portscan(
     target: str = typer.Argument(..., help="Target IP or CIDR"),

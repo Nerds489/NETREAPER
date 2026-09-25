@@ -2,6 +2,33 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.2] - 2026-09-25
+
+The backward-chaining planner reaches its first non-wireless domain (#33 slice 2,
+#91).
+
+### Added
+
+- **`web auto`: planner-driven web recon.** A `web/` domain with manifests
+  (`fingerprint_web` -> `enumerate_paths` / `scan_web`) bound to the existing
+  gobuster, nikto and whatweb adapters. `netreaper web auto <url> [-g <goal>]
+  [--run]` resolves a goal into an ordered chain and runs it through the same
+  scope gate and audit trail as the hand-run `web dirs` / `web fingerprint`.
+  Dry-run by default.
+- This is the pattern for every future non-wireless domain: manifests declare the
+  ordering, an autochain module binds the adapters, a CLI verb drives it. It
+  proves #33 bullet 1 ("recover the non-wireless categories") needs a manifest
+  reach path, not just an adapter.
+
+### Note
+
+- Fingerprint-first is a deliberate methodology choice, not a technical one:
+  gobuster and nikto only need the URL, but are modelled as requiring
+  `web.fingerprint` so the planner has a real chain and recon identifies the
+  stack before probing it. One line in `web/manifests.py` relaxes it.
+- Web results are not persisted to the state cache: unlike a cracked password, a
+  site changes, so there is no durable capability to remember.
+
 ## [12.1.1] - 2026-09-25
 
 nmap's root requirement is now per-invocation, closing #90 and the last pinned
