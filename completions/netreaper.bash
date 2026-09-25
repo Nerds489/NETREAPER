@@ -23,10 +23,11 @@ _netreaper() {
         prev="${COMP_WORDS[COMP_CWORD-1]}"
     fi
 
-    local commands="can config creds engage osint plugin portscan resources scan status tui web wifi"
+    local commands="ble can config creds engage osint plugin portscan resources scan status tui web wifi"
     local global_opts="--help --install-completion --show-completion --version"
 
     local can_cmds="dump interfaces"
+    local ble_cmds="plan"
     local creds_cmds="attack"
     local engage_cmds="end start status"
     local osint_cmds="subdomains"
@@ -38,6 +39,7 @@ _netreaper() {
     local words_to_offer=""
     case "${prev}" in
         netreaper)   words_to_offer="${commands} ${global_opts}" ;;
+        ble)         words_to_offer="${ble_cmds}" ;;
         can)         words_to_offer="${can_cmds}" ;;
         creds)       words_to_offer="${creds_cmds}" ;;
         engage)      words_to_offer="${engage_cmds}" ;;

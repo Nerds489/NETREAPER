@@ -73,6 +73,7 @@ ARGV: dict[str, list[str]] = {
     "web auto": [f"http://{HOST}"],  # positional URL; dry run resolves the plan, no spawn
     "osint subdomains": ["--domain", DOMAIN],
     "creds attack": ["--target", HOST],
+    "ble plan": [],
     "can interfaces": [],
     "can dump": ["--interface", "can0", "--seconds", "1"],
     "wifi scan": ["--interface", IFACE, "--timeout", "1"],
