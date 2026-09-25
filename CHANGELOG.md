@@ -2,6 +2,26 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.1] - 2026-09-25
+
+nmap's root requirement is now per-invocation, closing #90 and the last pinned
+exception from #83.
+
+### Fixed
+
+- **A `standard` nmap scan no longer demands root, and `stealth`/`udp`/`full` no
+  longer fail cryptically without it.** Root was a per-tool boolean that the two
+  registries disagreed on (`tool_requirements` True, `detection/tools` False),
+  pinned in `test_registry_reconciliation` rather than resolved. It is a property
+  of the scan, not of nmap: a connect scan (`standard`/`quick`/`vuln`) runs
+  unprivileged; `-sS`/`-sU`/`-A` and OS detection need raw sockets.
+  `NmapTool.needs_root()` computes it from the flags the scan will actually build,
+  and `NmapTool.execute()` refuses a privileged scan up front, naming the scan
+  type and the fix, instead of letting nmap emit "requires root privileges". Both
+  registries now carry the honest base (False), so nmap is out of the
+  per-invocation exception list and the drift guard covers it like every other
+  tool. A dry run is exempt, since it spawns nothing.
+
 ## [12.1.0] - 2026-09-25
 
 The backward-chaining planner can now skip work it has already done, closing the
