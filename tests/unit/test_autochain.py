@@ -146,3 +146,81 @@ def test_cli_wifi_auto_dry_run_prints_plan_and_does_not_execute():
 def test_cli_wifi_auto_unresolvable_goal_exits_2():
     result = runner.invoke(app, ["wifi", "auto", "-i", "wlan0", "-g", "wifi.nonexistent"])
     assert result.exit_code == 2
+
+
+# ── the durable state cache, wired into wifi auto (#31) ───────────────────────
+
+_CACHE_BSSID = "AA:BB:CC:DD:EE:FF"
+
+
+def _tmp_state_db(monkeypatch, db_file):
+    """Point the cache at a throwaway DB, one engine per event loop.
+
+    The CLI runs its own `asyncio.run`, and an aiosqlite connection is bound to
+    the loop that opened it, so the seed loop and the CLI loop need separate
+    engines over the same file. WAL lets the second connection read the first's
+    committed rows.
+    """
+    from netreaper.chaining import state_cache as sc
+    from netreaper.db.engine import DatabaseEngine
+
+    engines: dict = {}
+
+    async def _get():
+        loop = asyncio.get_running_loop()
+        if loop not in engines:
+            engine = DatabaseEngine(db_file)
+            await engine.initialize()
+            engines[loop] = engine
+        return engines[loop]
+
+    monkeypatch.setattr(sc, "get_db", _get)
+
+
+def test_cli_wifi_auto_uses_cached_state_to_short_circuit(tmp_path, monkeypatch):
+    from netreaper.chaining import state_cache as sc
+
+    _tmp_state_db(monkeypatch, tmp_path / "t.db")
+    asyncio.run(
+        sc.record_capability("bssid", _CACHE_BSSID, "wifi.password", "cached")
+    )
+
+    result = runner.invoke(app, ["wifi", "auto", "-i", "wlan0", "-t", _CACHE_BSSID])
+    assert result.exit_code == 0
+    assert "already satisfied" in result.stdout
+    assert "Cached for" in result.stdout
+    assert "crack_handshake" not in result.stdout  # the whole chain was skipped
+
+
+def test_cli_wifi_auto_refresh_ignores_cached_state(tmp_path, monkeypatch):
+    from netreaper.chaining import state_cache as sc
+
+    _tmp_state_db(monkeypatch, tmp_path / "t.db")
+    asyncio.run(
+        sc.record_capability("bssid", _CACHE_BSSID, "wifi.password", "cached")
+    )
+
+    result = runner.invoke(
+        app, ["wifi", "auto", "-i", "wlan0", "-t", _CACHE_BSSID, "--refresh"]
+    )
+    assert result.exit_code == 0
+    assert "crack_handshake" in result.stdout  # full plan, cache ignored
+    assert "Cached for" not in result.stdout
+
+
+def test_cli_wifi_auto_without_target_does_not_touch_the_cache(tmp_path, monkeypatch):
+    """No BSSID to key on: the cache is skipped entirely and the full plan runs."""
+    from netreaper.chaining import state_cache as sc
+
+    called = False
+
+    async def _boom():
+        nonlocal called
+        called = True
+        raise AssertionError("cache must not be consulted without a target")
+
+    monkeypatch.setattr(sc, "get_db", _boom)
+    result = runner.invoke(app, ["wifi", "auto", "-i", "wlan0"])
+    assert result.exit_code == 0
+    assert "crack_handshake" in result.stdout
+    assert called is False

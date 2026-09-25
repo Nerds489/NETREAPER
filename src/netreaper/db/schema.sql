@@ -106,3 +106,31 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+-- available_state -----------------------------------------------------------
+-- The planner's per-target capability memo, made durable (issue #31). Records
+-- that a capability was OBTAINED for a target so a later `resolve_chain` can
+-- skip re-deriving it: crack a network once and the next `wifi auto` short-
+-- circuits instead of re-running the chain. It stores the capability MARKER,
+-- never the value behind it: a recovered key belongs in the encrypted loot
+-- store, not here. chaining/state_cache.py is the only reader and writer.
+--
+-- session_id is a scoping column with the sentinel '-' for "no session", not a
+-- foreign key: SQLite treats NULL as distinct in a UNIQUE constraint, so a
+-- nullable column would let the ON CONFLICT upsert stack duplicates on every
+-- run, and the sentinel cannot satisfy a REFERENCES sessions(id) with
+-- foreign_keys ON. There is no runtime session plumbing to cascade from yet;
+-- clearing is explicit, via state_cache.forget().
+CREATE TABLE IF NOT EXISTS available_state (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id   TEXT NOT NULL DEFAULT '-',
+    target_type  TEXT NOT NULL,
+    target       TEXT NOT NULL,
+    capability   TEXT NOT NULL,
+    metadata     TEXT NOT NULL DEFAULT '{}',
+    recorded_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (session_id, target_type, target, capability)
+);
+
+CREATE INDEX IF NOT EXISTS idx_available_state_lookup
+    ON available_state(session_id, target_type, target);

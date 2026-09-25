@@ -1273,6 +1273,10 @@ def wifi_auto(
     target: str = typer.Option(None, "--target", "-t", help="Target BSSID (capture)"),
     channel: int = typer.Option(None, "--channel", "-c", help="Target channel"),
     wordlist: str = typer.Option(None, "--wordlist", "-w", help="Wordlist (crack)"),
+    refresh: bool = typer.Option(
+        False, "--refresh",
+        help="Ignore and clear cached state for the target, re-deriving from scratch",
+    ),
     run: bool = typer.Option(
         False, "--run", help="Execute the chain (default: dry-run preview)"
     ),
@@ -1283,6 +1287,11 @@ def wifi_auto(
         from netreaper.chaining.executor import ChainExecutor
         from netreaper.chaining.manifest import MissingCapabilityError, resolve_chain
         from netreaper.chaining.plan_exec import manifest_step_runner, plan_to_chain
+        from netreaper.chaining.state_cache import (
+            available_for,
+            forget,
+            record_plan_outputs,
+        )
         from netreaper.core.exceptions import PluginError, TargetValidationError
         from netreaper.wireless.autochain import AutoContext, build_wifi_registry
 
@@ -1291,12 +1300,30 @@ def wifi_auto(
             channel=channel, wordlist=wordlist,
         )
         reg = build_wifi_registry(ctx)
+
+        # Feed the planner what this target already yielded on a prior run so it
+        # can skip re-deriving it. Only with a target to key on; --refresh wipes
+        # it first (a cracked network's password can change out of band).
+        available: set[str] = set()
+        if target:
+            if refresh:
+                await forget("bssid", target)
+            else:
+                available = await available_for("bssid", target)
+
         try:
-            plan = resolve_chain(goal, reg)
+            plan = resolve_chain(goal, reg, available=available or None)
         except MissingCapabilityError as exc:
             console.print(f"[red]Cannot plan {goal!r}: {exc}[/red]")
             raise typer.Exit(2) from exc
+        if available:
+            console.print(
+                f"[dim]Cached for {target}: {', '.join(sorted(available))} "
+                f"(--refresh to ignore)[/dim]"
+            )
         console.print(plan.render())
+        if not plan.steps:
+            return  # goal already satisfied from cache; nothing to run or preview
         if not run:
             console.print("[cyan]Dry run — re-run with --run to execute.[/cyan]")
             return
@@ -1310,6 +1337,12 @@ def wifi_auto(
         except PluginError as exc:
             console.print(f"[red]{exc}[/red]")
             raise typer.Exit(1) from exc
+        if result.success and target:
+            # Remember the durable capabilities this run obtained, so the next
+            # run for this target can skip them. record_plan_outputs drops the
+            # ephemeral ones and the handshake whose temp file the auto path
+            # already deleted.
+            await record_plan_outputs("bssid", target, result.final_output)
         if result.success and ctx.password:
             console.print(f"[green]Recovered {goal}: {ctx.password}[/green]")
         elif result.success:
