@@ -1468,6 +1468,47 @@ app.add_typer(osint_app, name="osint")
 can_app = typer.Typer(help="Automotive CAN bus (read-only)")
 app.add_typer(can_app, name="can")
 
+ble_app = typer.Typer(help="Bluetooth Low Energy (planner preview)")
+app.add_typer(ble_app, name="ble")
+
+
+@ble_app.command("plan")
+def ble_plan(
+    goal: str = typer.Argument(
+        "ble.gatt_services", help="Goal capability to resolve (e.g. ble.devices)"
+    ),
+    have: list[str] = typer.Option(
+        None, "--have", help="A known capability (repeatable): --have ble.devices"
+    ),
+):
+    """Resolve and print the backward-chained BLE plan for a goal (dry run).
+
+    BLE ships manifests-first (#92): the chain is plannable now, and its runners
+    are wired when hardware-verified adapters land. `enumerate_gatt` is marked
+    requires_confirmation, so a live run would clear the confirmation gate.
+    """
+    from netreaper.ble.manifests import register_ble_manifests
+    from netreaper.chaining.manifest import (
+        MissingCapabilityError,
+        manifest_registry,
+        resolve_chain,
+    )
+    from netreaper.core.exceptions import ConfigurationError, PluginError
+
+    try:
+        register_ble_manifests()
+        plan = resolve_chain(goal, manifest_registry, available=set(have or ()))
+    except MissingCapabilityError as exc:
+        console.print(
+            f"[red]Cannot plan {goal!r}: {exc}[/red]\n"
+            "[yellow]No registered tool provides that capability.[/yellow]"
+        )
+        raise typer.Exit(2) from exc
+    except (ConfigurationError, PluginError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+    console.print(plan.render())
+
 
 def _run_tool(coro_factory, label: str):
     """Shared runner: gate denials and missing tools are reported, not tracebacks."""

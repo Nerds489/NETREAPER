@@ -182,6 +182,7 @@ REACHABLE_FROM = (
     SRC / "wireless",
     SRC / "chaining",
     SRC / "automotive",
+    SRC / "ble",
     SRC / "web",
     SRC / "mobile",
     SRC / "automation",
