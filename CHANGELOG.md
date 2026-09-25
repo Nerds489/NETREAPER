@@ -2,6 +2,42 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.0] - 2026-09-25
+
+The backward-chaining planner can now skip work it has already done, closing the
+last open item on the Phase 4 issue (#31).
+
+### Added
+
+- **Durable per-target capability cache** (`chaining/state_cache.py`, table
+  `available_state`). `resolve_chain` always accepted an `available` set;
+  nothing persisted one, so `wifi auto` re-derived everything every run. It now
+  records what a target yielded and feeds it back: crack a network once and the
+  next `wifi auto -t <bssid>` short-circuits to "already satisfied".
+- `wifi auto --refresh` clears a target's cached state and re-derives from
+  scratch, the reset for when a network's password changes out of band.
+
+### Why it only caches some capabilities
+
+A naive "record every step output" cache would regress `wifi auto`. Two reasons,
+both handled by caching only *durable* capabilities and re-checking them on read:
+
+- The auto path's capture step writes to a temp dir and deletes it, so the
+  `wifi.handshake` it "provides" is a path to a gone file. A handshake is cached
+  only while its file exists, and dropped on read once it does not.
+- A monitor interface and a scan list are properties of the run, not the target,
+  so they are never cached; a fresh run re-enables monitor mode and re-scans.
+
+Only `wifi.password` and a surviving `wifi.handshake` are durable, and the store
+keeps a capability marker, never the recovered value.
+
+### Note
+
+- `db/schema.sql` (the other half of #31's last item) already shipped in the
+  v12.0.2 line (#85); this adds the cache that uses it. The `available_state`
+  writer is covered by `test_db_schema.py`'s consumer guard, so its SQL cannot
+  drift from the schema.
+
 ## [12.0.2] - 2026-09-23
 
 The bats suite reported 20/20 while testing nothing, and CI never ran it either
