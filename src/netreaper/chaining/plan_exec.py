@@ -76,6 +76,15 @@ def manifest_step_runner(
         # Enforce the declaration here, where the manifest and the dispatch meet.
         # The leaf still gates itself at the seam; this is the earlier, coarser
         # check that makes the manifest's own words binding.
+        #
+        # needs_hardware is deliberately NOT part of this gate. Unlike the two
+        # flags above it is a capability prerequisite, not an authorisation: the
+        # leaf fails on its own when the adapter or interface is absent, no
+        # generic check can settle "hardware present" in advance the way
+        # os.geteuid() settles root, and a planning-only manifest already errors
+        # above. Gating on it would force an engagement onto every hardware chain
+        # for no safety gain, so it stays the [hw] planning badge in
+        # Plan.render. test_manifest_declaration_binds pins that it does not gate.
         if m.destructive or m.requires_confirmation:
             # Deriving the tier from `destructive` capped this at T2 and, worse,
             # checked a requires_confirmation-only manifest at PASSIVE, the one
