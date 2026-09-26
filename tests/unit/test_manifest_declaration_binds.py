@@ -101,3 +101,21 @@ def test_an_undeclared_step_is_untouched():
     """A plain manifest must not suddenly need an engagement."""
     get_scope_gate().clear_engagement()
     assert _run(_registry()) == {"ran": True}
+
+
+def test_needs_hardware_alone_does_not_gate():
+    """needs_hardware is a capability prerequisite, not a safety control.
+
+    #46 made ``destructive`` and ``requires_confirmation`` bind here;
+    ``needs_hardware`` was deliberately left out and stays the ``[hw]`` badge in
+    Plan.render. It says a step wants physical hardware (a wifi adapter in
+    monitor mode, a BLE controller, a CAN interface), which the leaf fails on
+    naturally when absent and no generic check can settle in advance the way
+    ``os.geteuid()`` settles root. So a needs_hardware-only step runs without an
+    engagement, exactly like a plain one; folding it into the gate would force an
+    engagement onto every hardware chain for no safety gain. This test fails if
+    someone adds ``needs_hardware`` to that condition, which is the reminder to
+    read the note in plan_exec first.
+    """
+    get_scope_gate().clear_engagement()
+    assert _run(_registry(needs_hardware=True)) == {"ran": True}

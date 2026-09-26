@@ -2,6 +2,22 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.9] - 2026-09-26
+
+### Added
+
+- `test_needs_hardware_alone_does_not_gate` and a note in `plan_exec`, recording
+  that `needs_hardware` is deliberately not a safety gate. An audit of the
+  manifest cost-flags after #46 (which made `destructive` and
+  `requires_confirmation` binding) confirmed those two are enforced end to end,
+  and that `needs_hardware` is the remaining display-only flag by design: it is a
+  capability prerequisite, not an authorisation, so the leaf fails on its own
+  when the adapter or interface is absent, no generic check settles "hardware
+  present" the way `os.geteuid()` settles root, and a planning-only manifest
+  already errors. Folding it into the gate would force an engagement onto every
+  hardware chain for no safety gain. The test fails if someone adds it to the
+  gate condition, pointing them at the note first.
+
 ## [12.1.8] - 2026-09-26
 
 ### Fixed
