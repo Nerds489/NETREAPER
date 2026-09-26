@@ -2,6 +2,33 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.8] - 2026-09-26
+
+### Fixed
+
+- **`requires_root` was declared on four tools and enforced on none.**
+  `reaver`, `airodump`, `masscan` and `aireplay` each carried
+  `requires_root=True` in their METADATA, and nothing ever read it: a non-root
+  run reached the process seam and failed there with masscan's "could not
+  determine default interface" or aircrack's terse "Operation not permitted",
+  far from the cause and looking like a bug rather than a missing `sudo`.
+  `masscan` is the plainest case, a direct CLI command (`netreaper ... masscan`
+  -> `MasscanTool().execute`), exactly the shape #90 fixed for nmap. The gate
+  now lives once in `BaseToolWrapper.execute` via a new `needs_root`, which
+  defaults to `METADATA.requires_root`, so the declared flag is enforced for
+  every tool and any future one. A dry run is exempt (it spawns nothing), and
+  nmap keeps its per-invocation override on top (it sets `requires_root=False`
+  and decides from the scan type), so the two do not collide.
+
+### Added
+
+- `test_tool_root_enforcement.py`: the four privileged tools report their root
+  need through `needs_root`, an unprivileged run is refused before the seam with
+  a message that names the binary, a dry run and a root run are not gated, and a
+  tool without the flag is never gated. The `_Denying` double in
+  `test_static_analysis_findings.py` now carries METADATA, as a real wrapper
+  does, since `execute` reads it.
+
 ## [12.1.7] - 2026-09-25
 
 ### Fixed
