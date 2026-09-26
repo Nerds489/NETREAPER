@@ -189,10 +189,23 @@ def test_the_tool_wrapper_handler_stays_narrow():
 
 def test_the_denial_really_does_propagate_out_of_the_tool_wrapper():
     """The behaviour the structural test above protects."""
+    from netreaper.plugins.base import PluginMetadata, PluginType
     from netreaper.tools.base import BaseToolWrapper
 
     class _Denying(BaseToolWrapper):
         TOOL_BINARY = "bash"
+        # A real tool wrapper always declares METADATA; execute() reads it now
+        # (needs_root -> METADATA.requires_root), so the double carries one too.
+        # requires_root defaults False, so the root gate stays out of the way and
+        # the scope-gate denial is what propagates, which is the point here.
+        METADATA = PluginMetadata(
+            name="denying",
+            version="1.0.0",
+            description="test double for scope-gate denial propagation",
+            author="test",
+            plugin_type=PluginType.TOOL,
+            capabilities=[],
+        )
 
         def build_command(self, target, options):
             return ["-c", "true"]

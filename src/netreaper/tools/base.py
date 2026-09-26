@@ -97,12 +97,38 @@ class BaseToolWrapper(ToolPlugin):
         """Parse tool output into structured data."""
         raise NotImplementedError
 
+    def needs_root(self, options: dict[str, Any] | None = None) -> bool:
+        """Whether THIS invocation needs root privileges.
+
+        Defaults to the tool's declared ``METADATA.requires_root``. A tool whose
+        privilege depends on the invocation rather than the tool (nmap, keyed on
+        scan type) overrides this. The gate in ``execute`` reads it, so a
+        declared ``requires_root`` is enforced at the seam rather than being
+        decorative metadata that let the spawn fail cryptically without it.
+        """
+        return bool(self.METADATA.requires_root)
+
     async def execute(self, target: str, options: dict[str, Any]) -> PluginResult:
         """Execute the tool through the gated ProcessRunner and return results.
 
-        Every spawn passes the scope gate first (deny-by-default). Security
-        denials propagate; other failures are returned as a failed result.
+        A tool that needs root (``needs_root``, which defaults to
+        ``METADATA.requires_root``) is refused up front when the process is
+        unprivileged, so it fails with a named message here instead of a terse
+        permission or raw-socket error at the process seam. A dry run is exempt:
+        it spawns nothing, so previewing the command without root is fine. Every
+        real spawn then passes the scope gate (deny-by-default); security denials
+        propagate, other failures are returned as a failed result.
         """
+        opts = options or {}
+        if self.needs_root(opts) and not opts.get("dry_run") and os.geteuid() != 0:
+            return PluginResult(
+                success=False,
+                data={},
+                errors=[
+                    f"{self.TOOL_BINARY} requires root privileges; re-run with sudo"
+                ],
+            )
+
         if not self._initialized:
             await self.initialize()
 
