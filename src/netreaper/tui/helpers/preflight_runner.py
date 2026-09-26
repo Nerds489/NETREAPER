@@ -90,7 +90,6 @@ class ToolContext:
     # console. setup_logging() has no caller today so the path is inert, but the
     # leak should not be waiting for somebody to close that gap.
     api_key: str | None = field(default=None, repr=False)
-    capture_file: str | None = None
 
     # What was resolved
     used_fallback: bool = False

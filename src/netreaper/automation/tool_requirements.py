@@ -30,7 +30,6 @@ class ToolRequirement:
 
     # File requirements
     needs_wordlist: bool = False
-    needs_capture_file: bool = False
 
     # Other requirements
     needs_network: bool = True  # Most tools need network
@@ -96,7 +95,6 @@ TOOL_REQUIREMENTS: dict[str, ToolRequirement] = {
     ),
     "aircrack-ng": ToolRequirement(
         tool="aircrack-ng",
-        needs_capture_file=True,
         needs_wordlist=True,
         description="WPA/WPA2 password cracker",
     ),

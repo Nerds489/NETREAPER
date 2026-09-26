@@ -2,6 +2,29 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.10] - 2026-09-26
+
+### Fixed
+
+- **`needs_capture_file` was a requirement declared and enforced by nothing.**
+  aircrack-ng carried `needs_capture_file=True` and the preflight's `ToolContext`
+  a matching `capture_file` slot, but `PreflightRunner.prepare_tool` never
+  resolved it (its siblings root/target/interface/wordlist/api_key/gpu all are),
+  and nothing read the slot. aircrack-ng is driven from the CLI and the chain
+  with its `.cap` passed in, so it never reaches the preflight and the flag
+  connected to nothing: the same dangling-declaration shape as the root defect in
+  #90/#102. Removed the dead flag, its aircrack-ng setter, and the unused
+  `ToolContext` slot.
+
+### Added
+
+- `test_requirement_flags_enforced.py`: every `needs_*` field on
+  `ToolRequirement` must be referenced by the preflight, or named as
+  carried-for-documentation with a reason (only `needs_network`, which the
+  preflight cannot meaningfully pre-check). A new requirement flag that nothing
+  enforces now fails a test rather than sitting dead; it caught
+  `needs_capture_file`.
+
 ## [12.1.9] - 2026-09-26
 
 ### Added
