@@ -1,5 +1,5 @@
 """NETREAPER safety and validation system."""
-from netreaper.safety.protected import check_target_safety, is_protected_ip, is_public_ip
+from netreaper.safety.protected import is_protected_ip, is_public_ip
 from netreaper.safety.validators import (
     validate_bssid,
     validate_cidr,
@@ -28,5 +28,4 @@ __all__ = [
     # Protection
     "is_protected_ip",
     "is_public_ip",
-    "check_target_safety",
 ]
