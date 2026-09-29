@@ -2,6 +2,30 @@
 
 All notable changes to NETREAPER.
 
+## [12.2.0] - 2026-09-30
+
+### Added
+
+- **Preflight modal dialogs (`tui/modals/preflight_modal.py`), closing the last
+  of #106 (the M1 finding) and the #31 preflight UI.** `PreflightRunner`'s
+  interactive prompts (`ensure_interface`, `ensure_monitor_mode`, `ensure_root`,
+  `ensure_target`, `ensure_api_key`, `ensure_wordlist`, tool install) called
+  `ConfirmModal`, `InputModal`, `InterfaceSelectModal` and `PreflightModal` from
+  a module that did not exist, so every prompt degraded to a "there is no picker
+  yet, name it explicitly" notice and the interactive path did nothing. The
+  module is now implemented, so the TUI preflight actually prompts: pick an
+  interface, confirm monitor mode, enter a target or API key, approve a download.
+  `test_preflight_modals.py` pins each dialog's dismiss contract via the Textual
+  test harness.
+
+### Note on #106/M1
+
+The M1 finding was that the tool-requirements preflight was reachable only in the
+TUI. The chosen resolution is to make that TUI preflight work properly (the
+missing dialogs above) rather than add a separate headless preflight to the
+chain/CLI path; the real safety gates (scope, tier, destructive, root) continue
+to fire at the execution seam regardless of entry point.
+
 ## [12.1.11] - 2026-09-30
 
 ### Fixed

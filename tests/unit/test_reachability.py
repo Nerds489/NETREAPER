@@ -320,10 +320,9 @@ def test_every_manifest_set_has_a_registrar():
 # must be deleted, and a new dangling import fails until it is listed with a
 # reason or the module is written.
 KNOWN_DANGLING: dict[str, str] = {
-    "netreaper.tui.modals.preflight_modal": (
-        "the preflight UI (9 sites in helpers/preflight_runner.py). Part of the "
-        "TUI rebuild, #31; run_with_preflight degrades with a message instead"
-    ),
+    # netreaper.tui.modals.preflight_modal now exists (ConfirmModal, InputModal,
+    # InterfaceSelectModal, PreflightModal), so the ensure_* prompts work instead
+    # of degrading (#106/#31 preflight UI).
     "netreaper.automation.preflight": (
         "PreflightChecker. Dangling from the v11 Bash-to-Python rebuild; "
         "designing it belongs with the TUI rebuild, #31"

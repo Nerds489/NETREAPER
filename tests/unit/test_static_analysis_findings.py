@@ -487,7 +487,7 @@ def test_the_dangling_imports_are_not_hoisted_above_a_fast_path():
     tree = ast.parse(
         (SRC / "tui" / "helpers" / "preflight_runner.py").read_text(encoding="utf-8")
     )
-    dangling = ("preflight_modal", "handlers.privilege", "handlers.install")
+    dangling = ("handlers.privilege", "handlers.install")
     offenders = []
     for fn in ast.walk(tree):
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
