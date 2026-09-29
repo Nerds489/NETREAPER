@@ -76,7 +76,6 @@ class AutoCleanupHandler:
                 raise  # a scope-gate denial is never swallowed
             except Exception as e:
                 logger.warning("Cleanup action failed: %s: %s", action.name, e)
-                logger.debug("Cleanup action completed: %s", action.name)
                 success = False
 
         return success
@@ -109,9 +108,11 @@ class AutoCleanupHandler:
             ["iw", "dev", iface, "set", "type", "managed"],
             ["ip", "link", "set", iface, "up"],
         ]
+        ok = True
         for cmd in commands:
-            await run_host(cmd, destructive=True)
-        return True
+            result = await run_host(cmd, destructive=True)
+            ok = ok and result is not None and result.ok
+        return ok
 
     @classmethod
     async def disable_ip_forwarding(cls) -> bool:
@@ -129,9 +130,11 @@ class AutoCleanupHandler:
             ["iptables", "-t", "nat", "-F"],
             ["iptables", "-t", "mangle", "-F"],
         ]
+        ok = True
         for cmd in commands:
-            await run_host(cmd, destructive=True)
-        return True
+            result = await run_host(cmd, destructive=True)
+            ok = ok and result is not None and result.ok
+        return ok
 
     # NOTE: killall-based stop_hostapd/stop_dnsmasq were removed. A global killall
     # takes down unrelated daemons (e.g. libvirt's dnsmasq); daemon teardown is

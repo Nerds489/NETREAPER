@@ -66,6 +66,18 @@ When using NETREAPER:
 - Keep your system and dependencies updated
 - Review logs regularly for unexpected behavior
 
+### Audit trail integrity
+
+The hash-chained audit trail is verified two ways: `verify()` checks this
+process's in-memory segment, and `verify_file()` walks the whole on-disk chain.
+Truncation of the on-disk chain is caught using a separate `.anchor` sidecar
+file that records the expected next sequence and head. That check **fails open**:
+if the `.anchor` file is missing, `verify_file()` cannot detect a truncation and
+returns success with a warning. When you rely on the trail as evidence, keep the
+`.anchor` sidecar alongside the log and treat a "could not verify completeness"
+warning as seriously as a verification failure: an attacker who can delete one
+extra file can defeat truncation detection.
+
 ## Legal Notice
 
 NETREAPER is intended for authorized security testing only. Unauthorized use against systems you do not own or have permission to test is illegal and unethical. The maintainers assume no liability for misuse.
