@@ -20,6 +20,10 @@ from netreaper.sessions.models import (
 
 logger = get_logger(__name__)
 
+# How many times update() re-reads and retries when a concurrent writer moved
+# the row's updated_at between our read and our write.
+_MAX_UPDATE_RETRIES = 3
+
 
 class SessionManager:
     """Manages session lifecycle and persistence."""
@@ -130,49 +134,79 @@ class SessionManager:
         config: SessionConfig | None = None,
         metadata: SessionMetadata | None = None,
     ) -> Session | None:
-        """Update session fields."""
-        session = await self.get(session_id)
-        if not session:
-            return None
+        """Update session fields.
 
-        if name is not None:
-            session.name = name
-        if status is not None:
-            session.status = status
-            if status in (SessionStatus.COMPLETED, SessionStatus.FAILED):
-                session.ended_at = datetime.now()
-        if workflow_state is not None:
-            session.workflow_state = workflow_state
-        if config is not None:
-            session.config = config
-        if metadata is not None:
-            session.metadata = metadata
-
-        session.updated_at = datetime.now()
-
+        Read-modify-write with optimistic concurrency: the write only lands on
+        the row we read (``WHERE ... AND updated_at = :prev_updated_at``). If a
+        concurrent writer changed the row in between, ``rowcount`` is 0; we
+        re-read and re-apply this call's fields onto the fresh row and retry,
+        rather than a blind ``WHERE id`` that would silently clobber the other
+        writer's change and could leave ``_current_session`` disagreeing with the
+        row on disk.
+        """
         db = await get_db()
-        db_dict = session.to_db_dict()
 
-        await db.execute(
-            """
-            UPDATE sessions
-            SET name = :name, status = :status, workflow_state = :workflow_state,
-                config = :config, metadata = :metadata, updated_at = :updated_at,
-                ended_at = :ended_at
-            WHERE id = :id
-            """,
-            db_dict,
+        for _attempt in range(_MAX_UPDATE_RETRIES):
+            session = await self.get(session_id)
+            if not session:
+                return None
+
+            # The optimistic baseline is the EXACT stored string, read raw, not
+            # session.updated_at.isoformat(): a row written by the schema default
+            # (CURRENT_TIMESTAMP, space-separated) does not round-trip to the same
+            # text as isoformat() ('T'-separated), so a reformatted value would
+            # never match the WHERE clause on the first update after create.
+            row = await db.fetch_one(
+                "SELECT updated_at FROM sessions WHERE id = :id", {"id": session_id}
+            )
+            if row is None:
+                return None
+            prev_updated_at = row["updated_at"]
+
+            if name is not None:
+                session.name = name
+            if status is not None:
+                session.status = status
+                if status in (SessionStatus.COMPLETED, SessionStatus.FAILED):
+                    session.ended_at = datetime.now()
+            if workflow_state is not None:
+                session.workflow_state = workflow_state
+            if config is not None:
+                session.config = config
+            if metadata is not None:
+                session.metadata = metadata
+
+            session.updated_at = datetime.now()
+
+            db_dict = session.to_db_dict()
+            db_dict["prev_updated_at"] = prev_updated_at
+
+            cursor = await db.execute(
+                """
+                UPDATE sessions
+                SET name = :name, status = :status, workflow_state = :workflow_state,
+                    config = :config, metadata = :metadata, updated_at = :updated_at,
+                    ended_at = :ended_at
+                WHERE id = :id AND updated_at = :prev_updated_at
+                """,
+                db_dict,
+            )
+
+            if cursor.rowcount and cursor.rowcount > 0:
+                if self._current_session and self._current_session.id == session_id:
+                    self._current_session = session
+                event_bus.emit(Events.SESSION_UPDATED, {
+                    "session_id": session_id,
+                    "status": session.status,
+                })
+                return session
+            # rowcount 0: a concurrent writer moved updated_at. Re-read and retry.
+
+        logger.warning(
+            "session %s update lost %d concurrency races; not applied",
+            session_id, _MAX_UPDATE_RETRIES,
         )
-
-        if self._current_session and self._current_session.id == session_id:
-            self._current_session = session
-
-        event_bus.emit(Events.SESSION_UPDATED, {
-            "session_id": session_id,
-            "status": session.status,
-        })
-
-        return session
+        return await self.get(session_id)
 
     async def pause(self, session_id: str) -> Session | None:
         """Pause a session."""
