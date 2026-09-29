@@ -118,10 +118,18 @@ class AutoKeysHandler:
         # Set restrictive permissions on directory
         key_dir.chmod(0o700)
 
+        # Create the file with 0o600 at open() time, not after: write_text +
+        # chmod left a window where the plaintext key existed on disk at the
+        # process umask (typically 0644) before the mode was tightened.
         key_path = key_dir / f"{self.service}.key"
-        key_path.write_text(key)
-
-        # Set restrictive permissions on key file
+        fd = os.open(key_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(key)
+        except Exception:
+            os.close(fd)
+            raise
+        # A pre-existing file keeps its old mode through O_CREAT, so tighten it too.
         key_path.chmod(0o600)
 
         return True

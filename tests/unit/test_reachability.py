@@ -117,14 +117,9 @@ UNREACHABLE_MODULES: dict[str, dict[str, object]] = {
             "discovery.load_plugin instead"
         ),
     },
-    "chaining/paths.py": {
-        "importers": frozenset(),
-        "why": (
-            "all four public functions have no caller outside their own module. "
-            "Part of the inert DataBinding data-flow design; see "
-            "tests/unit/test_chaining_dataflow_is_inert.py"
-        ),
-    },
+    # chaining/paths.py was here (inert DataBinding data-flow). It is now live:
+    # ChainExecutor imports resolve_path to evaluate a ChainStep.condition before
+    # running the step (#106), so it has a real caller and is no longer dead.
 }
 
 

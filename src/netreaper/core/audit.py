@@ -468,8 +468,23 @@ class AuditTrail:
                     tail = json.loads(line)
                 except ValueError:
                     continue
-                self._head = str(tail["entry_hash"])
-                self._seq = int(tail["seq"]) + 1
+                disk_head = str(tail["entry_hash"])
+                disk_seq = int(tail["seq"]) + 1
+                # If the on-disk head has moved past ours, another process
+                # appended since our last record(). Our in-memory _entries is
+                # then a SUBSEQUENCE of the real chain, not a contiguous run, so
+                # verify() (which walks _entries as one segment from _start_*)
+                # would report a false break for the rest of this process's life
+                # even though nothing was tampered with. Treat an external append
+                # as a segment boundary: adopt the disk head as a fresh baseline
+                # and start a new in-memory segment from it. verify_file() stays
+                # the authority for the whole on-disk chain.
+                if disk_head != self._head:
+                    self._entries.clear()
+                    self._start_prev = disk_head
+                    self._start_seq = disk_seq
+                self._head = disk_head
+                self._seq = disk_seq
                 return
         except (OSError, ValueError, KeyError, TypeError) as e:
             logger.warning("could not read the audit head before appending: %s", e)
