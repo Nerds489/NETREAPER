@@ -2,6 +2,61 @@
 
 All notable changes to NETREAPER.
 
+## [12.1.11] - 2026-09-30
+
+### Fixed
+
+- **SIGINT/SIGTERM skipped cleanup, leaving the host dirty (#105).** The shutdown
+  signal handler called `asyncio.get_event_loop().run_until_complete(cleanup())`,
+  which raises `RuntimeError: This event loop is already running` the instant a
+  signal arrives during a live session, so interface restore and iptables flush
+  never ran. Handlers are now installed with `loop.add_signal_handler` when a
+  loop is running and cleanup is scheduled onto it; the synchronous fallback
+  never calls `run_until_complete` on a running loop.
+- **Audit `verify()` went permanently false after a concurrent writer (#105).**
+  The per-append head resync left this process's in-memory `_entries` a
+  subsequence of the real chain once another process appended, so `verify()`
+  reported a false break for the rest of the process's life. An external append
+  is now treated as a segment boundary: `verify()` validates the in-memory
+  segment since the last observed external write, and `verify_file()` remains the
+  authority for the whole on-disk chain.
+- **Captive-portal credential capture wrote to a broken path (#105).** The
+  generated `capture.php` was a plain string, not an f-string, so
+  `{NETREAPER_LOOT_DIR}` was written verbatim and every captured credential was
+  appended to a nonexistent relative path (PHP fails with a warning only). The
+  loot directory is now substituted into the generated PHP.
+- **Chain steps ignored their declared retry/fallback/condition (#106).** The
+  executor read only `on_error is STOP`. It now honours `condition` (skip a step
+  whose guard is not met), `RETRY`/`retry_count`/`retry_delay`, `FALLBACK`/
+  `fallback_tool`, and `SKIP` (a skipped-on-error step no longer fails the
+  chain). Defaults (STOP, no condition) keep the previous behaviour.
+- **Session `update()` could silently clobber a concurrent writer (#106).** The
+  read-modify-write used a bare `WHERE id`, so racing callers lost updates. It
+  now writes `WHERE id AND updated_at = <baseline>`, and on a miss re-reads and
+  re-applies its own fields, up to a few attempts.
+- **API key file was briefly world/group-readable (#107).** `write_text` then
+  `chmod(0o600)` left a window at the process umask; the file is now created with
+  mode `0o600` at `os.open` time.
+- **Cleanup actions swallowed failures (#107).** `restore_managed_mode` and
+  `flush_iptables` ignored each command's result and always returned `True`; they
+  now report failure. Removed a stray debug log that announced "completed" in the
+  failure branch, and duplicate back-to-back log calls in `orchestration/control`,
+  `tools/base`, `core/cleanup` and `automation/handlers/cleanup`.
+- **Docs (#107):** noted in `SECURITY.md` that audit truncation detection fails
+  open when the `.anchor` sidecar is missing.
+
+### Changed
+
+- `check_target_safety` is removed from the `netreaper.safety` public API and
+  documents that it is not an authorisation gate, so it cannot be mistaken for
+  the scope gate (#106). Cleared stale local `.coverage` / `.hang-diagnostic.log`
+  artifacts from the tree.
+
+### Added
+
+- `test_audit_concurrent_interleave.py`, `test_chain_error_policy.py` and
+  `test_session_optimistic_update.py` pin the three fixes above.
+
 ## [12.1.10] - 2026-09-26
 
 ### Fixed
