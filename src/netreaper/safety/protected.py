@@ -67,6 +67,13 @@ def check_target_safety(target: str) -> tuple[bool, str]:
 
     ``is_dangerous`` is True when the target is protected (must be refused) or
     public (allowed only with explicit authorisation). Private targets are safe.
+
+    NOT AN AUTHORISATION GATE. This is a coarse address classifier and knows
+    nothing about the active :class:`~netreaper.safety.Engagement`/``Scope``: a
+    private target it calls "safe" may still be out of scope. Never use it as a
+    pre-flight authorisation check; that is ``get_scope_gate().authorize(...)``.
+    Deliberately kept off the package's public ``__all__`` so it is not mistaken
+    for one.
     """
     ip = target.strip()
     try:
@@ -81,4 +88,4 @@ def check_target_safety(target: str) -> tuple[bool, str]:
     return (False, f"{ip} is a private address")
 
 
-__all__ = ["check_target_safety", "is_protected_ip", "is_public_ip"]
+__all__ = ["is_protected_ip", "is_public_ip"]

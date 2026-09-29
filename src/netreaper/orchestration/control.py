@@ -126,7 +126,6 @@ class ExecutionController:
                 processes_to_stop = list(self._processes.values())
 
             logger.info("Stopping %s processes", len(processes_to_stop))
-            logger.info('Stopping %s processes', len(processes_to_stop))
 
             for running in processes_to_stop:
                 try:
@@ -149,7 +148,6 @@ class ExecutionController:
             )
 
             logger.info("Stop all completed: %s cancelled, %s failed", results['cancelled'], results['failed'])
-            logger.info('Stop all completed: %s cancelled, %s failed', results['cancelled'], results['failed'])
 
         finally:
             self._stop_all_in_progress = False
