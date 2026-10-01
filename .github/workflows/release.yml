@@ -65,8 +65,14 @@ jobs:
       - name: Verify the licence travels in the artifacts
         run: |
           set -euo pipefail
-          python -m zipfile -l dist/*.whl | grep -Eq '(^|/)LICENSE' || { echo "::error::wheel is missing LICENSE"; exit 1; }
-          tar -tzf dist/*.tar.gz | grep -Eq '(^|/)LICENSE' || { echo "::error::sdist is missing LICENSE"; exit 1; }
+          # Capture each listing in full before grepping. Piping into `grep -q`
+          # lets grep close the pipe on first match, which SIGPIPEs tar/zipfile
+          # mid-write; under `pipefail` that fails the step even though LICENSE
+          # is present (the match is exactly why grep closed early).
+          whl_list="$(python -m zipfile -l dist/*.whl)"
+          printf '%s\n' "$whl_list" | grep -Eq '(^|/)LICENSE' || { echo "::error::wheel is missing LICENSE"; exit 1; }
+          sdist_list="$(tar -tzf dist/*.tar.gz)"
+          printf '%s\n' "$sdist_list" | grep -Eq '(^|/)LICENSE' || { echo "::error::sdist is missing LICENSE"; exit 1; }
 
       - name: Verify the built artifacts install and import
         run: |
