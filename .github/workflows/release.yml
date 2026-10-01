@@ -62,6 +62,12 @@ jobs:
           python -m pip install --upgrade build
           python -m build
 
+      - name: Verify the licence travels in the artifacts
+        run: |
+          set -euo pipefail
+          python -m zipfile -l dist/*.whl | grep -Eq '(^|/)LICENSE' || { echo "::error::wheel is missing LICENSE"; exit 1; }
+          tar -tzf dist/*.tar.gz | grep -Eq '(^|/)LICENSE' || { echo "::error::sdist is missing LICENSE"; exit 1; }
+
       - name: Verify the built artifacts install and import
         run: |
           set -euo pipefail

@@ -2,6 +2,22 @@
 
 All notable changes to NETREAPER.
 
+## [12.2.1] - 2026-10-01
+
+### Fixed
+
+- **README `wifi wep` example hung the README-command test where aircrack-ng is installed (#110).** The example used concrete arguments, so `test_readme_commands_exist` executed it, reached the live WEP capture path and blocked on a real subprocess (CI stayed green only because CI has no aircrack-ng). The example now uses placeholders (`<interface> <bssid> <channel> --injection <mode>`), so the test verifies the command path and the `--injection` option via `--help` instead of running an attack.
+- **`LICENSE` restored to the canonical GPL-3.0 text.** The file was a byte-for-byte variant that read as a modified licence to a strict canonical-text check; it is now the verbatim licence text. No change to the licence itself (GPL-3.0-or-later).
+
+### Docs
+
+- Native-adapter count corrected to 16 everywhere in the README (was 14; there are 16 single-binary adapters plus the read-only CAN adapter).
+- `SECURITY.md` supported-versions table updated from 10.x to 12.x.
+- Documentation-licence statement added to the README licence section.
+- `CONTRIBUTING.md` gains a Developer Certificate of Origin section.
+- Added `TRADEMARKS.md` (the name is not licensed by the GPL grant).
+- `ROADMAP_VISUAL.md` marked as a historical planning document.
+
 ## [12.2.0] - 2026-09-30
 
 ### Added

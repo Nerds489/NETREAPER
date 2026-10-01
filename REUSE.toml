@@ -1,0 +1,10 @@
+version = 1
+
+# NETREAPER is a single-licence project: everything is GPL-3.0-or-later unless a
+# file says otherwise. This states it explicitly for the prose under docs/, which
+# would otherwise be only implicitly covered.
+[[annotations]]
+path = ["docs/**", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "ROADMAP_VISUAL.md", "TRADEMARKS.md"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025-2026 Nerds489"
+SPDX-License-Identifier = "GPL-3.0-or-later"
