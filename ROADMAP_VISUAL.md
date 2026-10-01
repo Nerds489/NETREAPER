@@ -1,5 +1,7 @@
 # NETREAPER Improvement Roadmap - Visual Timeline
 
+> **Historical planning document.** This six-month plan was written around the v8.x line. The project is now well past it; for the current state and what actually shipped, read [`CHANGELOG.md`](CHANGELOG.md). Kept for provenance.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                    NETREAPER IMPROVEMENT ROADMAP                             │

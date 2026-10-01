@@ -179,3 +179,20 @@ netreaper --version
 ## License
 
 By contributing to NETREAPER, you agree that your contributions will be licensed under the same license as the project.
+
+## Developer Certificate of Origin
+
+Contributions are accepted under the [Developer Certificate of Origin](https://developercertificate.org/) 1.1. By signing off on your commits you certify that you wrote the contribution or otherwise have the right to submit it under the project licence.
+
+Sign off each commit with:
+
+```bash
+git commit -s -m "your message"
+```
+
+which appends a line in the form:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+

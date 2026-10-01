@@ -12,7 +12,7 @@
 
 ```
 
-[![Version](https://img.shields.io/badge/version-12.2.0-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
+[![Version](https://img.shields.io/badge/version-12.2.1-ff0040?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nerds489/NETREAPER/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://kernel.org)
@@ -43,7 +43,7 @@ aireplay-ng --deauth 0 -a AA:BB:CC:DD:EE:FF -c 11:22:33:44:55:66 wlan0mon
 netreaper wifi auto -i wlan0mon --run
 ```
 
-It knows 102 tools across nine categories, drives 14 of them through native adapters that
+It knows 102 tools across nine categories, drives 16 of them through native adapters that
 parse their output rather than shelling out and hoping, and refuses to touch anything you
 have not put in scope.
 
@@ -187,7 +187,7 @@ netreaper wifi pmkid wlan0mon AA:BB:CC:DD:EE:FF 6
 netreaper wifi wps AA:BB:CC:DD:EE:FF -i wlan0mon -c 6
                                            # pixie-dust then PIN list; --compute for
                                            # offline PIN candidates only
-netreaper wifi wep wlan0mon AA:BB:CC:DD:EE:FF 6 --injection chopchop
+netreaper wifi wep <interface> <bssid> <channel> --injection <mode>
                                            # arpreplay (default), chopchop, fragment,
                                            # caffe_latte, cfrag, interactive
 netreaper wifi crack <capture.cap> <bssid> <wordlist>
@@ -282,7 +282,7 @@ be.
 ## Tool catalogue
 
 102 tools across nine categories. NETREAPER can detect, install and report on every one.
-The 14 marked with an asterisk it also drives through a native adapter, which means it
+The 16 marked with an asterisk it also drives through a native adapter, which means it
 parses their output and feeds the result into the next step rather than printing it and
 leaving you to read.
 
@@ -399,7 +399,7 @@ NETREAPER/
 │   ├── safety/            # the scope gate: engagement, tiers, protected ranges
 │   ├── wireless/          # scan, monitor, handshake, pmkid, wps, wep, eviltwin,
 │   │                      #   enterprise, wpa3, hidden, evasion
-│   ├── tools/             # 14 native tool adapters, plus read-only CAN
+│   ├── tools/             # 16 native tool adapters, plus read-only CAN
 │   ├── automation/        # capability planner and tool requirements
 │   ├── detection/         # the 102-tool catalogue
 │   ├── db/                # SQLite schema and async engine
@@ -433,6 +433,8 @@ Every source file carries an `SPDX-License-Identifier: GPL-3.0-or-later` header,
 `pyproject.toml` declares the same, so the licence travels with the code rather than living
 only in one file.
 
+The `docs/` directory and this README are part of the project and carry the same **GPL-3.0-or-later** licence unless a file states otherwise.
+
 **What it means in practice.** You may use, study, modify and redistribute NETREAPER,
 including commercially. If you distribute it or anything derived from it, you must pass on
 those same freedoms and make the corresponding source available under GPL-3.0-or-later.
@@ -460,7 +462,7 @@ one you already have an account with.
 
 <div align="center">
 
-**NETREAPER** v12.2.0 • GPL-3.0-or-later
+**NETREAPER** v12.2.1 • GPL-3.0-or-later
 
 *The airwaves belong to those who listen*
 
