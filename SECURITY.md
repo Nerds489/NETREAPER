@@ -6,7 +6,7 @@ The following versions of NETREAPER are currently supported with security update
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 10.x.x  | :white_check_mark: |
+| 12.x.x  | :white_check_mark: |
 
 ## Reporting a Vulnerability
 

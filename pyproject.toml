@@ -4,6 +4,7 @@ name = "netreaper"
 description = "Offensive Security Framework with Modern TUI"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
 keywords = ["security", "pentesting", "wireless", "hacking", "tui"]
 authors = [
